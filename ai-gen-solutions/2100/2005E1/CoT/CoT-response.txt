@@ -1,0 +1,137 @@
+Below is a Java solution that implements the “bottom‐up” DP over all possible submatrix start‐positions \((R,C)\).  We maintain two boolean \((n+2)\times(m+2)\) arrays
+
+  nextDP[R][C] = win(i+1,R,C),  
+  currDP[R][C] = win(i,R,C),
+
+and build them in decreasing order of \(i\).  At step \(i\), we mark all matrix cells \((r,c)\) of value \(a_i\) for which the opponent would lose (i.e.\ \(!\,nextDP[r+1][c+1]\)).  Call that mark array GOOD.  Then
+
+  currDP[R][C] = (exists GOOD[r][c] with \(r\ge R,c\ge C\))  
+
+can be computed by the classic “suffix‐OR” scan
+
+  currDP[R][C] = GOOD[R][C]  
+              ∨ currDP[R+1][C]  
+              ∨ currDP[R][C+1].
+
+After filling currDP, we swap it into nextDP and continue.  Finally, our answer is nextDP[1][1] at \(i=1\).
+
+The complexity per test is \(O(l\cdot n\cdot m)\), which is fine for \(l,n,m\le300\) and \(\sum nm\le10^5,\sum l\le300\).
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int l = Integer.parseInt(st.nextToken());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+
+            // read the array a[0..l-1]
+            int[] a = new int[l];
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < l; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // collect positions of each value 1..7
+            ArrayList<Integer>[] posR = new ArrayList[8];
+            ArrayList<Integer>[] posC = new ArrayList[8];
+            for (int v = 1; v <= 7; v++) {
+                posR[v] = new ArrayList<>();
+                posC[v] = new ArrayList<>();
+            }
+            for (int r = 1; r <= n; r++) {
+                st = new StringTokenizer(in.readLine());
+                for (int c = 1; c <= m; c++) {
+                    int v = Integer.parseInt(st.nextToken());
+                    posR[v].add(r);
+                    posC[v].add(c);
+                }
+            }
+
+            // DP arrays of size (n+2)x(m+2) so we can safely look at index+1
+            boolean[][] nextDP = new boolean[n+2][m+2];
+            boolean[][] currDP = new boolean[n+2][m+2];
+            boolean[][] good   = new boolean[n+2][m+2];
+
+            // nextDP initially all false = losing if you are to move after l (no array left).
+            // We'll fill dp for i = l down to 1.
+            for (int i = l - 1; i >= 0; i--) {
+                int val = a[i];
+
+                // 1) clear GOOD array
+                for (int r = 1; r <= n; r++) {
+                    Arrays.fill(good[r], 1, m+1, false);
+                }
+
+                // 2) mark GOOD[r][c] = true iff picking (r,c) (of value a[i]) makes
+                //    the opponent lose, i.e. nextDP[r+1][c+1] == false
+                ArrayList<Integer> rr = posR[val];
+                ArrayList<Integer> cc = posC[val];
+                int sz = rr.size();
+                for (int j = 0; j < sz; j++) {
+                    int r = rr.get(j);
+                    int c = cc.get(j);
+                    if (!nextDP[r+1][c+1]) {
+                        good[r][c] = true;
+                    }
+                }
+
+                // 3) clear currDP entirely (we'll rebuild it)
+                for (int r = 1; r <= n+1; r++) {
+                    Arrays.fill(currDP[r], 1, m+2, false);
+                }
+
+                // 4) build currDP[R][C] = OR over GOOD in rectangle [R..n]x[C..m]
+                for (int r = n; r >= 1; r--) {
+                    for (int c = m; c >= 1; c--) {
+                        currDP[r][c] = good[r][c]
+                                     || currDP[r+1][c]
+                                     || currDP[r][c+1];
+                    }
+                }
+
+                // 5) swap nextDP <-> currDP for the next iteration
+                boolean[][] tmp = nextDP;
+                nextDP = currDP;
+                currDP = tmp;
+            }
+
+            // After finishing i=1, nextDP[1][1] tells us if the first player wins
+            out.println(nextDP[1][1] ? 'T' : 'N');
+        }
+
+        out.flush();
+    }
+}
+```
+
+Explanation of the key steps:
+
+1. **State definition**  
+   Let `dp[i][R][C]` = can the player to move at turn *i* (i.e.\ trying to match `a[i]`) force a win when the allowed submatrix is all `(r,c)` with `r>=R, c>=C`.  
+   We only ever need the layer `dp[i+1]` to compute `dp[i]`, so we keep two 2D boolean arrays `nextDP` and `currDP`.
+
+2. **Transition**  
+   To decide `dp[i][R][C]`, the player must pick one occurrence `(r,c)` of the value `a[i]` inside the submatrix `[R..n]×[C..m]`.  If any such `(r,c)` leads to a position where the opponent loses—i.e. `dp[i+1][r+1][c+1] == false`—then `dp[i][R][C]` is `true`; otherwise it is `false`.
+
+3. **Fast 2D range‐OR**  
+   We mark `good[r][c] = true` exactly for those cells `(r,c)` where choosing that move is a winning move (meaning `dp[i+1][r+1][c+1] == false`).  Then  
+     `currDP[R][C] = OR_{r>=R, c>=C} good[r][c]`.  
+   This can be computed in \(O(nm)\) by the usual “suffix‐OR” scan from bottom‐right:
+     currDP[R][C] = good[R][C] ∨ currDP[R+1][C] ∨ currDP[R][C+1].
+
+4. **Initialization**  
+   We set `nextDP` (which stands for `dp[l+1]`) to all `false` because once all `l` elements are taken, the next player has no moves and loses.
+
+5. **Answer**  
+   At the end of the loop `i=1`, we have filled `dp[1]` into `nextDP`.  If `nextDP[1][1]` is `true`, the first player (Tsovak) wins; otherwise, Narek wins.
+
+This runs in \(O\bigl(l\cdot n\cdot m\bigr)\) per test, well within the limits for \(l,n,m\le300\) and making sure the total sums of \(nm\) and \(l\) over all tests remain manageable.

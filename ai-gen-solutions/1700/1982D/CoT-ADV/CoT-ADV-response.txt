@@ -1,0 +1,191 @@
+**Problem Restatement**
+
+We have an \(n\times m\) grid of non‐negative integer heights \(a_{ij}\), and each cell is labeled as type 0 (“snowy‐cap”) or type 1 (“no cap”).  Let
+\[
+S_0 \;=\;\sum_{(i,j)\,\text{type}=0} a_{ij},\quad
+S_1 \;=\;\sum_{(i,j)\,\text{type}=1} a_{ij}.
+\]
+We want \(S_0 = S_1\) in the end (if only one type occurs at all, the other sum is treated as 0).
+
+We are allowed any number of operations of the following kind:
+– Choose any \(k\times k\) submatrix and add an integer \(c\) (possibly negative) to **all** heights in that submatrix (the type labels remain unchanged).
+
+Is it possible to make \(S_0 = S_1\) after some sequence of operations?
+
+**Key Observation**
+
+Define a single “net‐difference” measure
+\[
+D \;=\;\sum_{(i,j)} w_{ij}\,a_{ij},\quad
+w_{ij} = 
+\begin{cases}
++1, & \text{type}=0,\\
+-1, & \text{type}=1.
+\end{cases}
+\]
+Initially \(D = S_0 - S_1\).  We want the final weighted sum to be zero.
+
+Each operation on a \(k\times k\) block adds \(c\) to each of its \(k^2\) cells.  The change in \(D\) from that operation is 
+\[
+\Delta D \;=\; c \;\times\;\sum_{\substack{(r,s)\in\text{block}}} w_{rs}.
+\]
+Precompute for each top‐left corner \((i,j)\) of a \(k\times k\) block the quantity
+\[
+B_{ij}
+=\sum_{r=i}^{i+k-1}\sum_{s=j}^{j+k-1} w_{rs}.
+\]
+Then choosing integer \(c\) there changes \(D\) by \(c\cdot B_{ij}\).  Since each \(c\) can be any integer, the **set** of achievable changes is exactly the set of all integer combinations
+\[
+\sum_{i,j} x_{ij}\,B_{ij},\quad x_{ij}\in\mathbb Z.
+\]
+From elementary number theory, these are precisely the multiples of 
+\[
+g \;=\;\gcd\bigl(\{\,B_{ij}\}\bigr).
+\]
+Hence we can reach \(D=0\) if and only if \(-D\) is a multiple of \(g\), i.e. \(D\mod g=0\).  The only caveat is if all \(B_{ij}=0\), then \(g=0\) and \(\Delta D\) is always \(0\), so no change is possible, and we need the initial \(D\) itself to be \(0\).
+
+**Algorithm Outline**
+
+For each test case:
+
+1. Read \(n,m,k\).  
+2. Read the height grid \(a_{ij}\).  
+3. Read the type grid (strings of '0'/'1'), build \(w_{ij}=+1\) for '0', \(-1\) for '1'.  
+4. Compute the **initial** weighted difference
+   \[
+     D = \sum_{i=1}^n\sum_{j=1}^m w_{ij}\,a_{ij}.
+   \]
+5. Build a 2D prefix‐sum array of \(w\), called `PS`, so that any submatrix sum is \(O(1)\).  
+6. Slide a \(k\times k\) window over all \((i,j)\) (from \(1\le i\le n-k+1,\;1\le j\le m-k+1\)).  Compute
+   \[
+     B_{ij} = 
+       PS[i+k-1][j+k-1]
+     - PS[i-1]  [j+k-1]
+     - PS[i+k-1][j-1]
+     + PS[i-1]  [j-1].
+   \]
+7. Maintain \(g = \gcd(\,|B_{ij}|\text{ over all windows with }B_{ij}\neq0)\).  If no window has nonzero sum, then \(g\) remains 0.  
+8. If \(g=0\), answer YES iff \(D=0\).  Otherwise answer YES iff \(D\mod g=0\).
+
+Time complexity per test is \(O(nm)\), and the total \(\sum nm\le2.5\times10^5\).  This easily fits in the 2-second limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    // Compute gcd of two non-negative longs
+    static long gcd(long a, long b) {
+        while (b != 0) {
+            long t = a % b;
+            a = b;
+            b = t;
+        }
+        return a;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+
+            // Read heights
+            long[][] a = new long[n+1][m+1];
+            for (int i = 1; i <= n; i++) {
+                st = new StringTokenizer(br.readLine());
+                for (int j = 1; j <= m; j++) {
+                    a[i][j] = Long.parseLong(st.nextToken());
+                }
+            }
+
+            // Read types, build w = +1 for '0', -1 for '1'
+            int[][] w = new int[n+1][m+1];
+            for (int i = 1; i <= n; i++) {
+                String row = br.readLine();
+                for (int j = 1; j <= m; j++) {
+                    w[i][j] = (row.charAt(j-1) == '0') ? +1 : -1;
+                }
+            }
+
+            // Compute initial weighted difference D = sum w[i][j]*a[i][j]
+            long D = 0;
+            for (int i = 1; i <= n; i++) {
+                for (int j = 1; j <= m; j++) {
+                    D += w[i][j] * a[i][j];
+                }
+            }
+
+            // Build 2D prefix-sum of w
+            long[][] PS = new long[n+1][m+1];
+            for (int i = 1; i <= n; i++) {
+                long rowSum = 0;
+                for (int j = 1; j <= m; j++) {
+                    rowSum += w[i][j];
+                    PS[i][j] = PS[i-1][j] + rowSum;
+                }
+            }
+
+            // Compute gcd of all |B_ij| for k x k windows
+            long g = 0;
+            for (int i = 1; i + k - 1 <= n; i++) {
+                for (int j = 1; j + k - 1 <= m; j++) {
+                    int r2 = i + k - 1;
+                    int c2 = j + k - 1;
+                    long sumW =
+                        PS[r2][c2]
+                      - PS[i-1][c2]
+                      - PS[r2][j-1]
+                      + PS[i-1][j-1];
+                    long absW = Math.abs(sumW);
+                    if (absW > 0) {
+                        if (g == 0) g = absW;
+                        else g = gcd(g, absW);
+                    }
+                }
+            }
+
+            // If g == 0, no window can change D, so D must already be 0
+            boolean ok;
+            if (g == 0) {
+                ok = (D == 0);
+            } else {
+                ok = (D % g == 0);
+            }
+
+            sb.append(ok ? "YES\n" : "NO\n");
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Weighted Difference \(D\).**  
+   We encode type–0 cells with \(+1\) and type–1 cells with \(-1\).  Then
+   \[
+     D = \sum_{i,j} w_{ij}\,a_{ij} = S_0 - S_1.
+   \]
+2. **Effect of One Operation.**  
+   Adding \(c\) to a \(k\times k\) block multiplies the sum of \(w\) in that block.  
+3. **GCD Argument.**  
+   Since each operation’s effect on \(D\) is an integer multiple of the block’s \(w\)–sum, all reachable changes form the integer lattice generated by those sums.  The lattice step is \(\gcd\) of all block-sums.  
+4. **Zero–Block Case.**  
+   If every \(k\times k\) block has total \(w\)–sum \(0\), then no operation can change \(D\).  We must check \(D=0\).
+5. **Complexities.**  
+   - Time per test: \(O(nm)\) to read, build prefix sums, slide windows.  
+   - Total over all tests: \(O\bigl(\sum nm\bigr)\le2.5\times10^5\).  
+   This runs in under 2 seconds in Java comfortably.
+
+Thus we can efficiently decide whether it is possible to equalize the two sums by these submatrix‐addition operations.

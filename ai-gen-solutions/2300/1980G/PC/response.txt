@@ -1,0 +1,187 @@
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 200_000;
+    static final int BITS = 30;
+    // We need at most n*BITS trie‐nodes per test, sum(n) ≤ 2e5 ⇒ sum(nodes) ≤ 6e6
+    static final int MAXNODE = MAXN * BITS + 5;
+
+    // Trie adjacency: nextBit[bit][node]
+    static int[][] nextBit = new int[2][MAXNODE];
+    // counts[grp][node]: how many values of parity grp pass through this node
+    static int[][] counts  = new int[2][MAXNODE];
+
+    // Tree adjacency
+    static int[] head = new int[MAXN + 1];
+    static int[] to   = new int[2 * MAXN];
+    static int[] wgt  = new int[2 * MAXN];
+    static int[] nxt  = new int[2 * MAXN];
+    static int   edgeCnt;
+
+    static int[] dist0  = new int[MAXN + 1];  // XOR‐distance from root under original weights
+    static int[] parity = new int[MAXN + 1];  // depth(u) mod 2
+
+    // Global counter for allocating trie‐nodes
+    static int nodeCnt;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in  = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder out = new StringBuilder();
+
+        int T = Integer.parseInt(in.readLine().trim());
+        while (T-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+
+            // Build the tree
+            Arrays.fill(head, 1, n + 1, -1);
+            edgeCnt = 0;
+            for (int i = 0; i < n - 1; i++) {
+                st = new StringTokenizer(in.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                int w = Integer.parseInt(st.nextToken());
+                to[edgeCnt] = v; wgt[edgeCnt] = w; nxt[edgeCnt] = head[u]; head[u] = edgeCnt++;
+                to[edgeCnt] = u; wgt[edgeCnt] = w; nxt[edgeCnt] = head[v]; head[v] = edgeCnt++;
+            }
+
+            // DFS (iterative) to compute dist0[] and parity[]
+            dist0[1]  = 0;
+            parity[1] = 0;
+            int[] stack  = new int[n];
+            int[] parent = new int[n];
+            int sp = 0;
+            stack[sp]  = 1;
+            parent[sp] = 0;
+            sp++;
+            while (sp > 0) {
+                sp--;
+                int u = stack[sp], p = parent[sp];
+                for (int e = head[u]; e != -1; e = nxt[e]) {
+                    int v = to[e];
+                    if (v == p) continue;
+                    parity[v]  = parity[u] ^ 1;
+                    dist0[v]   = dist0[u] ^ wgt[e];
+                    stack[sp]  = v;
+                    parent[sp] = u;
+                    sp++;
+                }
+            }
+
+            // We'll record exactly which trie‐nodes we allocate,
+            // so we can reset them after this test.
+            List<Integer> usedNodes = new ArrayList<>();
+            usedNodes.add(0);  // root is always used
+            nodeCnt = 1;       // next free trie‐node index
+
+            int size0 = 0, size1 = 0;  // counts of inserted values in each parity
+
+            // Inner class for trie operations
+            class TrieOps {
+                // Insert (delta=+1) or remove (delta=-1) 'value' into group 'grp'
+                void adjust(int value, int grp, int delta) {
+                    int cur = 0;
+                    for (int b = BITS - 1; b >= 0; b--) {
+                        int bit = (value >>> b) & 1;
+                        int nx  = nextBit[bit][cur];
+                        if (nx == 0) {
+                            // allocate new node
+                            nx = nodeCnt++;
+                            nextBit[bit][cur] = nx;
+                            usedNodes.add(nx);
+                        }
+                        cur = nx;
+                        counts[grp][cur] += delta;
+                    }
+                }
+                // Query max XOR with 'mask' in group 'grp' (size 'sz')
+                int query(int mask, int grp, int sz) {
+                    if (sz == 0) return Integer.MIN_VALUE;
+                    int cur = 0, ans = 0;
+                    for (int b = BITS - 1; b >= 0; b--) {
+                        int want = 1 - ((mask >>> b) & 1);
+                        int cnode = nextBit[want][cur];
+                        if (cnode != 0 && counts[grp][cnode] > 0) {
+                            ans |= (1 << b);
+                            cur = cnode;
+                        } else {
+                            cur = nextBit[1 - want][cur];
+                        }
+                    }
+                    return ans;
+                }
+            }
+
+            TrieOps trie = new TrieOps();
+
+            // Build the trie with all dist0[u]
+            for (int u = 1; u <= n; u++) {
+                if (parity[u] == 0) {
+                    trie.adjust(dist0[u], 0, +1);
+                    size0++;
+                } else {
+                    trie.adjust(dist0[u], 1, +1);
+                    size1++;
+                }
+            }
+
+            int Ytot = 0;  // cumulative global XOR applied to all edges
+
+            // Process queries
+            for (int qi = 0; qi < m; qi++) {
+                st = new StringTokenizer(in.readLine());
+                String op = st.nextToken();
+                if (op.equals("^")) {
+                    int y = Integer.parseInt(st.nextToken());
+                    Ytot ^= y;
+                } else {
+                    // "? v x"
+                    int v = Integer.parseInt(st.nextToken());
+                    int x = Integer.parseInt(st.nextToken());
+                    int g = parity[v];
+
+                    // Temporarily remove dist0[v]
+                    trie.adjust(dist0[v], g, -1);
+                    if (g == 0) size0--; else size1--;
+
+                    // Compute T = dist[v] ^ x
+                    int curDistV = (g == 0 ? dist0[v] : dist0[v] ^ Ytot);
+                    int Tmask    = curDistV ^ x;
+
+                    // Query both tries
+                    int ans0 = trie.query(Tmask,       0, size0);
+                    int ans1 = trie.query(Tmask ^ Ytot, 1, size1);
+                    int ans  = Math.max(ans0, ans1);
+
+                    out.append(ans).append(' ');
+
+                    // Re‐insert dist0[v]
+                    trie.adjust(dist0[v], g, +1);
+                    if (g == 0) size0++; else size1++;
+                }
+            }
+            out.append('\n');
+
+            // Clear the trie‐nodes we allocated in this test
+            for (int nd : usedNodes) {
+                nextBit[0][nd] = 0;
+                nextBit[1][nd] = 0;
+                counts[0][nd]  = 0;
+                counts[1][nd]  = 0;
+            }
+        }
+
+        System.out.print(out);
+    }
+}
+```
+
+Explanation of the key changes:
+
+1. **`nodeCnt` is now a `static` field** at the top, not a local variable.  
+2. We reset `nodeCnt = 1` at the start of each test.  
+3. We collect every newly allocated trie‐node index into `usedNodes`.  
+4. After finishing a test, we iterate over `usedNodes` to clear out the `nextBit` pointers and `counts`, ensuring no data leaks into the next test case.

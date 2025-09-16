@@ -1,0 +1,257 @@
+**Analysis**
+
+We have a tree $T$ on $n$ vertices.  The “shuffle’’ procedure that the problem describes can be re‐interpreted in terms of **removal orders** and **acyclic orientations**:
+
+1.  We pick some vertex $v_1$ to be the root (it will be “removed’’ first).
+2.  Removing $v_1$ splits $T$ into subtrees; in each subtree we pick a root $v_2$, remove it, etc., until all vertices are removed.  
+3.  In the final shuffled tree, a vertex is a **leaf** exactly when at the moment it was removed it had no *yet‐unremoved* neighbors (except we get one extra leaf if the very first removed vertex $v_1$ has degree~1 in $T$).
+
+One checks that
+
+-  Number a removal order $\pi=(v_1,v_2,\dots,v_n)$, and let 
+   
+   \[
+     \mathrm{deg}_{\mathrm{rem}}(v_i)
+     \;=\;
+     \#\{\,\text{neighbors of }v_i\text{ among }v_{i+1},\dots,v_n\}.
+   \]
+   
+-  A vertex $v_i\,(i>1)$ becomes a leaf iff $\mathrm{deg}_{\mathrm{rem}}(v_i)=0\,$, i.e.\ it is removed **after** all its neighbors.  
+-  The very first vertex $v_1$ contributes +1 leaf exactly if its original degree in $T$ was 1.
+
+It turns out that “being removed after all of your neighbors’’ is exactly the condition of being a **sink** in the acyclic orientation induced by $\pi$ (each edge is oriented from earlier‐removed to later‐removed).  One shows easily that the maximal number of sinks in a tree (under an acyclic orientation) is the size of a **maximum independent set** (MIS).  However, because the root $v_1$ is removed first, it cannot be one of those sinks—but if it is a **leaf** in $T$ (degree~1), it *still* contributes +1 by the special “root‐leaf’’ rule.  
+
+Hence the answer is
+\[
+   \max_{\substack{v_1\in V\\\deg_T(v_1)=1}}
+     \Bigl(1 + \mathrm{MIS}\bigl(T\setminus\{v_1\}\bigr)\Bigr),
+\]
+and one checks that removing any non‐leaf can never do better than removing some leaf.
+
+---
+
+So our task:
+
+1.  Compute the MIS‐DP for the tree in **$O(n)$**.
+2.  Then for *each* leaf $v_1$ with neighbor $u$, we need 
+   \[
+     \mathrm{MIS}\bigl(T\setminus\{v_1\}\bigr)
+       = \max\bigl\{\text{DP\_not\_take}(u)\;-\;1,\;\text{DP\_take}(u)\bigr\}
+   \]
+   where
+   -  $\mathrm{DP\_not\_take}(u)$ = size of an MIS of the *entire* tree if we force $u\notin$ the independent set,
+   -  $\mathrm{DP\_take}(u)$    = size of an MIS of the *entire* tree if we force $u\in$ the independent set.
+
+   (The “$-1$’’ comes from the fact that in the big‐tree MIS we had counted the contribution of $v_1$ as a possible leaf‐pick whenever its DP choice was “take’’; removing $v_1$ forces us to subtract that 1.)
+
+3.  We then take 
+   \[
+     \max_{v_1\in \text{leaves}} 
+       \Bigl(1 \;+\;\max\{\mathrm{DP\_not\_take}(u)-1,\;\mathrm{DP\_take}(u)\}\Bigr),
+   \]
+   which simplifies to 
+   \[
+     \max_{v_1\in \text{leaves}} 
+       \Bigl(\max\{\mathrm{DP\_not\_take}(u),\;\mathrm{DP\_take}(u)+1\}\Bigr).
+   \]
+
+To get $\mathrm{DP\_not\_take}(u)$ and $\mathrm{DP\_take}(u)$ *for every* $u$ in $O(n)$ time, we do the usual tree‐DP + rerooting trick:
+
+-  **Step 1** (root at, say, 1, do a post‐order DP to get `down0[u]`/`down1[u]` on each subtree).
+-  **Step 2** (a pre‐order pass to compute `up0[u]`/`up1[u]` = the DP‐contribution *from the rest of the tree* above $u$).
+-  Then
+   ```
+     DP_not_take(u) = sum_{v in adj[u]} max(contrib0(u<-v),contrib1(u<-v))
+     DP_take(u)     = 1 + sum_{v in adj[u]} contrib0(u<-v)
+   ```
+   where `contrib0(u<-child)=down0[child]`,  `contrib1(u<-child)=down1[child]`,  and for the parent‐side `contrib0(u<-parent)=up0[u]`, `contrib1(u<-parent)=up1[u]`.
+
+Finally we scan all leaves $v_1$, let $u$ be its unique neighbor, compute 
+```
+   best_u = max( DP_not_take[u], DP_take[u]+1 )
+   answer = max(answer,best_u)
+```
+and that is our result.
+
+This runs in $O(n)$ per test, well within the $2\,$s limit even for $\sum n\le3\cdot10^5$.
+
+Below is a clean Java implementation.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 300_000;
+    static ArrayList<Integer>[] adj;
+    static int[] parent, order;
+    static int[] down0, down1, up0, up1;
+    static int[] dp0tot, dp1tot, deg;
+    static int N;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(br.readLine());
+        // We'll reallocate per test but total sum of n <= 300k so it's ok.
+        while (t-- > 0) {
+            N = Integer.parseInt(br.readLine());
+            adj = new ArrayList[N+1];
+            for (int i = 1; i <= N; i++) {
+                adj[i] = new ArrayList<>();
+            }
+            deg = new int[N+1];
+            for (int i = 0; i < N-1; i++) {
+                StringTokenizer st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                adj[u].add(v);
+                adj[v].add(u);
+                deg[u]++;
+                deg[v]++;
+            }
+
+            // Special small case:
+            if (N == 2) {
+                // Two nodes always end up both leaves
+                out.println(2);
+                continue;
+            }
+
+            // 1) Build a DFS order and parent[] (iterative)
+            parent = new int[N+1];
+            order = new int[N]; 
+            int osz = 0;
+            int[] stack = new int[N];
+            int sp = 0;
+            stack[sp++] = 1;
+            parent[1] = 0;
+
+            while (sp > 0) {
+                int u = stack[--sp];
+                order[osz++] = u;
+                for (int v : adj[u]) {
+                    if (v == parent[u]) continue;
+                    parent[v] = u;
+                    stack[sp++] = v;
+                }
+            }
+
+            // 2) Post‐order DP down[]
+            down0 = new int[N+1];
+            down1 = new int[N+1];
+            for (int i = osz - 1; i >= 0; i--) {
+                int u = order[i];
+                int takeU = 1;      // u in the independent set
+                int skipU = 0;      // u not in the independent set
+                for (int v : adj[u]) {
+                    if (v == parent[u]) continue;
+                    // if u not taken, child may or may not be:
+                    skipU += Math.max(down0[v], down1[v]);
+                    // if u is taken, child cannot:
+                    takeU += down0[v];
+                }
+                down0[u] = skipU;
+                down1[u] = takeU;
+            }
+
+            // 3) Reroot DP up[]
+            up0 = new int[N+1];
+            up1 = new int[N+1];
+            dp0tot = new int[N+1];
+            dp1tot = new int[N+1];
+
+            // Pre‐order (use the same 'order' which is a valid topological so parent is
+            // visited before children).
+            for (int i = 0; i < osz; i++) {
+                int u = order[i];
+                // sum of "child contributions" to skipU/ takeU
+                int sumSkipChildren = 0, sumTakeChildren = 0;
+                for (int v : adj[u]) {
+                    if (v == parent[u]) continue;
+                    sumSkipChildren += Math.max(down0[v], down1[v]);
+                    sumTakeChildren += down0[v];
+                }
+                // parent‐side
+                int skipParent  = Math.max(up0[u], up1[u]);
+                int takeParent  = up0[u];
+
+                // total for the entire tree at u
+                int totSkip = skipParent + sumSkipChildren;
+                int totTake = 1 + takeParent + sumTakeChildren;
+
+                dp0tot[u] = totSkip;
+                dp1tot[u] = totTake;
+
+                // now compute up[] for each child
+                for (int v : adj[u]) {
+                    if (v == parent[u]) continue;
+                    int cSkip = Math.max(down0[v], down1[v]);
+                    int cTake = down0[v];
+                    // exclude v's branch from u's total:
+                    up0[v] = totSkip - cSkip;
+                    up1[v] = totTake - cTake;
+                }
+            }
+
+            // 4) Finally scan all leaves v1
+            int ans = 0;
+            for (int v = 1; v <= N; v++) {
+                if (deg[v] == 1) {
+                    // neighbor u
+                    int u = (parent[v] == 0 ? adj[v].get(0) : parent[v]);
+                    // if we root‐remove v, MIS(T\v) = max(dp0tot[u], dp1tot[u] - 0)  minus 1 if dp0tot[u] used
+                    // but it simplifies to max(dp0tot[u], dp1tot[u]+1)
+                    int candidate = Math.max(dp0tot[u], dp1tot[u] + 1);
+                    ans = Math.max(ans, candidate);
+                }
+            }
+
+            out.println(ans);
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of the Main Steps**
+
+1. **Down‐DP**  
+   We root the tree at 1.  In the post‐order we compute for each node $u$:
+   - `down0[u]` = max size of an independent set in the subtree under $u$ *if* we **do not** include $u$.
+   - `down1[u]` = max size of an independent set in the subtree under $u$ *if* we **do** include $u$ (then none of its children can be included).
+
+2. **Up‐DP**  
+   We do a “rerooting’’ pass in pre‐order to compute the contributions from **above** each node.  Concretely, for each child $v$ of $u$, we set
+   ```
+     up0[v] = (skip‐total at u) − max(down0[v],down1[v])
+     up1[v] = (take‐total at u) − down0[v]
+   ```
+   so that `up0[v]`/`up1[v]` represent how much MIS you get in the rest of the tree if you force $v$ out or in of the independent set.
+
+3. **Full Tree DP**  
+   Once both “down’’ and “up'' are known, the full‐tree DP for each node $u$ is
+   ```
+     dp0tot[u] = ∑_{w∈adj[u]} max(contrib0(u←w),contrib1(u←w))
+     dp1tot[u] = 1 + ∑_{w∈adj[u]} contrib0(u←w)
+   ```
+   where 
+   ```
+    contrib0(u←child)=down0[child],  contrib1(u←child)=down1[child],
+    contrib0(u←parent)=up0[u],       contrib1(u←parent)=up1[u].
+   ```
+
+4. **Answer**  
+   Finally we only need to pick which leaf $v₁$ we remove first (in the shuffle).  If $\deg(v₁)=1$, removing it gives **+1** root‐leaf bonus, and the rest of the tree is a single component hanging off its neighbor $u$.  Its MIS is
+   ```
+      MIS(T\v₁) = max(dp0tot[u]−1, dp1tot[u])
+   ```
+   but when you add `+1` for the root‐leaf, it becomes
+   ```
+       1 + max(dp0tot[u]−1, dp1tot[u])
+     = max(dp0tot[u], dp1tot[u] + 1).
+   ```
+   We scan all leaves and take the maximum.
+
+This runs in linear time per test, so overall $O\bigl(\sum n\bigr)\le3\times10^5\,$, which is comfortably fast under the 2 s limit.

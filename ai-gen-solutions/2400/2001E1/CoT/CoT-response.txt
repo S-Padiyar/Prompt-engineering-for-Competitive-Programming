@@ -1,0 +1,229 @@
+**Analysis**
+
+We have a perfect binary tree of height \(n-1\) (so levels \(0,1,\dots,n-1\)), with node‐indices \(1\) through \(2^n-1\).  We perform exactly \(k\) “add”‐operations, each of which picks some node \(v\) in the tree and adds \(1\) to every node on the root‐to‐\(v\) path.  Denote by \(x_u\) the number of times we chose node \(u\); then
+
+\[
+a_u \;=\;\sum_{v \in \text{subtree of }u} x_v,
+\]
+and of course \(\sum_{u}x_u = k\).  One checks easily that the usual heap‐inequalities
+\[
+a_u \;\ge\; a_{2u},\quad a_u \;\ge\; a_{2u+1}
+\]
+are automatic (because \(a_u=x_u+a_{2u}+a_{2u+1}\ge a_{2u},a_{2u+1}\)).  
+
+The only nontrivial condition is *deterministic*-heap, meaning that when we do the standard “pop” procedure on the max‐heap (compare the two children, go to the larger, repeat, until a leaf) each comparison is forced; i.e.\ on the path followed by the pop from the root to the final leaf, the two children at each step must have *strictly* unequal values.  We do *not* demand that *every* internal node in the tree have unequal children—only those *on the chosen path*.
+
+By symmetry all leaves play the same role, so
+\[
+\#\{\text{deterministic heaps}\}
+\;=\;
+(\#\text{leaves})\;\times\;
+(\#\text{assignments in which the pop‐path always goes left})
+\,.
+\]
+There are \(2^{n-1}\) leaves.  We fix *the* leftmost leaf.  Then at each internal node along the left‐chain
+\[
+u_0\!=\!1,\;
+u_1\!=\!2,\;
+u_2\!=\!4,\;\dots,\;
+u_{n-1}=2^{\,n-1},
+\]
+the pop must go to the left child—i.e.\ the left‐subtree‐sum must strictly exceed the right‐subtree‐sum.
+
+We let
+- \(H=n-1\)  
+- \(t_j=a_{u_j}=\) total of \(x\)-values in the subtree rooted at \(u_j\).  
+- \(r_j=\) total of \(x\)-values in the *off‐path* right‐subtree at \(u_j\).  
+
+One checks the recurrences
+\[
+t_j \;=\; x_{u_j}+t_{j+1}+r_j,
+\qquad
+t_0=k,
+\]
+and the strict‐pop‐condition becomes
+\[
+t_{j+1}\;>\;r_j
+\quad(j=0,1,\dots,H-1).
+\]
+Also \(t_{H}=x_{u_H}\ge0\).  From \(t_j\ge t_{j+1}\) and \(r_j\ge0\), one deduces
+\[
+0\;\le\;r_j\;\le\;\min\bigl(t_j - t_{j+1},\,t_{j+1}-1\bigr).
+\]
+Hence
+
+\[
+T
+\;=\;
+\sum_{t_1=0}^k
+\sum_{t_2=0}^{t_1}
+\cdots
+\sum_{t_H=0}^{t_{H-1}}
+\;\prod_{j=0}^{H-1}
+\Bigl(\min(t_j-t_{j+1},\,t_{j+1}-1)+1\Bigr)
+\]
+with \(t_0=k\).  Finally the total answer is
+\[
+\boxed{
+\bigl(2^{\,H}\bigr)\;\times\;T
+\;=\;
+2^{\,n-1}\;T
+\pmod p.
+}
+\]
+
+We implement a DP on the “levels” of the path.  Let
+
+\[
+\mathrm{dp}[j][t]
+\;=\;
+\#\{\text{ways for levels }j,j+1,\dots,H\text{ with }t_j=t\}
+\]
+
+so that \(\mathrm{dp}[0][k]=T\).  At the leaf‐level \(j=H\) there is no choice but
+\[
+\mathrm{dp}[H][t_H]=
+\begin{cases}
+1,&t_H\ge1,\\
+0,&t_H=0,
+\end{cases}
+\]
+since we must have at least one in that final leaf to allow strict inequality at the last parent.  
+
+For \(j=H-1,H-2,\dots,0\) we compute
+
+\[
+\mathrm{dp}[j][t]
+\;=\;
+\sum_{u=1}^{t}\;
+\mathrm{dp}[j+1][u]\;\bigl(\min(t-u,\;u-1)+1\bigr).
+\]
+
+A direct double‐sum would cost \(O(nk^2)\), but by precomputing prefix sums
+\[
+S_0[u]=\sum_{x=1}^u\mathrm{dp}[j+1][x],\quad
+S_1[u]=\sum_{x=1}^u x\,\mathrm{dp}[j+1][x]
+\]
+we can do each \(\mathrm{dp}[j][t]\) in \(O(1)\).  Overall the DP runs in \(O(nk)\), very fast for \(n,k\le500\).
+
+Finally we multiply by \(2^H\) mod \(p\).  
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int T = Integer.parseInt(in.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        while (T-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+            int p = Integer.parseInt(st.nextToken());
+            int H = n - 1;
+
+            // dpNext corresponds to dp[j+1], dpCur to dp[j].
+            long[] dpNext = new long[k+1], dpCur = new long[k+1];
+
+            // Base case for j = H
+            dpNext[0] = 0;
+            for (int t = 1; t <= k; t++) {
+                dpNext[t] = 1;   // Exactly 1 way if t_H >= 1
+            }
+
+            // Work backwards j = H-1 ... 0
+            for (int j = H - 1; j >= 0; j--) {
+                // Build prefix sums of dpNext
+                long[] S0 = new long[k+1], S1 = new long[k+1];
+                for (int u = 1; u <= k; u++) {
+                    S0[u] = (S0[u-1] + dpNext[u]) % p;
+                    S1[u] = (S1[u-1] + dpNext[u] * u) % p;
+                }
+                // Fill dpCur[t]
+                dpCur[0] = 0;
+                for (int t = 1; t <= k; t++) {
+                    // m = floor((t+1)/2)
+                    int m = (t + 1) >> 1;
+                    long s0t = S0[t], s0m = S0[m];
+                    long s1t = S1[t], s1m = S1[m];
+                    // sum1 = sum_{u=1..m} u*dpNext[u]
+                    long sum1 = s1m;
+                    // sum2 = (t+1)*sum_{u=m+1..t} dpNext[u]
+                    long part = (s0t - s0m + p) % p;
+                    long sum2 = part * (t + 1) % p;
+                    // sum3 = sum_{u=m+1..t} u*dpNext[u]
+                    long sum3 = (s1t - s1m + p) % p;
+                    dpCur[t] = (sum1 + sum2 - sum3) % p;
+                    if (dpCur[t] < 0) dpCur[t] += p;
+                }
+                // swap dpCur, dpNext
+                long[] tmp = dpNext;
+                dpNext = dpCur;
+                dpCur = tmp;
+            }
+
+            long waysForOneLeaf = dpNext[k];          // dp[0][k]
+            long pow2 = modPow(2, H, p);              // 2^{n-1} mod p
+            long ans = (waysForOneLeaf * pow2) % p;
+            sb.append(ans).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+
+    // fast exponentiation mod m
+    static long modPow(long base, int exp, int m) {
+        long res = 1 % m, cur = base % m;
+        while (exp > 0) {
+            if ((exp & 1) != 0) res = (res * cur) % m;
+            cur = (cur * cur) % m;
+            exp >>= 1;
+        }
+        return res;
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1.  **Rewriting the determinism constraint**  
+    -  We pick *one* leaf \(\ell\).  By symmetry there are \(2^{n-1}\) leaves.  
+    -  We force the “pop” path always to go *left* at each internal node.  That translates into a chain of strict inequalities
+       \[
+         a_{(\hbox{left child})} \;>\; a_{(\hbox{right child})}
+       \]
+       along the unique root‐to‐\(\ell\) path.
+
+2.  **Parameterizing sums**  
+    -  Let \(t_j\) be the total of \(x\)-values in the subtree at the \(j\)th node on that path, and let \(r_j\) be the total in the *off‐path* right‐subtree at level \(j\).  
+    -  One shows \(t_{j+1}>r_j\) and
+       \[
+         0\;\le\;r_j\;\le\;\min\{\,t_j-t_{j+1},\;t_{j+1}-1\}.
+       \]
+
+3.  **Dynamic Programming**  
+    -  We define
+       \[
+         \mathrm{dp}[j][t]
+         = \#\bigl\{\text{ways for levels }j\ldots H\text{ with }t_j=t\bigr\}.
+       \]
+    -  Bottom level \(j=H\) (a single leaf) must have \(t_H\ge1\) to allow the strictness at level \(H-1\), so \(\mathrm{dp}[H][t]=1\) for \(t\ge1\), \(0\) for \(t=0\).  
+    -  For \(j<H\),
+       \[
+         \mathrm{dp}[j][t]
+         = \sum_{u=1}^{t}
+           \mathrm{dp}[j+1][u]\;\bigl(\min(t-u,\,u-1)+1\bigr).
+       \]
+    -  A direct double‐sum costs \(O(nk^2)\), but by building prefix‐sums
+       \(\,S_0[u]=\sum_{x=1}^u \mathrm{dp}[j+1][x]\) and
+       \(\,S_1[u]=\sum_{x=1}^u x\,\mathrm{dp}[j+1][x]\),
+      each \(\mathrm{dp}[j][t]\) reduces to \(O(1)\).  Total time \(O(nk)\).
+
+4.  **Final multiply**  
+    Multiply the “chain‐ways” \(\mathrm{dp}[0][k]\) by the number of leaves \(2^{n-1}\bmod p\).  
+
+This runs in \(O((n\!+\!k)\,)\) per test (with very small constant), easily handling \(n,k\le500\).

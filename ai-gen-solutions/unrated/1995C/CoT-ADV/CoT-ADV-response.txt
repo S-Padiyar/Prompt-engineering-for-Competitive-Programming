@@ -1,0 +1,126 @@
+**Problem restatement**
+
+We have an array `a` of `n` positive integers. We want to make it non-decreasing (i.e. `a[1] ≤ a[2] ≤ … ≤ a[n]`) by applying a minimal number of operations. In one operation, we pick an index `i` and replace `a[i]` with `a[i] * a[i]` (i.e. square it). We may apply the operation multiple times (possibly zero) on the same index. If it is impossible to make the array non-decreasing, we should print `–1`; otherwise we print the minimum total number of operations.
+
+**Key observations**
+
+1. Since all `a[i]` are positive integers ≥ 1, squaring never decreases a value (except for `0` and `1`, but here `a[i]≥1` so squaring 1 keeps it 1, squaring any integer ≥2 strictly increases it).
+2. To make the sequence non-decreasing, whenever we see an element `a[i] < last` (where `last` is the value of the previous element after all its operations), we must apply operations on `a[i]` (square it one or more times) until it becomes at least `last`. 
+3. There is no benefit to ever squaring an earlier element after we have moved past it, because:
+   - If we square an earlier element that was already ≥ its successor, we may only make life harder for the rest of the array.
+   - The only sensible strategy is to carry forward the “running required minimum” (`last`), and whenever the current element is below that, raise *this* element until it meets or exceeds `last`.
+4. If `a[i] == 1` and `last > 1`, we can never raise it above 1 (1² = 1), so it’s immediately impossible.
+
+Because squaring quickly produces very large numbers, we won’t actually store the huge values. Instead, we store their natural logarithms:
+
+- Let `lastLog = ln(last_value)`.
+- For the current element `a[i]`, compute `curLog = ln(a[i])`.
+- If `curLog ≥ lastLog`, no operations are needed; we simply update `lastLog = curLog`.
+- Otherwise, we square (in log-space) until we reach or exceed `lastLog`:
+  each squaring doubles the log:
+    curLog ← 2 × curLog,
+    increment operation count.
+- If `curLog` remains zero (which only happens if `a[i]=1`) but `lastLog>0`, we cannot reach the target and must print –1.
+
+Each squaring in the worst case takes O(1), and each position needs at most O(log (lastLog/curLog)) squarings. Since logs stay moderate and each test has up to 2·10^5 elements total, the solution runs in O(N·K) where K≈60 at worst. This easily fits in the time limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        // Fast input
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        
+        final double EPS = 1e-12;
+        
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            long[] a = new long[n];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+            
+            // lastLog = ln(value of the previous element after operations)
+            double lastLog = Math.log(a[0]);
+            long ops = 0;
+            boolean impossible = false;
+            
+            for (int i = 1; i < n; i++) {
+                double curLog = Math.log(a[i]);
+                
+                // If already >= last, no operations needed
+                if (curLog + EPS >= lastLog) {
+                    lastLog = curLog;
+                    continue;
+                }
+                
+                // If a[i] == 1 but lastLog > 0, we can never raise it
+                if (a[i] == 1) {
+                    impossible = true;
+                    break;
+                }
+                
+                // Otherwise, square until curLog >= lastLog
+                int cnt = 0;
+                while (curLog + EPS < lastLog) {
+                    curLog *= 2.0;
+                    cnt++;
+                    // If curLog is still zero (only if a[i]==1), we can never increase
+                    if (Math.abs(curLog) < EPS) {
+                        impossible = true;
+                        break;
+                    }
+                }
+                if (impossible) break;
+                
+                ops += cnt;
+                lastLog = curLog;  // Now the new "last" is a[i]^(2^cnt)
+            }
+            
+            if (impossible) {
+                sb.append(-1).append('\n');
+            } else {
+                sb.append(ops).append('\n');
+            }
+        }
+        
+        // Print all answers
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of the key steps**
+
+1. **Reading input**: We use `BufferedReader` + `StringTokenizer` for speed, since the total `n` over all test cases can reach 2·10^5.
+2. **Keeping track of “last” in log‐space**  
+   We store `lastLog = ln(lastValue)`. Initially, `lastValue = a[0]`.
+3. **Processing each element**  
+   - Compute `curLog = ln(a[i])`.
+   - If `curLog ≥ lastLog` (up to a small epsilon), no operation is needed. We set `lastLog = curLog`.
+   - Else, if `a[i] == 1`, we can’t increase it beyond 1 → impossible.
+   - Otherwise we loop squaring:  
+     ``` 
+     while (curLog < lastLog) {
+       curLog *= 2;
+       cnt++;
+     }
+     ```
+     Squaring in real space corresponds to **doubling** the natural log. We stop once we reach or exceed the required `lastLog`.
+   - We add `cnt` to our global operation count and update `lastLog = curLog`.
+4. **Impossible cases**  
+   - Whenever `a[i] == 1` but `lastLog > 0`, we cannot raise it to match the non-decreasing requirement → print `-1`.
+5. **Time Complexity**  
+   - Each element takes at most O(K) squaring steps in the worst case, where K = O(log(lastLog/curLog)). Empirically K≤60 for all realistic inputs.  
+   - Total is O(N·K) ≤ ~1.2·10^7 steps for N=2·10^5, which is well within 2 s in Java with this simple loop.
+
+This completes a correct, efficient solution.

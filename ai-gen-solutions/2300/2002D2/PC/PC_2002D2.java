@@ -1,0 +1,1 @@
+validEdge[i]   // 1 if parent[p[i+1]]==LCA(p[i],p[i+1]), else 0

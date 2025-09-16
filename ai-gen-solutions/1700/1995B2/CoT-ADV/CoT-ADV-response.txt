@@ -1,0 +1,270 @@
+**Problem Restatement**
+
+We have \(n\) types of flowers, where the \(i\)-th type has
+- \(a_i\) petals (and costs \(a_i\) coins per flower),
+- \(c_i\) copies available.
+
+We have a budget of \(m\) coins.  We want to buy a multiset of flowers so that:
+
+1. **Petal‐difference constraint**: the maximum and minimum petal‐counts among chosen flowers differ by at most 1.
+2. **Budget constraint**: total cost does not exceed \(m\).
+3. **Maximize** the total number of petals on the chosen flowers.
+
+Since all flowers of the same type have the same petal count and price, the petal‐difference constraint implies that the bouquet uses either
+
+- flowers all of the same petal count \(x\), or  
+- flowers of exactly two consecutive petal counts \(x\) and \(x+1\).
+
+We need to decide, for each case, how many of each type to pick so as to maximize total petals under the cost budget.
+
+**Input**
+
+- \(t\) — number of test cases, \(1\le t\le 10^4\).
+- For each test case:
+  - Two integers \(n\) and \(m\) (\(1\le n\le2\cdot10^5\), \(1\le m\le10^{18}\)).
+  - An array \(a\) of length \(n\) of *distinct* petal counts (\(1\le a_i\le10^9\)).
+  - An array \(c\) of length \(n\), quantities (\(1\le c_i\le10^9\)).
+
+Sum of all \(n\) across test cases does not exceed \(2\cdot10^5\).
+
+**Output**
+
+For each test, print the maximum total petals one can buy under the conditions.
+
+---
+
+**Solution Outline**
+
+1. **Sort by petal count**  
+   Pair up \((a_i,c_i)\) and sort by \(a_i\).
+
+2. **Single‐type bouquets**  
+   For each type \((a,c)\), if you spend the entire budget \(m\) on that type alone you can buy at most
+   \[
+     x \;=\;\min\Bigl(c,\;\lfloor m/a\rfloor\Bigr)
+   \]
+   flowers, yielding \(x\cdot a\) petals.  Keep a running maximum of these.
+
+3. **Two‐type bouquets (adjacent \(a\), \(a+1\))**  
+   Only pairs \((a_i,a_j)\) with \(a_j=a_i+1\) can mix in the same bouquet.  Call:
+   - \(a\gets a_i\), \(n_1\gets c_i\)
+   - \(b\gets a+1\), \(n_2\gets c_j\)
+   - budget \(M \gets m\).
+
+   We want nonnegative integers \(x\le n_1\), \(y\le n_2\) maximizing 
+   \[
+     S = x\cdot a + y\cdot b
+     \quad\text{s.t.}\quad x\cdot a + y\cdot b \le M.
+   \]
+   Observe that spending as many coins as possible is optimal.  One can break the solution into two regimes:
+
+   (I)  **Use all \(n_1\) of the smaller‐petal flower** (if possible), then put in as many \((b)\)‐flowers as the remainder allows:
+
+     - If \(M\ge n_1\cdot a\), let
+       \[
+         y_1 = \min\!\Bigl(n_2,\;\lfloor (M - n_1\,a)/b\rfloor\Bigr),
+         \quad
+         S_1 = n_1\,a + y_1\,b.
+       \]
+
+   (II) **Don’t fully exhaust \(n_1\)**.  Then we have
+   \[
+     S(y)\;=\;y\,b \;+\;\min\!\Bigl(n_1,\;\lfloor (M - y\,b)/a\rfloor\Bigr)\,a.
+   \]
+   In the sub‐case where one does *not* use all of the \(n_1\) copies, one shows an equivalent form
+   \[
+     S(y) \;=\; M \;-\;\bigl[(M - y\,b)\bmod a\bigr].
+   \]
+   Hence to maximize \(S(y)\) we want to
+   - First check if there is some \(y\) in the feasible range whose remainder mod \(a\) makes \((M - y\,b)\equiv0\pmod a\).  If so, \(S(y)=M\) — we spend the entire budget.
+   - Otherwise pick \(y\) that makes \((M - y\,b)\bmod a\) as small as possible.
+
+   One shows all of this can be done in \(O(1)\) time by elementary arithmetic with floor‐divisions and mod.
+
+Putting it together:  
+  - Compute the best single‐type answer.  
+  - Walk the array in sorted order; whenever \(a_{i+1}=a_i+1\), invoke a constant‐time routine to compute the best for that pair.  
+  - Take the maximum across all.
+
+Overall complexity per test case is \(O(n\log n)\) for the sort plus \(O(n)\) scans.  Since total \(n\le2\cdot10^5\), this runs well under time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader(InputStream in) {
+            br = new BufferedReader(new InputStreamReader(in));
+        }
+        String next() throws IOException {
+            while (st==null || !st.hasMoreTokens()) {
+                String line = br.readLine();
+                if (line==null) return null;
+                st = new StringTokenizer(line);
+            }
+            return st.nextToken();
+        }
+        int nextInt()    throws IOException { return Integer.parseInt(next()); }
+        long nextLong()  throws IOException { return Long.parseLong(next()); }
+    }
+
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader(System.in);
+        int t = in.nextInt();
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            int n = in.nextInt();
+            long m = in.nextLong();
+
+            // Read petals and counts
+            long[] a = new long[n], c = new long[n];
+            for (int i = 0; i < n; i++) a[i] = in.nextLong();
+            for (int i = 0; i < n; i++) c[i] = in.nextLong();
+
+            // Sort by petal count
+            Integer[] idx = new Integer[n];
+            for (int i = 0; i < n; i++) idx[i] = i;
+            Arrays.sort(idx, Comparator.comparingLong(i -> a[i]));
+
+            long best = 0;
+
+            // 1) Best using only a single type
+            for (int ii = 0; ii < n; ii++) {
+                int i = idx[ii];
+                long maxCount = m / a[i];
+                if (maxCount > c[i]) maxCount = c[i];
+                long petals = maxCount * a[i];
+                if (petals > best) best = petals;
+            }
+
+            // 2) Best using exactly two consecutive petal‐counts
+            for (int ii = 0; ii + 1 < n; ii++) {
+                int i = idx[ii];
+                int j = idx[ii+1];
+                if (a[j] == a[i] + 1) {
+                    long candidate = solvePair(a[i], c[i], c[j], m);
+                    if (candidate > best) best = candidate;
+                }
+            }
+
+            sb.append(best).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+
+    /**
+     * Compute the maximum total petals one can get from two types:
+     *   - smaller-petal type: petal=a, quantity=n1
+     *   - larger-petal type:  petal=a+1, quantity=n2
+     * with budget M, under the rule 0 <= x <= n1, 0 <= y <= n2,
+     *   maximize x*a + y*(a+1) <= M.
+     */
+    static long solvePair(long a, long n1, long n2, long M) {
+        long b = a + 1;
+        long best = 0;
+
+        // Case I: take all n1 of the 'a' flowers if budget allows, then fill with as many 'b' as possible
+        if (M >= n1 * a) {
+            long rem = M - n1 * a;
+            long y1  = rem / b;
+            if (y1 > n2) y1 = n2;
+            long s1 = n1 * a + y1 * b;
+            if (s1 > best) best = s1;
+        }
+
+        // Case II: Do not necessarily exhaust n1; we search y in [L..R]
+        // where L = first y that forces us NOT to use all n1, R = max possible y
+        long L;
+        if (M < n1 * a) {
+            L = 0;  // we can never use all n1
+        } else {
+            // floor((M - n1*a)/b) + 1
+            long tmp = (M - n1*a) / b;
+            L = tmp + 1;
+        }
+        if (L < 0) L = 0;
+        long R = M / b;
+        if (R > n2) R = n2;
+
+        if (L <= R) {
+            long rem0 = M % a;   // target for (M - y*b) mod a
+            // check if there's a y ≡ rem0 (mod a) in [L..R]
+            long delta = L - rem0;
+            long k = (delta <= 0 ? 0 : (delta + a - 1) / a);
+            long y0 = rem0 + k * a;
+            if (y0 <= R) {
+                // perfect: we spend entire budget M
+                if (M > best) best = M;
+            } else {
+                // no perfect solution; find y that makes the modulo as small as possible
+                // First try largest y whose remainder ≤ rem0
+                long Rrem = R % a;
+                long y2;
+                if (Rrem <= rem0) {
+                    y2 = R;
+                } else {
+                    y2 = R - (Rrem - rem0);
+                }
+                if (y2 >= L) {
+                    long r = (rem0 - (y2 % a));
+                    long val = M - r;
+                    if (val > best) best = val;
+                } else {
+                    // all remainders in [L..R] exceed rem0; pick the smallest remainder > rem0
+                    long Lrem = L % a;
+                    long r2 = a - (Lrem - rem0);
+                    long val = M - r2;
+                    if (val > best) best = val;
+                }
+            }
+        }
+
+        return best;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Sorting.**  
+   We sort by petal count so adjacent indices in the sorted list correspond to consecutive‐petal pairs in ascending order.
+
+2. **Single‐type check.**  
+   If all flowers in the bouquet have petal count \(a\), the best we can do is buy  
+   \(\min\{c,\lfloor m/a\rfloor\}\) of them, yielding that times \(a\) petals.
+
+3. **Two‐type ( \(a\) and \(a+1\) ) check.**  
+   Let the smaller‐petal type have count \(n_1\) and the next type \(n_2\).  Two regimes:
+
+   I. Use *all* \(n_1\) of the \(a\)-petal flower if budget permits \(\;M\ge n_1 a\).  
+      Then spend the leftover on as many \((a+1)\)-petal flowers as you can.
+
+   II. Otherwise, you do *not* fill up all \(n_1\).  One shows that in that regime
+      \[
+        S(x,y) \;=\; x\,a + y\,(a+1)
+          \;=\; M \;-\;\bigl[(M - y\, (a+1))\bmod a\bigr].
+      \]
+      Thus to maximize \(S\) one wants \((M - y\,b)\bmod a\) as small as possible.  
+      We restrict \(y\) so that we do *not* have enough budget left after picking \(y\) to buy all \(n_1\); this sets up an interval \([L,R]\) of feasible \(y\).  Inside that interval:
+      - If there is \(y\) with \((M - y\,b)\equiv0\pmod a\), we spend the entire budget \(M\).
+      - Otherwise we pick \(y\) that makes the residual mod \(a\) minimal.  
+      All of this can be done by just a few floor‐divisions and mod‐computations in \(O(1)\).
+
+4. **Answer.**  
+   We take the maximum petal count computed either by a single‐type-only purchase or by mixing two consecutive types.
+
+**Complexity**
+
+- Sorting takes \(O(n\log n)\).
+- One pass to compute single‐type best is \(O(n)\).
+- One pass to compute two‐type best for each adjacent sorted pair is also \(O(n)\).
+- Summed over all test cases, total \(n\le 2\cdot10^5\), so the solution easily runs in under a second.
+
+Memory usage is \(O(n)\) for storing the arrays and a small constant overhead.

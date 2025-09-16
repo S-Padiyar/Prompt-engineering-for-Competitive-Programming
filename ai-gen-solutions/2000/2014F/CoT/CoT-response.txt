@@ -1,0 +1,180 @@
+**Analysis**
+
+We have a tree of \(n\) camps (nodes) with exactly \(n-1\) edges, each camp \(i\) having initial gold \(a_i\).  We may “strengthen” any subset \(S\) of the camps.  Strengthening a camp \(u\in S\) does _not_ change its own gold, but it _does_ subtract exactly \(c\) gold from *each* of its neighbors.  After the attack, only the strengthened camps survive; we sum the *final* gold on those camps.
+
+If we choose a subset \(S\) of nodes, each node \(u\in S\) ends up with
+\[
+   a_u \;-\; c\cdot (\text{number of its neighbors that are in }S).
+\]
+Hence, if we let \(\deg_S(u)\) be the number of neighbors of \(u\) also in \(S\), the total gold of the surviving set \(S\) is
+
+\[
+   \sum_{u\in S} \Bigl(a_u - c\cdot \deg_S(u)\Bigr)
+   \;=\;
+   \sum_{u\in S} a_u \;-\; c\sum_{u\in S}\deg_S(u).
+\]
+
+But in a tree each edge inside \(S\) contributes exactly 2 to \(\sum_{u\in S}\deg_S(u)\), so
+\[
+   \sum_{u\in S}\deg_S(u) \;=\; 2\cdot |E(S)|,
+\]
+where \(|E(S)|\) is the number of edges whose both endpoints lie in \(S\).  Therefore the total is
+\[
+   \sum_{u\in S} a_u \;-\; 2c\cdot |E(S)|.
+\]
+
+We want to pick \(S\) to maximize that.  This is a classic “pick a subset on a tree with a cost \(2c\) for every chosen edge”.  We solve it by a tree‐DP:
+
+Root the tree at node \(1\).  For each node \(u\) define two DP states:
+
+- \(\mathrm{dp0}[u]\): the best total sum in the subtree of \(u\) if we **do not** choose \(u\).
+- \(\mathrm{dp1}[u]\): the best total sum in the subtree of \(u\) if we **do** choose \(u\).
+
+Transitions: suppose \(v\) is a child of \(u\).  
+
+1. If \(u\) is _not_ chosen, then for each child \(v\) we are free to choose \(v\) or not, and there is no penalty on the edge \(u\!-\!v\).  Hence
+   \[
+     \mathrm{dp0}[u] \;=\;\sum_{v\text{ child of }u}
+       \max\bigl(\mathrm{dp0}[v],\,\mathrm{dp1}[v]\bigr).
+   \]
+
+2. If \(u\) _is_ chosen, we gain \(a_u\).  For each child \(v\) we again may choose \(v\) or not, but if we choose \(v\) we pay an extra \(2c\) penalty for the edge \((u,v)\).  Thus
+   \[
+     \mathrm{dp1}[u]
+     = a_u \;+\;
+       \sum_{v\text{ child of }u}
+         \max\bigl(\mathrm{dp0}[v],\,\mathrm{dp1}[v] - 2c\bigr).
+   \]
+
+The answer for the whole tree is \(\max(\mathrm{dp0}[1],\,\mathrm{dp1}[1])\), and if that is negative we can always choose the empty set \(S=\varnothing\) for total \(0\).  In fact this DP guarantees \(\mathrm{dp0}[1]\ge0\), so the final answer is \(\mathrm{dp0}[1]\) or \(\mathrm{dp1}[1]\).
+
+Each test takes \(O(n)\) time.  We do a single DFS (iterative) to establish a parent‐pointer array and an order of nodes so that we can fill the DP bottom‐up in \(O(n)\).  Since \(\sum n\le2\cdot10^5\), it runs well within the time limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 200_000;
+    // adjacency by forward-star (edge‐list) representation
+    static int[] head = new int[MAXN+5], to = new int[2*(MAXN+5)], nxt = new int[2*(MAXN+5)];
+    static int ec = 0;
+    static long[] a = new long[MAXN+5];
+    static long[] dp0 = new long[MAXN+5], dp1 = new long[MAXN+5];
+    static int[] parent = new int[MAXN+5];
+    static int[] stack = new int[MAXN+5], order = new int[MAXN+5];
+    
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        int t = Integer.parseInt(br.readLine());
+        PrintWriter pw = new PrintWriter(new BufferedOutputStream(System.out));
+        
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long c = Long.parseLong(st.nextToken());
+            // read gold values
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+            // reset graph heads
+            for (int i = 1; i <= n; i++) {
+                head[i] = -1;
+            }
+            ec = 0;
+            // read edges
+            for (int i = 0; i < n - 1; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                addEdge(u, v);
+                addEdge(v, u);
+            }
+            
+            // build a DFS order and parent[], iterative
+            int sp = 0, os = 0;
+            stack[sp++] = 1;
+            parent[1] = 0;
+            while (sp > 0) {
+                int u = stack[--sp];
+                order[os++] = u;
+                for (int e = head[u]; e != -1; e = nxt[e]) {
+                    int v = to[e];
+                    if (v == parent[u]) continue;
+                    parent[v] = u;
+                    stack[sp++] = v;
+                }
+            }
+            
+            // bottom‐up DP in reverse of the order
+            for (int i = os - 1; i >= 0; i--) {
+                int u = order[i];
+                long best0 = 0, best1 = a[u];
+                for (int e = head[u]; e != -1; e = nxt[e]) {
+                    int v = to[e];
+                    if (v == parent[u]) continue;
+                    // If u is not chosen, we take max(dp0[v], dp1[v])
+                    best0 += Math.max(dp0[v], dp1[v]);
+                    // If u is chosen, we take max(dp0[v], dp1[v] - 2c)
+                    best1 += Math.max(dp0[v], dp1[v] - 2*c);
+                }
+                dp0[u] = best0;
+                dp1[u] = best1;
+            }
+            
+            long ans = Math.max(dp0[1], dp1[1]);
+            // we can always pick nothing for 0 if negative
+            if (ans < 0) ans = 0;
+            pw.println(ans);
+        }
+        
+        pw.flush();
+        pw.close();
+    }
+    
+    static void addEdge(int u, int v) {
+        to[ec] = v;
+        nxt[ec] = head[u];
+        head[u] = ec++;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Rewriting the objective.**  
+   If you choose a subset \(S\), each chosen node \(u\) contributes
+   \[
+     a_u \;-\; c\cdot(\text{number of its chosen neighbors}).
+   \]
+   Because each tree‐edge inside \(S\) is counted twice (once at each endpoint), the total subtraction for each such edge is \(2c\).  Hence the total to maximize is
+   \[
+     \sum_{u\in S} a_u \;-\; 2c\cdot \bigl|\{\text{edges with both ends in }S\}\bigr|.
+   \]
+
+2. **Tree DP.**  
+   We root the tree at node 1 and define two DP states per node \(u\):
+
+   - `dp0[u]` = best total if \(u\) is _not_ chosen.
+   - `dp1[u]` = best total if \(u\) is _chosen_.
+
+   Recurrences over the children \(v\) of \(u\):
+
+   ```
+   dp0[u] = Σ_{v child of u} max(dp0[v], dp1[v])
+   dp1[u] = a[u] + Σ_{v child of u} max(dp0[v], dp1[v] - 2c)
+   ```
+
+   The final answer is `max(dp0[1], dp1[1])`, but if that ever goes negative we can always pick the empty set for total 0.
+
+3. **Implementation details.**  
+   - We store the tree in a flat “forward‐star” edge list for speed.
+   - We do an iterative DFS (stack) to record a parent pointer and a DFS‐entry order.
+   - We then process the nodes in *reverse* of that DFS order so that all children of \(u\) are computed before \(u\).
+   - Each test is \(O(n)\), and \(\sum n \le 2\!\times10^5\), so it runs in time.
+
+This solves the problem in \(O(n)\) time per test, comfortably within the \(2\)‐second limit for \(\sum n\le2\times10^5\).

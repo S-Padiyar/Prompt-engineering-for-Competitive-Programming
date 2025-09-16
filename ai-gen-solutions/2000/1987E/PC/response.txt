@@ -1,0 +1,207 @@
+**Analysis**
+
+We have a rooted tree (root = 1) of \(n\) vertices, each vertex \(v\) carrying an initial value \(a_v\).  We may do any number of operations; each operation picks a single vertex and increments its current value by 1.  We wish to make the tree *wonderful*, meaning that for every non‐leaf vertex \(v\) with direct children \(C(v)\), we have
+
+\[
+   a_{v}\;\le\;\sum_{u\in C(v)}a_{u}\,.
+\]
+
+We must find the minimum total number of increments (operations) needed.
+
+A key observation is that we never gain by incrementing an internal node: if an internal node \(v\) has “slack” to grow without violating its own child‐sum constraint, that slack costs exactly 1 per unit (just operating on \(v\) itself).  But once that slack is used up, further increments on \(v\) would force us to also increment its children so as to maintain \(a_v\le\sum a_{u\in C(v)}\).  In contrast, if we push all needed increments *down* to leaves in the subtrees, those leaves have no constraints of their own and so we never force any cascading further increments.
+
+This suggests a bottom‐up (post‐order) DP.  For each node \(v\), after we have processed all its children, we will know for each child \(c\):
+
+- `b[c]` = the *final* value of child \(c\) after all increments in the sub‐tree of \(c\).
+- `s[c]` = “slack” in \(c\), i.e.\ how many times we can still increment \(c\) itself at cost 1 each without ever having to push more increments into \(c\)’s own children.
+- `r[c]` = the cost of *one* increment to the *value* of \(c\) *once that slack is exhausted*.  Equivalently, if slack is 0, one more unit to \(a_c\) forces us to pay 1 for the increment on \(c\) plus whatever is the cheapest cost among its children to raise their sum by 1.  
+
+Concretely, for a leaf \(c\), we set
+
+- `b[c] = a[c]` (no increments yet in that subtree),
+- `s[c] = +∞` (we can pump as many increments into a leaf as we like, at cost 1 each, with no further obligations),
+- `r[c] = 1`  (even beyond slack we just pay 1 per unit on the leaf).
+
+For an internal node \(v\) with children \(c_1,\dots,c_k\), suppose each child has its final `(b[c_i], s[c_i], r[c_i])`.  We compute:
+
+1.  `sumB = b[c_1]+…+b[c_k]`.  
+2.  If `sumB >= a[v]`, we have no deficit; define  
+      ```
+        s[v] = sumB - a[v],   // leftover slack
+        r[v] = (s[v]>0 ? 1 : 1 + min_i r[c_i]),
+        b[v] = a[v].
+      ```
+3.  Otherwise there is a deficit `D = a[v] - sumB`.  To fix it, we *must* increment some of the children.  Each child c_i has up to `s[c_i]` “cheap” units at cost 1 each, plus infinite units at cost `r[c_i]` each.  
+   -  First we consume cheap slack from those children **with largest** `r[c_i]` first (so as to preserve the cheap slack of the low‐`r` children for higher‐level needs).  Each unit of slack we use costs 1.  
+   -  If we still have residual deficit, we buy those units at the **smallest** `r[c_i]` (because once slack runs out, each further unit from child \(c_i\) costs `r[c_i]`).  
+
+   We update the total cost by the exact number of units \(\times\) their per‐unit cost, we also update each `b[c_i]` and its remaining `s[c_i]` accordingly (slack reduces as we use it; once we buy unlimited we leave slack at 0), and after satisfying the deficit we end up with `sumB = a[v]`, so slack of \(v\) is `s[v]=0`.  
+
+Finally, the answer is the total cost accumulated when we call this DP on the root.
+
+The overall complexity is \(O(n\log n)\) per tree (the dominant cost is sorting the children of each node by their rates), which is fine for \(n\le5000\) in total.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final long INF = (long)1e18;
+    static ArrayList<Integer>[] children;
+    static long[] a, b, s, r;
+    static long totalCost;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(in.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine().trim());
+            a = new long[n+1];
+            b = new long[n+1];
+            s = new long[n+1];
+            r = new long[n+1];
+            children = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) {
+                children[i] = new ArrayList<>();
+            }
+            String[] parts = in.readLine().trim().split(" ");
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(parts[i-1]);
+            }
+            parts = in.readLine().trim().split(" ");
+            for (int i = 2; i <= n; i++) {
+                int p = Integer.parseInt(parts[i-2]);
+                children[p].add(i);
+            }
+
+            totalCost = 0;
+            dfs(1);
+
+            sb.append(totalCost).append('\n');
+        }
+        System.out.print(sb);
+    }
+
+    // Post-order
+    static void dfs(int v) {
+        // Leaf?
+        if (children[v].isEmpty()) {
+            b[v] = a[v];
+            s[v] = INF;    // infinite slack
+            r[v] = 1;      // cost 1 per unit always
+            return;
+        }
+
+        // First process children
+        for (int c : children[v]) {
+            dfs(c);
+        }
+
+        // Gather child data
+        int k = children[v].size();
+        long sumB = 0;
+        long minR = Long.MAX_VALUE;
+        for (int c : children[v]) {
+            sumB += b[c];
+            minR = Math.min(minR, r[c]);
+        }
+
+        // If we are below a[v], pay increments on children
+        long deficit = Math.max(0L, a[v] - sumB);
+        if (deficit > 0) {
+            // Build list of (r[c], c) pairs
+            List<Map.Entry<Long,Integer>> list = new ArrayList<>();
+            for (int c : children[v]) {
+                list.add(new AbstractMap.SimpleEntry<>(r[c], c));
+            }
+            // 1) consume cheap slack from largest r[c] first
+            list.sort((e1, e2) -> Long.compare(e2.getKey(), e1.getKey()));
+
+            long need = deficit;
+            for (var ent : list) {
+                if (need <= 0) break;
+                int c = ent.getValue();
+                long use = Math.min(s[c], need);
+                if (use > 0) {
+                    s[c] -= use;
+                    b[c] += use;
+                    totalCost += use;  // cost 1 per unit
+                    need -= use;
+                }
+            }
+
+            // 2) if still need > 0, buy at smallest r[c]
+            if (need > 0) {
+                long bestR = Long.MAX_VALUE;
+                int bestChild = -1;
+                for (int c : children[v]) {
+                    if (r[c] < bestR) {
+                        bestR = r[c];
+                        bestChild = c;
+                    }
+                }
+                // buy 'need' units from bestChild
+                totalCost += bestR * need;
+                b[bestChild] += need;
+                // its slack is already 0 or was used up
+                need = 0;
+            }
+
+            sumB = a[v];  // we've made sumB reach a[v]
+        }
+
+        // Now no deficit remains
+        b[v] = a[v];
+        s[v] = sumB - a[v];  // slack for v
+
+        // cost to push one more unit into v
+        if (s[v] > 0) {
+            r[v] = 1;
+        } else {
+            // slack==0: must pay 1 + cheapest child's rate
+            long best = Long.MAX_VALUE;
+            for (int c : children[v]) {
+                best = Math.min(best, r[c]);
+            }
+            r[v] = 1 + best;
+        }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1.  **Leaf initialization**  
+    A leaf has no child‐sum constraint on its own.  We can increment a leaf by 1 any number of times at cost 1 each, and it will never force us to “pay again” downwards.  
+    Hence we set  
+    ```
+      b[leaf] = a[leaf];
+      s[leaf] = +∞;   // unlimited “cheap” slack
+      r[leaf] = 1;    // each extra unit costs exactly 1
+    ```
+
+2.  **Processing an internal node**  
+    After processing all children we know:
+    - `b[c]`: the *final* value at child \(c\).  
+    - `s[c]`: how many units of “slack” \(c\) still has at cost 1 per unit.  
+    - `r[c]`: once that slack is exhausted, each further unit on \(c\) effectively costs `r[c]`.  
+
+    We sum up `sumB = sum b[c]`.  
+    - If `sumB >= a[v]`, no extra work is needed to make \(v\) satisfy `a[v] ≤ sum b[c]`.  We set  
+      ```
+        s[v] = sumB − a[v];
+        r[v] = (s[v]>0 ? 1 : 1 + min_c r[c]);
+        b[v] = a[v];
+      ```
+    - Otherwise we have a deficit `D = a[v] − sumB`.  We *must* push exactly `D` units of increment down onto the children.  
+      1.  First consume up to `s[c]` units (each at cost 1) from those children with the *highest* `r[c]`—so that if future steps need “cheap slack,” we still have it in the children that force us to pay more later.  
+      2.  If we still have leftover deficit, we buy those units at the *minimum* `r[c]` among the children (since beyond slack each unit on child \(c\) costs `r[c]`).  
+      We add all those costs to our global `totalCost`, and we also update each child’s `b[c]` and reduce its `s[c]` if we used slack.  
+
+3.  **Answer**  
+   After we run `dfs(1)`, `totalCost` is the minimal number of increments needed to make the entire tree wonderful.  
+
+This solves the problem in \(O(n\log n)\) per test by sorting each node’s children at most once, easily handling \(n\le5000\).

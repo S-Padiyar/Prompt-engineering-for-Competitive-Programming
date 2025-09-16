@@ -1,0 +1,157 @@
+**Analysis**
+
+We have an \(n\times n\) grid whose \(i\)-th row has exactly the first \(a_i\) cells black, the rest white.  We want to turn all black cells white using two kinds of operations:
+
+ 1. Paint an entire row white (cost = 1 operation),
+ 2. Paint a \(2\times2\) sub‐square white (cost = 1 operation), anywhere in the grid.
+
+Painting already‐white cells is allowed (and simply has no additional effect), but we only count operations, so we must cover every black cell by at least one operation of either kind, and we wish to minimize the total number of operations.
+
+Let us think row by row.  If we never used any \(2\times2\) squares, we would need exactly
+\[
+   \sum_{i=1}^n [\,a_i>0\,]
+\]
+operations, one per non‐empty row.  Now each \(2\times2\) operation “straddles” two consecutive rows \(i\) and \(i+1\); it can cover up to 2 black cells in each of these two rows, depending on where it is placed.  We will do a small dynamic programming in “row‐major” order, keeping track of how many black cells in the current row \(i\) have already been covered by a square that came down from the previous row.  
+
+We maintain 
+\[
+   dp[i][c]
+\]
+= the minimum total operations used so far covering all black cells in rows \(1,2,\dots,i-1\), and in row \(i\) exactly \(c\) of its black cells (out of \(a_i\)) have already been covered by a square from row \(i-1\).  Here \(c\) can be \(0,1\) or \(2\).  (We never need to cover more than two black cells by a single \(2\times2\) from above.)
+
+When we move from row \(i\) to row \(i+1\) we have two tasks:
+
+ 1.  Decide whether row \(i\) still has any uncovered black cells (i.e.\ whether \(c < a_i\)).  If so we must pay one “row‐paint” operation to finish off row \(i\).
+ 2.  Optionally place exactly one \(2\times2\) square that spans rows \(i\) and \(i+1\) (or none).  A single such square can cover up to two black cells in row \(i\) and up to two in row \(i+1\).  The exact “coverage vector” \((d_i,d_{i+1})\in\{0,1,2\}^2\) depends on how large \(a_i,a_{i+1}\) are; in fact there are at most four non‐zero possibilities:
+    - \((d_i,d_{i+1})=(1,1)\) whenever \(a_i\ge1\) and \(a_{i+1}\ge1\),
+    - \((d_i,d_{i+1})=(2,1)\) whenever \(a_i\ge2,\;a_{i+1}\ge1\),
+    - \((d_i,d_{i+1})=(1,2)\) whenever \(a_i\ge1,\;a_{i+1}\ge2\),
+    - \((d_i,d_{i+1})=(2,2)\) whenever \(a_i\ge2\) and \(a_{i+1}\ge2\).
+    
+Any one of these costs 1 additional operation; if we choose no square, that coverage is \((0,0)\) at cost 0.
+
+Hence the transition is, from state \((i,c)\) with cost \(dp[i][c]\), we try each coverage \((d_i,d_{i+1})\).  In row \(i\) we have already covered \(c\) blacks, we add \(d_i\) more, so total covered is \(c+d_i\).  If \(c+d_i<a_i\), we must pay +1 row‐cost; otherwise row \(i\) is completely covered, no row‐cost.  We also pay +1 if \((d_i,d_{i+1})\neq(0,0)\).  We land in state  
+\[
+   dp[i+1][\,d_{i+1}\,]
+\]
+with the new coverage number \(d_{i+1}\) for row \(i+1\).  
+
+We initialize
+\[
+   dp[1][0]=0,\quad dp[1][1]=dp[1][2]=\infty
+\]
+and run for \(i=1\) to \(n\).  At the very last row \(n\) we do not allow any \((d_n,d_{n+1})\) except \((0,0)\), since there is no row \(n+1\).  In the end the answer is \(dp[n+1][0]\), i.e.\ the cost after covering row \(n\) fully and having 0 carry‐in coverage to a nonexistent row \(n+1\).
+
+This DP is \(O(n)\) per test, with only 3 states per row and about 5 coverage‐choices, so very fast even up to \(n=2\times10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(in.readLine().trim());
+        final int INF = 1_000_000_000;
+        
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine().trim());
+            int[] a = new int[n+2];
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+            // dp[i][c] = min cost after finishing rows < i,
+            //            with c (0..2) blacks of row i already covered by a square from above.
+            int[] dpPrev = {0, INF, INF};
+            
+            for (int i = 1; i <= n; i++) {
+                int[] dpCur = {INF, INF, INF};
+                
+                // Build the small list of possible (d_i, d_{i+1}) coverages
+                // from placing exactly one 2x2 or none:
+                //   (0,0) always allowed (no square),
+                //   (1,1) if a[i]>=1 && a[i+1]>=1,
+                //   (2,1) if a[i]>=2 && a[i+1]>=1,
+                //   (1,2) if a[i]>=1 && a[i+1]>=2,
+                //   (2,2) if a[i]>=2 && a[i+1]>=2.
+                List<int[]> choices = new ArrayList<>();
+                choices.add(new int[]{0, 0});
+                if (i < n) {
+                    if (a[i] >= 1 && a[i+1] >= 1) choices.add(new int[]{1, 1});
+                    if (a[i] >= 2 && a[i+1] >= 1) choices.add(new int[]{2, 1});
+                    if (a[i] >= 1 && a[i+1] >= 2) choices.add(new int[]{1, 2});
+                    if (a[i] >= 2 && a[i+1] >= 2) choices.add(new int[]{2, 2});
+                }
+                
+                for (int coveredAbove = 0; coveredAbove <= 2; coveredAbove++) {
+                    int baseCost = dpPrev[coveredAbove];
+                    if (baseCost >= INF) continue;
+                    
+                    for (int[] ch : choices) {
+                        int d_i     = ch[0]; // how many blacks in row i covered by this square
+                        int d_next  = ch[1]; // how many blacks in row i+1 covered
+                        
+                        // Do we need to pay a row‐operation in row i?
+                        int coveredNow = coveredAbove + d_i;
+                        int rowOp = (coveredNow >= a[i] ? 0 : 1);
+                        
+                        // Did we place a 2x2 at all?
+                        int sqOp = (d_i!=0 || d_next!=0) ? 1 : 0;
+                        
+                        int cost = baseCost + rowOp + sqOp;
+                        
+                        // Next state's "coveredAbove" for row i+1 is d_next (capped at 2)
+                        int cnext = Math.min(d_next, 2);
+                        dpCur[cnext] = Math.min(dpCur[cnext], cost);
+                    }
+                }
+                
+                dpPrev = dpCur;
+            }
+            
+            // After finishing row n, we must have carried in coverage=0 to row n+1
+            int answer = dpPrev[0];
+            System.out.println(answer);
+        }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **States**  
+   We have only three “carry‐in” states for each row \(i\):  
+   \[
+     \text{coveredAbove}=0,1,2
+   \]
+   meaning that many black cells of row \(i\) are already whited out by a square from row \(i-1\).
+
+2. **Transitions**  
+   From \((i,\text{coveredAbove})\) we may either  
+   - not place any new \(2\times2\) (coverage =\,(0,0)), or  
+   - place exactly one new \(2\times2\) spanning rows \(i,i+1\).  
+
+   The latter can cover up to 2 cells in each row; which cells it actually hits depends on \(a_i,a_{i+1}\).  One can check there are at most the 4 non‐zero coverage patterns
+   \[
+     (1,1),\, (2,1),\, (1,2),\, (2,2).
+   \]
+   Each such choice costs 1 extra operation (the square itself).
+
+3. **Row‐operation cost**  
+   After adding the square‐coverage \(d_i\) to the old covered‐above, we see if row \(i\) is fully covered.  If
+   \[
+     (\text{coveredAbove} + d_i) \;<\; a_i,
+   \]
+   we must pay +1 more for a row‐paint.  Otherwise that whole row is already covered, and we save that row‐operation.
+
+4. **Initialization & Final Answer**  
+   We start at row 1 with no coverage from above:  
+   \[
+     dp[1][0]=0,\quad dp[1][1]=dp[1][2]=\infty.
+   \]
+   We run \(i=1\to n\).  For \(i=n\) we only allow the “no square” choice, so at the end only \(dp[n+1][0]\) can be finite; that is our minimum total.
+
+This runs in \(O(n)\) per test, perfectly safe for \(\sum n\le 2\times10^5\).

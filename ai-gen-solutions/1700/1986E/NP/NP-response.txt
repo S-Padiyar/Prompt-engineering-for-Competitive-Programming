@@ -1,0 +1,272 @@
+**Analysis**
+
+We have an array \(a\) of length \(n\) and a positive integer \(k\).  We are allowed to
+
+  1.  **Permute** (shuffle) the array arbitrarily at will before doing anything else.
+  2.  Perform any number of operations of the form  
+        \[
+          a_i \leftarrow a_i + k.
+        \]
+     Each such operation costs \(1\).  
+
+After we finish all our operations, we want the resulting array \(b\) to be a palindrome:
+\[
+  b_i = b_{\,n-i+1}\quad(1\le i\le n).
+\]
+We must decide whether it is possible, and if so find the minimum total number of operations.
+
+---
+
+### Key observations
+
+1.  **Pair‐matching after permuting.**  
+    Since we may permute arbitrarily, one only has to pair up the final values so that each pair \(\{b_i,b_{n-i+1}\}\) becomes equal by only adding multiples of \(k\).  If \(n\) is odd, we will have exactly one "center" element that stays alone and must match with itself (which is always automatic).
+
+2.  **Feasibility condition.**  
+    Take any two numbers \(x,y\).  We want to make them equal by operations
+    \[
+      x \;+\; p\,k \;=\; y \;+\; q\,k
+    \]
+    with \(p,q\ge0\).  Rearranging,
+    \[
+      x - y = (q-p)\,k,
+    \]
+    so in particular \(x\equiv y\pmod k\).  Hence we **must** pair only numbers that lie in the same residue class modulo \(k\).
+
+    Moreover, after grouping the original \(n\) values by their residues \(a_i\!\bmod k\), each group must contribute an even number of elements to be paired internally—except that if \(n\) is odd, exactly one residue‐class group may contribute one “unpaired” element (that becomes the center of the palindrome).  
+
+    -  If \(n\) is **even**, *every* residue‐class must have an even size, or else we cannot pair them all.
+    -  If \(n\) is **odd**, exactly *one* residue‐class may have *odd* size (that will provide the single center element), and all the others must have even size.
+
+    If this parity condition fails, the answer is \(-1\).
+
+3.  **Cost to equalize one pair.**  
+    Suppose \(x\) and \(y\) lie in the same residue class mod \(k\), say \(x<y\).  Then we can add \(k\) to \(x\) exactly \(\tfrac{y-x}{k}\) times, match them at \(y\) with no need to add anything to \(y\), and hence the cost is
+    \[
+      \frac{y-x}{k}.
+    \]
+    That is clearly minimal: we never want to overshoot both of them to a larger common value, because that would cost more.
+
+4.  **How to pair within one residue‐class**  
+    Let the (sorted) values in one residue‐class be
+    \[
+      v_1 \le v_2 \le \cdots \le v_m,
+    \]
+    all congruent mod \(k\).  
+
+    -  If \(m\) is even, the minimum‐cost way to pair them up (to minimize the sum of \(\tfrac{v_j - v_i}{k}\)) is the “greedy neighbor” pairing
+       \[
+         (v_1,v_2),\;(v_3,v_4),\;\dots,\;(v_{m-1},v_m).
+       \]
+       That total cost is
+       \[
+         \sum_{i=1,3,5,\dots}^{m-1}\;\frac{v_{i+1}-v_i}{k}.
+       \]
+    -  If \(m\) is odd (and this only happens for exactly one residue‐class when \(n\) is odd), we must leave *one* element unpaired to be the palindrome center.  We can choose *which* one to leave out so as to minimize the total pairing cost of the remaining \(m-1\) elements.  
+
+    To do that efficiently in \(O(m)\) time, one precomputes prefix‐sums of the pair‐costs for the “standard” pairing \((v_1,v_2),(v_3,v_4),\dots\) and suffix‐sums, then tries each position \(t\in\{1\ldots m\}\) as “the center” (i.e.\ we omit \(v_t\)) and compute in \(O(1)\) the cost of pairing the rest.  One takes the minimum over \(t\).
+
+Putting it all together:
+
+-  Group the input by residue modulo \(k\).
+-  Check the parity‐condition for possibility.
+-  For each group of even size, sort it and add up the neighbor‐pair costs.
+-  If there is one group of odd size, sort it and do the “remove one best” trick in \(O(m)\) to find the minimal cost.
+-  Sum all costs and output that; or \(-1\) if impossible.
+
+The total time is dominated by sorting each test’s \(n\) elements (over all tests sum of \(n\le2\times10^5\)) and one linear pass per residue‐group.  This easily fits under a 2 s limit.  
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+
+            st = new StringTokenizer(in.readLine());
+            long[] a = new long[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+
+            // Step 1.  Group values by residue class mod k.
+            // We'll sort by (r = a[i] mod k, then by a[i]) in one pass.
+            Pair[] pairs = new Pair[n];
+            for (int i = 0; i < n; i++) {
+                long r = a[i] % k;
+                pairs[i] = new Pair(r, a[i]);
+            }
+            Arrays.sort(pairs, Comparator.comparingLong((Pair p) -> p.r)
+                                        .thenComparingLong(p -> p.v));
+
+            // Build each residue-group in turn.
+            long totalCost = 0;
+            int oddGroups = 0;
+            List<Long> current = new ArrayList<>();
+
+            int idx = 0;
+            while (idx < n) {
+                int start = idx;
+                long r = pairs[idx].r;
+                current.clear();
+                // Collect all of this residue
+                while (idx < n && pairs[idx].r == r) {
+                    current.add(pairs[idx].v);
+                    idx++;
+                }
+                // Now current holds one residue-group:
+                int m = current.size();
+                if ((m & 1) == 1) {
+                    oddGroups++;
+                }
+            }
+
+            // Feasibility check:
+            // If n even => no odd-size group allowed.
+            // If n odd  => exactly 1 odd-size group allowed.
+            if ((n % 2 == 0 && oddGroups > 0) ||
+                (n % 2 == 1 && oddGroups != 1)) {
+                sb.append(-1).append('\n');
+                continue;
+            }
+
+            // Second pass: actually compute the cost.
+            idx = 0;
+            while (idx < n) {
+                long r = pairs[idx].r;
+                current.clear();
+                while (idx < n && pairs[idx].r == r) {
+                    current.add(pairs[idx].v);
+                    idx++;
+                }
+                int m = current.size();
+                // Convert to a simple array and sort (already sorted by v).
+                long[] v = new long[m + 1];  // 1-based for ease
+                for (int i = 1; i <= m; i++) {
+                    v[i] = current.get(i - 1);
+                }
+
+                if ((m & 1) == 0) {
+                    // Even-size group: just pair neighbors (1,2),(3,4),...
+                    long cost = 0;
+                    for (int i = 1; i <= m; i += 2) {
+                        cost += (v[i + 1] - v[i]) / k;
+                    }
+                    totalCost += cost;
+                } else {
+                    // Odd-size group: we must remove one element as center,
+                    // then pair the rest optimally.
+                    // We'll do an O(m) sweep with prefix/suffix sums.
+
+                    // 1) Build the "difference in k-steps" array dp[j] = (v[j] - v[j-1]) / k.
+                    long[] dp = new long[m + 2];
+                    for (int j = 2; j <= m; j++) {
+                        dp[j] = (v[j] - v[j - 1]) / k;
+                    }
+
+                    // 2) prefix-sum of the "standard pairing" (1,2),(3,4),...
+                    long[] pref = new long[m + 2];
+                    pref[0] = 0;
+                    pref[1] = 0;
+                    for (int j = 2; j <= m; j++) {
+                        if ((j & 1) == 0) {
+                            // j even => that completes a pair (j-1, j)
+                            pref[j] = pref[j - 2] + dp[j];
+                        } else {
+                            // j odd => same as pref[j-1]
+                            pref[j] = pref[j - 1];
+                        }
+                    }
+
+                    // 3) suffix-sum if we pair starting at index i: (i,i+1),(i+2,i+3),...
+                    long[] suf = new long[m + 3];
+                    suf[m + 1] = 0;
+                    suf[m + 2] = 0;
+                    for (int i2 = m; i2 >= 1; i2--) {
+                        if (i2 + 1 <= m) {
+                            suf[i2] = dp[i2 + 1] + ((i2 + 2 <= m) ? suf[i2 + 2] : 0);
+                        } else {
+                            suf[i2] = 0;
+                        }
+                    }
+
+                    // 4) Try removing each position t = 1..m as the center.
+                    long best = Long.MAX_VALUE;
+                    for (int tpos = 1; tpos <= m; tpos++) {
+                        long cost = 0;
+                        if ((tpos & 1) == 1) {
+                            // If tpos odd, the leftover pairs are exactly
+                            // {1,2},{3,4},..., skipping the block containing tpos.
+                            long left = pref[tpos - 1];
+                            long right = (tpos + 1 <= m ? suf[tpos + 1] : 0);
+                            cost = left + right;
+                        } else {
+                            // If tpos even, there's a crossing pair (tpos-1,tpos+1)
+                            // + standard prefix before tpos-1 and suffix after tpos+1.
+                            long left = (tpos - 2 >= 1 ? pref[tpos - 2] : 0);
+                            long middle = dp[tpos] +
+                                          ((tpos + 1 <= m) ? dp[tpos + 1] : 0);
+                            long right = (tpos + 2 <= m ? suf[tpos + 2] : 0);
+                            cost = left + middle + right;
+                        }
+                        if (cost < best) best = cost;
+                    }
+                    totalCost += best;
+                }
+            }
+
+            sb.append(totalCost).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+
+    // Simple helper to store (residue, value) pairs.
+    static class Pair {
+        long r, v;
+        Pair(long r, long v) {
+            this.r = r;
+            this.v = v;
+        }
+    }
+}
+```
+
+**Explanation of the main steps**
+
+1. **Grouping by residue**  
+   We create `Pair(r, v)` for each element `v` with `r = v % k`, sort all pairs first by `r` then by `v`.  
+   Then consecutive runs of equal `r` form one residue‐class group, and within each group the values are already in ascending order.
+
+2. **Parity check for feasibility**  
+   - If \(n\) is even, *no* group may have odd size.  
+   - If \(n\) is odd, *exactly one* group must have odd size (that group will supply the “center” of the palindrome).  
+   If this fails, we print `-1`.
+
+3. **Cost within even‐sized group**  
+   We simply pair up neighbours in the sorted list, adding
+   \[
+     \frac{v_{2}-v_{1}}{k} \;+\;\frac{v_{4}-v_{3}}{k}\;+\;\dots
+   \]
+   This is known to minimize the sum of absolute differences when pairing.
+
+4. **Cost within the single odd‐sized group**  
+   We must omit exactly one element as the center.  To decide which one with minimal total pairing cost, we
+   - Compute a small “step‐difference” array  
+     \( \mathrm{dp}[j] =\bigl(v_j - v_{j-1}\bigr)/k\).  
+   - Build a **prefix** sum of dp‐values that correspond to the “canonical” pairing  
+     \((1,2),(3,4),\dots\).  
+   - Build a **suffix** sum for the same pattern starting at an arbitrary index.  
+   - For each candidate `t` (meaning “leave out \(v_t\)”), in \(O(1)\) compute the cost of pairing the other \(m-1\) elements.  We take the minimum over all choices of `t`.
+
+Overall the solution runs in \(O(n\log n)\) per test (to sort) plus \(O(n)\) linear scans, which is more than fast enough for \(\sum n\le2\times10^5\).

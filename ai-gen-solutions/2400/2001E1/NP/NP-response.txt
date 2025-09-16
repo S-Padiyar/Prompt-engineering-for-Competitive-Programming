@@ -1,0 +1,217 @@
+**Analysis**
+
+We have a perfect binary tree of height \(n\) (so it has \(2^n-1\) nodes), and we perform exactly \(k\) “add‐along‐a‐root‐to‐chosen‐vertex” operations.  Number the nodes in the usual heap‐array way so that node 1 is the root, nodes 2 and 3 its children, etc.  An “add” at node \(v\) increments \(a_x\) by 1 for every node \(x\) on the unique path from the root to \(v\).
+
+After these \(k\) operations each node \(v\) has a nonnegative integer value
+\[
+  a_v \;=\;\sum_{\,\{\,u: v\text{ is an ancestor of }u\}\!} f_u,
+\]
+where \(f_u\) is the number of times we chose \(u\).  In particular
+\[
+  a_1 \;=\;k
+\]
+because every chosen \(v\) goes through the root.
+
+The heap is *always* a max‐heap in the sense \(a_v\ge a_{2v},a_{2v+1}\), because each child’s count is only a part of the parent’s count.  What can fail is *determinism* of the pop operation:  when we pop, we start at the root and always move to the *strictly* larger child; if the two children were ever *equal*, the pop would have a choice and so would *not* be deterministic.  We only care about the *first* pop, so we only require strict inequality on the unique path from the root down to whichever leaf we end at during that pop.
+
+But whichever path is actually taken depends on the values, and for a heap to be deterministic there must be *some* unique path from the root to a leaf—indeed, exactly one such path determined by always picking the strictly larger child.  Since the structure is perfectly symmetric, *any* leaf can be the one that ends up being popped under the right sequence of strict inequalities.  Moreover, by symmetry, each of the \(2^{n-1}\) leaves contributes the same count of valid heaps.  Hence our final answer will be
+
+\[
+   \bigl(\text{number of deterministic‐along‐a‐fixed‐path heaps}\bigr)
+   \times 2^{\,n-1}\;\bmod p.
+\]
+
+We now describe how to count “deterministic‐along‐a‐fixed‐path” heaps of height \(n\) summing to \(k\).  Label our path so that at each level we go “down” into one distinguished child; call that the “continuation” side, and the other child the “off‐path” side.  We only require strict inequality between the two children on that path.  Outside that one path no further inequalities are needed.
+
+We define two DP tables (all modulo \(p\)).
+
+1) **Unconstrained**  
+   \[
+     \mathrm{all}[h][s]\;=\;\text{(number of ways to distribute $s$ adds among all $2^h-1$ nodes of a perfect subtree of height $h$, with no determinism constraint).}
+   \]
+   Since distributing \(s\) identical adds into \(N=2^h -1\) distinct boxes (the \(f\)-values) is
+   \(\displaystyle \binom{s+N-1}{N-1}\), we can compute
+   \[
+     \mathrm{all}[h][s]
+       = \binom{s + (2^h-1)-1}{\,s\,}
+       = \binom{s + 2^h -2}{\,s\,},
+   \]
+   for \(0\le s\le k\).  We compute these small-\(s\) binomial‐coefficients by the standard
+   \[
+     \binom{n}{s} \;=\;\frac{n\,(n-1)\cdots (n-s+1)}{s!}\pmod p,
+   \]
+   which is perfectly efficient since \(s\le k\le500\), even though \(n\) itself (here \(n=2^h-2\)) may be huge.  We precompute factorials and inverse factorials up to \(k\) to do that in \(O(k)\) time per height.
+
+2) **Along the fixed path**  
+   Let \(\mathrm{path}[h][s]\) be the number of ways to build a height-\(h\) subtree whose root sum is \(s\), *with the strict “go-down-this-side” constraint applied at each level* along one fixed root-to-leaf path.  Then
+   \[
+     \mathrm{path}[1][s]=1\quad(\text{a single node})
+   \]
+   and for \(h\ge2\),
+   \[
+     \mathrm{path}[h][S]
+       =\sum_{\substack{
+           0\le x\le S-1,\;\\
+           \text{(off‐path child sum)=}x
+         }}
+         \mathrm{all}[h-1][\,x\,]\;\times\;
+         \sum_{y=x+1}^{\,S-x}\mathrm{path}[h-1][y].
+   \]
+   Indeed, if the off-path child gets sum \(x\), there are \(\mathrm{all}[h-1][x]\) ways to fill it; the path-child must get strictly more, say \(y\in[x+1,\dots,S-x]\), and there are \(\mathrm{path}[h-1][y]\) ways to fill the remainder of the path-constrained subtree.  Finally the root itself gets the leftover adds
+   \(\;S-(x+y)\), which is forced once \(x,y\) are chosen.
+
+   We compute the inner sum 
+   \(\sum_{y=x+in[\dots]}\mathrm{path}[h-1][y]\)
+   by maintaining prefix sums of \(\mathrm{path}[h-1]\).  Each layer \(h\) takes \(O(k^2)\) time, and there are \(n\) layers, so \(O(n\,k^2)\) per test.  Since \(\sum n,\sum k\le500\) over all tests, this easily fits in time.
+
+Finally the total number of *deterministic heaps* of height \(n\) with exactly \(k\) adds is
+
+\[
+   2^{\,n-1}\;\times\;\mathrm{path}[\,n\,][\,k\,]\;\bmod p.
+\]
+
+Below is a Java implementation using exactly this plan.  
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static int[][] all;      // all[h][s] = #ways unconstrained in subtree height=h, sum=s
+    static int[] fact, invFact;
+    static int mod;
+
+    // fast exponentiation mod
+    static long modPow(long a, long e) {
+        long r = 1 % mod;
+        a %= mod;
+        while (e > 0) {
+            if ((e & 1) != 0) r = (r * a) % mod;
+            a = (a * a) % mod;
+            e >>= 1;
+        }
+        return r;
+    }
+
+    // modular inverse via Fermat (mod is prime)
+    static int inv(int x) {
+        return (int)modPow(x, mod - 2);
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter pw = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(br.readLine());
+        for (int tc = 0; tc < t; tc++) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+            mod = Integer.parseInt(st.nextToken());
+
+            // precompute factorials and inverse factorials up to k
+            fact = new int[k + 1];
+            invFact = new int[k + 1];
+            fact[0] = 1;
+            for (int i = 1; i <= k; i++) {
+                fact[i] = (int)((long)fact[i-1] * i % mod);
+            }
+            invFact[k] = inv(fact[k]);
+            for (int i = k - 1; i >= 0; i--) {
+                invFact[i] = (int)((long)invFact[i+1] * (i+1) % mod);
+            }
+
+            // precompute 2^h mod p up to h=n
+            long[] pow2 = new long[n+1];
+            pow2[0] = 1;
+            for (int i = 1; i <= n; i++) {
+                pow2[i] = (pow2[i-1] * 2) % mod;
+            }
+
+            // Build all[h][s] = C(s + 2^h -2, s)  for h=1..n, s=0..k
+            all = new int[n+1][k+1];
+            for (int h = 1; h <= n; h++) {
+                // subtree size = 2^h -1  => we need C(s + (2^h-1)-1, s) = C(s+2^h-2, s)
+                long m = (pow2[h] - 1 + mod) % mod; 
+                // numerator product P[s] = m * (m+1) * ... * (m+s-1)
+                long P = 1;
+                all[h][0] = 1;
+                for (int s = 1; s <= k; s++) {
+                    // multiply by (m + (s-1)) mod p
+                    P = (P * ((m + (s - 1)) % mod)) % mod;
+                    // now divide by s!  => multiply by invFact[s]
+                    all[h][s] = (int)(P % mod * invFact[s] % mod);
+                }
+            }
+
+            // dp_path: rolling arrays of length k+1
+            int[] prevPath = new int[k+1], curPath = new int[k+1];
+            // height =1
+            for (int s = 0; s <= k; s++) {
+                prevPath[s] = 1;  // a single node with sum s
+            }
+
+            // Build up to height n
+            for (int h = 2; h <= n; h++) {
+                // prefix sums of prevPath
+                long[] prefix = new long[k+1];
+                prefix[0] = prevPath[0];
+                for (int s = 1; s <= k; s++) {
+                    prefix[s] = prefix[s-1] + prevPath[s];
+                    if (prefix[s] >= mod) prefix[s] -= mod;
+                }
+                // for each total sum S at this height
+                for (int S = 0; S <= k; S++) {
+                    long ways = 0;
+                    // off‐path child gets sum x in [0..(S-1)/2]
+                    int maxOff = (S - 1) >> 1;
+                    for (int x = 0; x <= maxOff; x++) {
+                        // strictly path‐child sum y in [x+1 .. S-x]
+                        long cntOff = all[h-1][x];
+                        long cntOn  = prefix[S - x] - prefix[x];
+                        if (cntOn < 0) cntOn += mod;
+                        ways += cntOff * cntOn;
+                        if (ways >= (long)mod*mod) ways %= mod;
+                    }
+                    curPath[S] = (int)(ways % mod);
+                }
+                // swap prevPath & curPath
+                int[] tmp = prevPath;
+                prevPath = curPath;
+                curPath  = tmp;
+            }
+
+            // prevPath[k] = #heaps following one fixed path
+            long ans = prevPath[k];
+            // multiply by 2^{n-1} for choice of which leaf‐path is taken
+            ans = ans * pow2[n-1] % mod;
+            pw.println(ans);
+        }
+
+        pw.flush();
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1. We only need to enforce strict “larger‐child” comparisons along the *single* root‐to‐leaf path that the pop algorithm actually follows.  All other nodes in the tree may have ties freely.
+
+2. By symmetry there are \(2^{n-1}\) leaves (hence that many possible final pop‐paths), and each leaf‐path contributes the same count of heaps.  So we just compute “how many heaps follow a *fixed* path deterministically” and multiply by \(2^{\,n-1}\).
+
+3. We let  
+   - \(\mathrm{all}[h][s]\) = the number of ways to distribute \(s\) adds into an unconstrained perfect subtree of height \(h\).  
+     Since that is “nonnegative solutions of \(f_1+\cdots+f_{2^h-1}=s\),” it’s a stars‐and‐bars binomial 
+     \(\binom{s + (2^h-1)-1}{\,s\,}.\)
+
+   - \(\mathrm{path}[h][s]\) = the number of ways if we *do* impose strict “go‐down‐this‐fixed‐child” at each internal node on the one path of length \(h-1\).
+
+   We build \(\mathrm{path}[h]\) from \(\mathrm{path}[h-1]\) and \(\mathrm{all}[h-1]\) in \(O(k^2)\) time per height, for \(h=2,\dots,n\).  Since \(\sum n\le500\) and \(\sum k\le500\), the overall time is well under a few \(10^7\) operations.
+
+4. Finally we output
+   \[
+     2^{\,n-1}\;\times\;\mathrm{path}[\,n\,][\,k\,]\pmod p
+   \]
+   for each test case.
+
+This runs in \(O(n\,k)\) to build the “all” table plus \(O(n\,k^2)\) to build the “path” table, and is efficient for \(n,k\le500\) with up to 500 test‐cases whose totals also stay within 500.

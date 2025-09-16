@@ -1,0 +1,271 @@
+**Analysis**
+
+We have two strongly‐connected directed graphs, \(G_1\) and \(G_2\), each on \(n\) vertices.  Every cycle in each graph has length divisible by \(k\).  We label each vertex as either “outgoing” or “incoming” (0=incoming, 1=outgoing), and we must add exactly \(n\) new edges between the two graphs so that:
+
+1. Every added edge goes from one graph to the other.
+2. Every outgoing vertex has exactly one new edge *out* of it.
+3. Every incoming vertex has exactly one new edge *into* it.
+4. In the new combined graph all cycles still have length divisible by \(k\).
+
+A quick count shows that the total number of outgoing vertices (in both graphs) must be exactly \(n\), for otherwise we can’t place one outgoing‐edge per outgoing vertex and only \(n\) edges total.  Since there are \(2n\) vertices in total, this forces exactly \(n\) incoming vertices as well.  Hence
+
+\[
+\sum_{u\in G_1} a_u \;+\;\sum_{v\in G_2} b_v \;=\;n,
+\]
+where \(a_u,b_v\in\{0,1\}\) are the given types.
+
+If it fails, we print NO immediately.
+
+---
+
+### Why checking “one‐sided” is always safe
+
+If *all* outgoing vertices lie in just one graph (say \(G_1\)) and all incoming in the other (\(G_2\)), then *all* new edges go from \(G_1\) to \(G_2\).  There are no “back‐edges” from \(G_2\) to \(G_1\), so any cycle that uses new edges would have to go across in one direction and never return, hence it cannot close a cycle that crosses from \(G_2\) back into \(G_1\).  Therefore no new “mixed” cycle is created, and the only cycles are the old ones in \(G_1\) or \(G_2\), which by hypothesis already have length divisible by \(k\).  Thus if *all* new edges go one way, the answer is automatically YES.
+
+---
+
+### The general two‐sided case
+
+If there are outgoing vertices in both graphs, then we will have some edges \(G_1\to G_2\) and some \(G_2\to G_1\).  In that situation one *can* form a 4–step “zig‐zag” cycle
+\[
+u_1\;(G_1)\;\to\;v_1\;(G_2)\;\rightsquigarrow\;u_2\;(G_2)\;\to\;v_2\;(G_1)\;\rightsquigarrow\;u_1\;(G_1),
+\]
+where \(\rightsquigarrow\) are paths *within* \(G_2\) or \(G_1\).  That uses exactly two of the new edges.  For the total cycle length to remain a multiple of \(k\), we need
+\[
+(\text{old‐graph‐edges})\;+\;2\;\equiv\;0\pmod k.
+\]
+But the old edges already sum to \(0\pmod k\), so we need \(2\equiv0\pmod k\).  In general, any cycle crossing back and forth \(\ell\) times contributes \(\ell\) new edges, so we need
+\[
+\ell\;\equiv\;0\pmod k
+\]
+for *every* \(\ell\) that can occur in a cycle.  In particular if both sides have at least one outgoing vertex, we can always make \(\ell=2\), so we require
+\[
+2\;\equiv\;0\pmod k,
+\]
+i.e.\ \(k\mid 2\).  More generally, one shows that to avoid creating a “small” zig‐zag cycle whose length fails divisibility by \(k\), the new edges must themselves *respect* the same “edge‐weight~1 mod k” structure that the old graphs did.
+
+---
+
+### The “potential” or “distance‐mod‐\(k\)” trick
+
+Because each original graph is strongly connected and *every* directed cycle has length divisible by \(k\), there is a well‐known fact that one can assign each vertex a label \(D(u)\in\{0,1,\dots,k-1\}\) so that
+
+  for *every* original edge \(u\to v\),  
+  \[
+\;D(v)\;=\;\bigl(D(u)+1\bigr)\bmod k.
+\]
+
+Conversely, if one extends such a labeling to the new edges so that each new edge again satisfies “\(D(\text{head})=D(\text{tail})+1\pmod k\)”, then *all* cycles (old or new) will have total edge‐count divisible by \(k\).  Hence in the two‐sided case we reduce to finding perfect matchings
+
+- From the set of *outgoing* vertices of \(G_1\) (those \(u\) with \(a_u=1\)) 
+  to the set of *incoming* vertices of \(G_2\) (those \(v\) with \(b_v=0\)),
+- From the set of *outgoing* vertices of \(G_2\) to the set of *incoming* vertices of \(G_1\),
+
+so that each matched pair \((u\to v)\) satisfies
+\[
+D_{G_2}(v)\;\equiv\;D_{G_1}(u)\;+\;1\pmod k,
+\]
+and symmetrically in the other direction.
+
+But these matchings are *forced* to be a perfect matching of two equally‐sized sets, so they exist if and only if the *counts* of possible labels on each side line up.  Concretely, let
+
+- \(A_1[\ell]\) = number of vertices in \(G_1\) that are *outgoing* and have \(D_{G_1}(u)=\ell\).
+- \(C_2[\ell]\) = number of vertices in \(G_2\) that are *incoming* and have \(D_{G_2}(v)=\ell\).
+
+For a perfect one‐sided matching \(G_1\to G_2\) respecting “\(D\)-shift by +1”, we need
+\[
+A_1[\ell]\;=\;C_2[(\ell+1)\bmod k]\quad
+\text{for all }\ell.
+\]
+Similarly, if we set
+
+- \(B_1[\ell]\) = number of *outgoing* vertices in \(G_2\) with label \(\ell\),
+- \(C_1[\ell]\) = number of *incoming* vertices in \(G_1\) with label \(\ell\),
+
+then for the matching \(G_2\to G_1\) we need
+\[
+B_1[\ell]\;=\;C_1[(\ell+1)\bmod k]\quad
+\text{for all }\ell.
+\]
+
+Putting it all together, the algorithm is:
+
+1. Read \(n,k\).  
+2. Read the types \(a_1,\dots,a_n\) for \(G_1\).  
+3. Read and build the adjacency list of \(G_1\).  BFS (or DFS) from node 0 to assign every vertex a “distance mod \(k\)” label \(D_{G_1}(u)\) so that along each edge \(u\to v\) we set
+   \[
+     D_{G_1}(v)\;=\;\bigl(D_{G_1}(u)+1\bigr)\bmod k.
+   \]
+4. Read \(b_1,\dots,b_n\) and graph \(G_2\); similarly compute labels \(D_{G_2}(v)\).  
+5. Let
+   \[
+     A_1=\sum a_i,\quad B_1=\sum b_i.
+   \]
+   If \(A_1+B_1\ne n\), print NO (impossible to match).  
+6. If \(A_1=0\) or \(B_1=0\), print YES (all new edges go one way, so no mixed‐cycle can form).  
+7. Otherwise build four count‐arrays of length \(k\):
+   ```
+     A1count[ℓ] = # of u in G1 with a[u]=1 and D1[u]=ℓ
+     C1count[ℓ] = # of u in G1 with a[u]=0 and D1[u]=ℓ
+     B1count[ℓ] = # of v in G2 with b[v]=1 and D2[v]=ℓ
+     C2count[ℓ] = # of v in G2 with b[v]=0 and D2[v]=ℓ
+   ```
+   Check for every ℓ=0…k−1:
+   ```
+     A1count[ℓ] == C2count[(ℓ+1)%k]
+   and
+     B1count[ℓ] == C1count[(ℓ+1)%k]
+   ```
+   If they all match, print YES; otherwise NO.
+
+This runs in \(O(n+m)\) per graph to do BFS plus \(O(k)\) to check the arrays.  Since \(\sum n\le2⋅10^5\) and \(\sum m\le5⋅10^5\), it easily fits in the time/memory limits.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static int[] dist;
+    static List<Integer>[] adj;
+
+    // Assigns to dist[] a labeling mod k so that along each edge u->v
+    // dist[v] = (dist[u] + 1) % k.  Assumes graph is strongly connected
+    // and every cycle length is divisible by k, so no conflicts arise.
+    static void buildDistanceModK(int n, int k) {
+        Arrays.fill(dist, -1);
+        Deque<Integer> queue = new ArrayDeque<>();
+        dist[0] = 0;
+        queue.add(0);
+        while (!queue.isEmpty()) {
+            int u = queue.poll();
+            int du = dist[u];
+            for (int v : adj[u]) {
+                if (dist[v] == -1) {
+                    dist[v] = (du + 1) % k;
+                    queue.add(v);
+                }
+            }
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        int T = Integer.parseInt(br.readLine().trim());
+
+        while (T-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+
+            // Read types for G1
+            int[] a = new int[n];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+            // Read G1
+            int m1 = Integer.parseInt(br.readLine().trim());
+            adj = new ArrayList[n];
+            for (int i = 0; i < n; i++) adj[i] = new ArrayList<>();
+            for (int i = 0; i < m1; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken()) - 1;
+                int v = Integer.parseInt(st.nextToken()) - 1;
+                adj[u].add(v);
+            }
+
+            // Compute D1
+            dist = new int[n];
+            buildDistanceModK(n, k);
+            int[] D1 = Arrays.copyOf(dist, n);
+
+            // Read types for G2
+            int[] b = new int[n];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                b[i] = Integer.parseInt(st.nextToken());
+            }
+            // Read G2
+            int m2 = Integer.parseInt(br.readLine().trim());
+            adj = new ArrayList[n];
+            for (int i = 0; i < n; i++) adj[i] = new ArrayList<>();
+            for (int i = 0; i < m2; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken()) - 1;
+                int v = Integer.parseInt(st.nextToken()) - 1;
+                adj[u].add(v);
+            }
+
+            // Compute D2
+            dist = new int[n];
+            buildDistanceModK(n, k);
+            int[] D2 = Arrays.copyOf(dist, n);
+
+            // Count total out‐vertices
+            int A1 = 0, B1 = 0;
+            for (int x : a) if (x == 1) A1++;
+            for (int x : b) if (x == 1) B1++;
+            // Must match n
+            if (A1 + B1 != n) {
+                sb.append("NO\n");
+                continue;
+            }
+            // If all out‐edges go one way, no mixed cycle can form
+            if (A1 == 0 || B1 == 0) {
+                sb.append("YES\n");
+                continue;
+            }
+
+            // Build our four count‐arrays of length k
+            int[] A1cnt = new int[k], C1cnt = new int[k];
+            int[] B1cnt = new int[k], C2cnt = new int[k];
+            for (int i = 0; i < n; i++) {
+                if (a[i] == 1)      A1cnt[D1[i]]++;
+                else                C1cnt[D1[i]]++;
+                if (b[i] == 1)      B1cnt[D2[i]]++;
+                else                C2cnt[D2[i]]++;
+            }
+
+            // Check the two matching‐constraints
+            boolean ok = true;
+            for (int ℓ = 0; ℓ < k; ℓ++) {
+                int nxt = (ℓ + 1) % k;
+                if (A1cnt[ℓ] != C2cnt[nxt] || B1cnt[ℓ] != C1cnt[nxt]) {
+                    ok = false;
+                    break;
+                }
+            }
+            sb.append(ok ? "YES\n" : "NO\n");
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Counting outgoing/incoming:**  
+   We must add exactly \(n\) edges, each edge uses up one outgoing‐vertex and one incoming‐vertex.  Hence the total number of outgoing vertices in both graphs must be \(n\), and likewise for incoming.  Failing that, answer NO immediately.
+
+2. **One‐way additions:**  
+   If *all* outgoings lie in one graph (so the other graph has zero outgoing), then every new edge goes from \(G_1\to G_2\) or vice versa, but never both ways.  No “mixed” cycle that crosses both graphs can form, so cycle‐length divisibility is preserved automatically.
+
+3. **Labeling mod \(k\):**  
+   A strongly connected directed graph whose *every* cycle‐length is divisible by \(k\) admits a “potential” labelling \(D(\cdot)\in\{0,1,\dots,k-1\}\) so that each edge advances the label by \(+1\) (mod \(k\)).  We BFS from node 0, assigning `dist[v] = (dist[u]+1)%k` when we first visit `v` from `u`.  No contradictions arise because every cycle sums to 0 (mod \(k\)).
+
+4. **Two‐sided matching constraint:**  
+   Once both graphs have at least one outgoing, we *will* have edges both \(G_1\!\to\!G_2\) and \(G_2\!\to\!G_1\).  A little zig–zag cycle using exactly two new edges would force those two new edges to contribute \(2\) to the cycle’s length, which must be a multiple of \(k\).  Hence we need \(2\equiv0\pmod k\) *unless* we engineer those edges so that every cross‐edge *also* increments the shared “potential” by exactly \(+1\).  In that case, every edge (old or new) contributes exactly 1 to the potential‐sum, so every cycle has total length ≡ 0 mod \(k\).
+
+5. **Counting labels for a bipartite match:**  
+   We group outgoing‐vertices of \(G_1\) by their label \(\ell\).  They must be matched only to incoming‐vertices of \(G_2\) with label \(\ell+1\pmod k\).  Because the matching must be perfect (counts on both sides are equal), we require
+   \[
+     \#\{u: a_u=1, D_1(u)=\ell\}\;=\;\#\{v: b_v=0, D_2(v)=(\ell+1)\bmod k\}
+     \quad\text{for all }\ell.
+   \]
+   And similarly for the edges \(G_2\to G_1\).  Checking these \(2k\) equalities is \(O(k)\), which over all tests is \(O(\sum n)\).
+
+This solves the problem in \(O(n+m)\) per test, easily within the CF limits.

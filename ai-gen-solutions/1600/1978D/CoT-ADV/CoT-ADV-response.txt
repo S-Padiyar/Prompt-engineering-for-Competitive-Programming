@@ -1,0 +1,265 @@
+**Problem Restatement**
+
+We have n candidates numbered 1…n. Candidate i has a_i “fans” (who will surely vote for him), and there are c “undecided” voters who will go to the remaining candidate with the smallest index.  The winner is the one with the most votes, ties broken by smaller index.
+
+We may **exclude** some candidates from the race.  If candidate j is excluded, his a_j fans become undecided (and will also go to the smallest‐index remaining candidate).  We want, for each i=1…n, the **minimum number of other candidates** we have to exclude so that candidate i ends up winning.
+
+Formally:
+- If we exclude a set S (not containing i), then
+  - total undecided = original c + ∑_{j∈S}a_j
+  - let j₀ = the smallest index in the remaining set
+  - j₀ gets a_{j₀} + (c + ∑_{j∈S}a_j) votes
+  - any other remaining k≠j₀ gets a_k
+  - winner is the one with highest votes (ties → smallest index)
+
+Compute for each i the minimum |S| so that i is the unique winner.
+
+**Outline of the (Greedy+Offline Counting) Solution**
+
+We will combine two strategies:
+
+1. **Zero‐exclusion case (“case1”)**  
+   Candidate i might already win if we exclude no one.  Then all original undecided c go to candidate 1 (the smallest index), and each candidate k≠1 just has a_k votes.  
+   - If i=1: check  
+        a₁ + c  ≥  max_{k>1} a_k  
+     If so, answer[i] = 0.  
+   - If i>1: then candidate 1 will get a₁ + c votes.  For i to win with no excludes, we need
+        a_i  >  a₁ + c      (strict, since if tie 1 would win)
+        a_i  >  max{a₂,…,a_{i−1}}   (strict, since any j<i beats on tie)
+        a_i  ≥ max{a_{i+1},…,a_n}   (non-strict, because if tie with higher‐index, i wins)
+     If those hold simultaneously, we set answer[i]=0.
+
+2. **“Make i the smallest index remaining” case (“caseA”).**  
+   Otherwise we *must* exclude all candidates 1…(i−1), so that i becomes the minimum‐index in the race.  
+   - That’s (i−1) exclusions right away.  That raises the pool of undecided by ∑_{j=1..i−1} a_j.  Let  
+        U₀ = c + ∑_{j=1..i−1} a_j.  
+     Then candidate i will have a_i + U₀ votes, and every remaining k>i just has a_k.  
+   - If a_i + U₀  ≥  max_{k>i} a_k ,  then excluding just 1…(i−1) already suffices.  
+   - Otherwise any k>i whose a_k > a_i + U_current must be excluded too—and each such exclusion *adds* its a_k to U_current, making i’s total even larger.  Greedily one always excludes the remaining candidate with the largest a_k first, because that both removes the biggest rival vote‐getter and pumps U_current the most.
+
+   To compute how many k>i end up needing exclusion, we observe that the process is equivalent to:
+
+   ­  Initialize  
+      t ← 0  
+      U = U₀  
+      Let b₁ ≥ b₂ ≥ … ≥ b_m be the a_k of k>i in descending order.  
+   While t < m and  b_{t+1}  >  a_i + U:  
+      U ← U + b_{t+1}  
+      t ← t + 1  
+   End  
+   Then t candidates out of the suffix must be excluded; total exclusions = (i−1) + t.
+
+   Doing that *directly* for each i is O(n²) in the worst case.  Instead we use an **offline counting** trick:
+
+   - Precompute for each i the **threshold**  
+        X_i = a_i  + (c + ∑_{j=1..i−1} a_j) .  
+     We then claim that the number of k>i one must eventually exclude is exactly the **count** of suffix‐elements a_k that exceed X_i.  
+   - Why?  Each a_k that is > X_i *must* be removed in that greedy process anyway; once you remove them all, your U is so big that no remaining suffix‐value can exceed the updated total.  (A formal proof follows standard “pop‐largest‐while‐still‐too‐large” arguments.)
+
+   So extra_excluded[i] = |{ k>i : a_k > X_i }|.  
+   Then answer[i] = (i−1) + extra_excluded[i].
+
+**Implementation Steps**
+
+1. Read t, loop over test cases.
+2. For each test:
+   - Read n, c and array a[1..n].
+   - Build prefix‐sum pref[i]=∑_{j=1..i}a[j].
+   - Build prefix max from 2:  pm2[i] = max(a[2..i])  (or –∞ if i<2).
+   - Build suffix max:  sm[i] = max(a[i+1..n])  (or –∞ if i=n).
+   - Initialize answer[i]=“infinity” for all i=1..n.
+3. **Case 1 (zero‐exclude)**:
+   - i=1: if a[1]+c ≥ sm[1], answer[1]=0.
+   - For i=2..n:
+        if ( a[i]>a[1]+c  AND  a[i]>pm2[i−1]  AND  a[i]≥sm[i] )  
+            answer[i]=0.
+4. **Case A offline**:
+   - For each i, compute  
+       base = i−1  
+       X_i = a[i] + c + pref[i−1]  
+     and form a query (i, X_i).  We only *need* to process those i for which answer[i]>0.
+   - Sort all queries in **descending** order of X_i.
+   - Also form a list of all candidates k as (a_k, k), sort descending by a_k.
+   - Use a Fenwick (BIT) over indices 1..n.  We will sweep through the sorted list of (value, k):
+     - Maintain a pointer p in that list.
+     - For each query in descending X_i order:
+        - While p≤n and (value at p) > X_i:
+            BIT.add( k_of_p , +1 )
+            p++  
+        - Now extra_excluded[i] = BIT.sum_range(i+1, n).
+        - answer[i] = min(answer[i], (i−1) + extra_excluded[i]).
+5. Print all answer[i].
+
+**Complexities**
+
+- Building prefix/suffix arrays: O(n).
+- Case 1 check: O(n).
+- Sorting the n suffix‐elements: O(n log n).
+- Sorting the n queries: O(n log n).
+- BIT operations: each item is added once, each query does one range sum → O(n log n) total.
+
+Overall per test O(n log n).  Sum of n over all tests is 2⋅10^5, so we stay within time.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class Fenwick {
+        int n;
+        int[] f;
+        Fenwick(int n) { this.n = n; f = new int[n+1]; }
+        void update(int i, int v) {
+            for (; i<=n; i += i&-i) f[i]+=v;
+        }
+        int query(int i) {
+            int s=0;
+            for (; i>0; i -= i&-i) s+=f[i];
+            return s;
+        }
+        int rangeSum(int l, int r) {
+            if (l>r) return 0;
+            return query(r) - query(l-1);
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long c = Long.parseLong(st.nextToken());
+            long[] a = new long[n+1];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+            // prefix sums
+            long[] pref = new long[n+1];
+            for (int i = 1; i <= n; i++) pref[i] = pref[i-1] + a[i];
+            // prefix max from 2..i
+            long[] pm2 = new long[n+1];
+            pm2[1] = Long.MIN_VALUE;
+            for (int i = 2; i <= n; i++) {
+                pm2[i] = (i==2 ? a[2] : Math.max(pm2[i-1], a[i]));
+            }
+            // suffix max for i+1..n
+            long[] sm = new long[n+2];
+            sm[n] = Long.MIN_VALUE;
+            for (int i = n-1; i >= 1; i--) {
+                sm[i] = Math.max(sm[i+1], a[i+1]);
+            }
+
+            // answers, init to "infinity"
+            int INF = n+5;
+            int[] ans = new int[n+1];
+            Arrays.fill(ans, INF);
+
+            // Case 1: zero-exclusion possibility
+            // i==1
+            if (n>1) {
+                if (a[1] + c >= sm[1]) {
+                    ans[1] = 0;
+                }
+            } else {
+                // only one candidate
+                ans[1] = 0;
+            }
+            // i>1
+            for (int i = 2; i <= n; i++) {
+                // Condition for i to win with no exclusions:
+                // a[i] > a[1]+c, a[i] > max(a2..a[i-1]), a[i] >= max(a[i+1..n])
+                if (a[i] > a[1] + c
+                        && (i==2 || a[i] > pm2[i-1])
+                        && (i==n || a[i] >= sm[i])) {
+                    ans[i] = 0;
+                }
+            }
+
+            // Prepare queries for caseA
+            // We'll only re-compute those ans[i]>0
+            class Query {
+                long X;
+                int idx;
+                Query(long X, int idx) { this.X = X; this.idx = idx; }
+            }
+            ArrayList<Query> queries = new ArrayList<>(n);
+            for (int i = 1; i <= n; i++) {
+                if (ans[i] != 0) {  // only for these do we need to compute
+                    long baseU = c + pref[i-1];
+                    long X = a[i] + baseU;
+                    queries.add(new Query(X, i));
+                }
+            }
+            // sort queries by descending X
+            queries.sort((u, v) -> Long.compare(v.X, u.X));
+
+            // Build list of all (a_k, k), descending by a_k
+            class Elem {
+                long val;
+                int pos;
+                Elem(long v, int p) { val=v; pos=p; }
+            }
+            ArrayList<Elem> elems = new ArrayList<>(n);
+            for (int k = 1; k <= n; k++) {
+                elems.add(new Elem(a[k], k));
+            }
+            elems.sort((u, v) -> Long.compare(v.val, u.val)); // descending by val
+
+            Fenwick fw = new Fenwick(n);
+            int ptr = 0;
+            // Sweep queries
+            for (Query q: queries) {
+                long X = q.X;
+                int i = q.idx;
+                // Activate all suffix‐elements whose a_k > X
+                while (ptr < n && elems.get(ptr).val > X) {
+                    fw.update(elems.get(ptr).pos, 1);
+                    ptr++;
+                }
+                // Count how many of those activated lie in k>i
+                int extra = fw.rangeSum(i+1, n);
+                int cand = (i-1) + extra;
+                ans[i] = Math.min(ans[i], cand);
+            }
+
+            // Output answers
+            for (int i = 1; i <= n; i++) {
+                sb.append(ans[i]).append(i==n?'\n':' ');
+            }
+        }
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Case 1 (zero‐exclude)**  
+   We check directly whether with no exclusions candidate i would already be the winner.  Since all undecided voters go to the smallest‐index remaining (i.e. candidate 1), candidate 1 ends up with a₁ + c votes, every other k≠1 has exactly aₖ votes.  From that it is a constant‐time check.
+
+2. **Case A (exclude 1…i−1)**  
+   We must exclude the first (i−1) candidates to make i the smallest index.  That uses up i−1 exclusions, and raises the pool of undecided to  
+     U₀ = c + ∑_{j=1..i−1} a_j.  
+   Then candidate i has a_i + U₀, every k>i has only aₖ.  Any k>i with aₖ > (a_i + U_current) *must* be excluded.  Excluding them in descending‐aₖ order is exactly the greedy strategy.  One shows that you end up excluding *precisely* those k for which aₖ > (a_i + U₀), because once you remove all such aₖ, the updated U_current = U₀ + ∑ (those aₖ) is already large enough to dwarf *all* the remaining aₖ.  
+
+   Hence **extra_excluded[i] = count of indices k>i with aₖ > (a_i + U₀)**.  
+
+3. **Offline Counting**  
+   We must compute, for each i, how many k>i have aₖ > X_i = a_i + (c + ∑_{1..i−1}a_j).  
+   - Sort all queries (i,X_i) by descending X_i.  
+   - Sort all candidate‐values (aₖ,k) by descending aₖ.  
+   - Sweep: keep a Fenwick tree marking “activated” those k whose aₖ > current X.  For each query we activate all aₖ > X, then query how many activated k lie in (i+1…n).  That is exactly the count we need.  
+
+Total time per test is O(n log n), which is fine for ∑n up to 2×10^5.
+
+**Complexity**
+
+- Preprocessing (prefix/suffix sums and maxes): O(n)
+- Case 1 checks: O(n)
+- Sorting elements and queries: O(n log n)
+- Fenwick‐tree updates & queries: O(n log n)
+
+Overall O(n log n) per test, total O((∑n) log n).

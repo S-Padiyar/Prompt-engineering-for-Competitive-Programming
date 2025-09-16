@@ -1,0 +1,209 @@
+**Analysis**
+
+We have a rooted tree on \(n\) vertices (rooted at 1) and a permutation \(p[1\ldots n]\).  We must support \(q\) operations, each swapping two entries of \(p\), and after each swap decide whether the current permutation \(p\) can arise as *some* DFS preorder of the given tree, when we are allowed to choose the visiting order of each node’s children arbitrarily.
+
+A well‐known characterization is:
+
+  1.  In a valid DFS preorder, the very first vertex must be the root, i.e. \(p[1]=1\).
+  2.  For every adjacent pair \((p[i],p[i+1])\), if we let
+        \[
+          u = p[i],\quad v = p[i+1],\quad
+          w = \mathrm{LCA}(u,v),
+        \]
+      then \(v\) must be a direct child of \(w\).  Equivalently,
+        \[
+          \mathrm{parent}[v]=\mathrm{LCA}(u,v).
+        \]
+        
+Indeed, in a preorder DFS when you move from visiting \(u\) to visiting the *next* vertex \(v\), you either go down an unvisited child of \(u\) (so \(\mathrm{LCA}(u,v)=u\) and \(\mathrm{parent}[v]=u\)), or you have finished \(u\)'s subtree and you pop back up to some ancestor \(w\), whose next child to visit is \(v\).  In that latter case \(\mathrm{LCA}(u,v)=w\) and \(v\)'s parent must be exactly \(w\).  It can be shown that these two conditions (\(p[1]=1\) and \(\mathrm{parent}[p[i+1]] = \mathrm{LCA}(p[i],\,p[i+1])\) for every \(i\)) are necessary and sufficient for \(p\) to be a valid preorder.
+
+We must maintain this validity under swaps of two positions in \(p\).  Notice that swapping at positions \(x,y\) affects only the adjacent‐pair conditions at indices
+
+\[
+  x-1,\,x,\quad y-1,\,y
+\]
+
+(as long as those lie in \(1\le i\le n-1\)).  We can keep a boolean array
+
+```
+   validEdge[i]   // 1 if parent[p[i+1]]==LCA(p[i],p[i+1]), else 0
+```
+
+and an integer `goodCount = sum(validEdge[1..n-1])`.  Also we check `p[1]==1` separately.  Then:
+
+  * Initially build a preprocessing for LCA in \(O(n\log n)\) (here we use binary‐lifting).
+  * Compute the initial `validEdge[i]` for \(i=1\ldots n-1\).  Let
+        \(\displaystyle\mathit{goodCount}=\sum_{i=1}^{n-1}\mathit{validEdge}[i].\)
+  * A permutation is a valid DFS order exactly when `p[1]==1` and `goodCount == n-1`.
+
+On each swap:
+
+1.  Swap `p[x]` and `p[y]`.
+2.  Recompute `validEdge[i]` (and adjust `goodCount`) for each affected index \(i\in\{x-1,x,y-1,y\}\cap[1,n-1]\), using the new `p[]`.
+3.  Answer `YES` if `p[1]==1 && goodCount==n-1`, else `NO`.
+
+Each update touches at most 4 entries of `validEdge[]`, and each requires one LCA in \(O(\log n)\).  Thus each query is \(O(\log n)\), and overall (over all testcases) is \(O((\sum n)\log n + (\sum q)\log n )\), which easily fits under the given limits.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 300_000;
+    static final int LOG  = 19;  // 2^18=262144 < 3e5 < 2^19
+
+    static int n, q;
+    static int[] parent = new int[MAXN+1];
+    static int[] depth  = new int[MAXN+1];
+    static int[][] up   = new int[LOG][MAXN+1];
+    static int[] p      = new int[MAXN+1];
+    static int[] validEdge = new int[MAXN+1];
+
+    // Compute LCA with binary lifting
+    static int lca(int a, int b) {
+        if (depth[a] < depth[b]) {
+            int t=a; a=b; b=t;
+        }
+        // Lift a up to the same depth as b
+        int diff = depth[a] - depth[b];
+        for(int k=0; k<LOG; k++){
+            if ((diff & (1<<k)) != 0) {
+                a = up[k][a];
+            }
+        }
+        if (a==b) return a;
+        // Lift both up until their parents match
+        for(int k=LOG-1; k>=0; k--){
+            if (up[k][a] != up[k][b]) {
+                a = up[k][a];
+                b = up[k][b];
+            }
+        }
+        // now they differ but up[0][a]==up[0][b] is the LCA
+        return up[0][a];
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder out = new StringBuilder();
+        int T = Integer.parseInt(br.readLine().trim());
+
+        while(T-- > 0){
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            n = Integer.parseInt(st.nextToken());
+            q = Integer.parseInt(st.nextToken());
+
+            // Read parent array (a[2..n]), set parent[1]=1
+            parent[1] = 1;
+            st = new StringTokenizer(br.readLine());
+            for (int i = 2; i <= n; i++) {
+                parent[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // Build depth[] and up[0][]
+            depth[1] = 0;
+            up[0][1] = 1;
+            for (int v = 2; v <= n; v++) {
+                depth[v] = depth[parent[v]] + 1;
+                up[0][v] = parent[v];
+            }
+            // Build binary‐lifting table up[k][v]
+            for (int k = 1; k < LOG; k++) {
+                for (int v = 1; v <= n; v++) {
+                    up[k][v] = up[k-1][ up[k-1][v] ];
+                }
+            }
+
+            // Read initial permutation p[]
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) {
+                p[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // Initialize validEdge[i] for i=1..n-1
+            int goodCount = 0;
+            for (int i = 1; i < n; i++) {
+                int u = p[i], v = p[i+1];
+                int w = lca(u, v);
+                if (parent[v] == w) {
+                    validEdge[i] = 1;
+                    goodCount++;
+                } else {
+                    validEdge[i] = 0;
+                }
+            }
+
+            // Process the q swaps/queries
+            for (int _q = 0; _q < q; _q++) {
+                st = new StringTokenizer(br.readLine());
+                int x = Integer.parseInt(st.nextToken());
+                int y = Integer.parseInt(st.nextToken());
+
+                // Perform the swap in p[]
+                int tmp = p[x]; 
+                p[x] = p[y];
+                p[y] = tmp;
+
+                // Recompute up to 4 affected edges
+                // i in {x-1, x, y-1, y} ∩ [1..n-1]
+                int[] idx = {x-1, x, y-1, y};
+                for (int k = 0; k < 4; k++) {
+                    int i = idx[k];
+                    if (i < 1 || i >= n) continue;
+                    // recompute validEdge[i]
+                    int oldVal = validEdge[i];
+                    int u = p[i], v = p[i+1];
+                    int w = lca(u, v);
+                    int newVal = (parent[v] == w ? 1 : 0);
+                    if (newVal != oldVal) {
+                        validEdge[i] = newVal;
+                        goodCount += (newVal - oldVal);
+                    }
+                }
+
+                // Finally check if p[1]==1 AND all edges are valid
+                if (p[1] == 1 && goodCount == n-1) {
+                    out.append("YES\n");
+                } else {
+                    out.append("NO\n");
+                }
+            }
+        }
+
+        System.out.print(out.toString());
+    }
+}
+```
+
+**Explanation of the key steps**
+
+1. **LCA Preprocessing**  
+   We store `up[k][v]` = the \(2^k\)-th ancestor of \(v\).  
+   - `up[0][v] = parent[v]`.  
+   - Then `up[k][v] = up[k-1][ up[k-1][v] ]`.  
+   We also store `depth[v]`.  LCA queries run in \(O(\log n)\) by lifting.
+
+2. **Validity condition**  
+   A permutation \(p\) is a valid DFS preorder *if and only if*  
+   - \(p[1]=1\), and  
+   - for each adjacent pair \((u,v)=(p[i],p[i+1])\), letting \(w=\mathrm{LCA}(u,v)\), we have
+     \[
+       \text{parent}[v] = w.
+     \]
+
+3. **Maintaining under swaps**  
+   Swapping `p[x]` with `p[y]` only disturbs the conditions at indices \(i = x-1,x,y-1,y\) (where those lie in \([1,n-1]\)).  
+   We keep an array `validEdge[i]` which is 1 if that local LCA‐condition is satisfied, else 0.  We also maintain the total
+   \(\mathit{goodCount} = \sum_{i=1}^{n-1} \mathit{validEdge}[i]\).  
+   After each swap, we recompute at most 4 of these `validEdge[i]` values (each in \(O(\log n)\) time via an LCA).
+
+4. **Answering**  
+   At each query, we simply check  
+   ```
+     (p[1] == 1)  AND  (goodCount == n-1)
+   ```
+   If both hold, the permutation is some valid DFS preorder; otherwise it is not.
+
+This runs in \(O((n+q)\log n)\) per test (over all tests \(\sum n\le3\cdot10^5,\sum q\le10^5\)), well within the 2‐second limit.

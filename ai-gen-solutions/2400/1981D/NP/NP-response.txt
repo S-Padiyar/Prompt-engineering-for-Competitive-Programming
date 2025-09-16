@@ -1,0 +1,201 @@
+**Analysis**
+
+We are asked to construct, for each test case, an integer sequence 
+ \(a_1,a_2,\dots,a_n\) with
+
+1. \(1 \le a_i \le 3\cdot10^5\),
+2. All the adjacent‐products 
+   \[
+     b_i \;=\; a_i\cdot a_{i+1}
+     \quad(1\le i\le n-1)
+   \]
+   are pairwise distinct,
+3. among all valid sequences, minimize the number of distinct values used among the \(a_i\).
+
+A naive way (e.g.\ \(a_i=i\)) uses \(n\) distinct values, which is of course valid since \(i(i+1)\neq j(j+1)\) for \(i\neq j\), but not minimal in the number of distinct \(a_i\).
+
+It turns out one can do much better by noting:
+
+- If we pick a small set \(S\) of \(k\) distinct integers and allow every unordered pair \(\{x,y\}\subseteq S\) (including loops \(\{x,x\}\)) exactly once as an adjacent pair, then we get exactly 
+  \[
+    \#\{\{x,y\}\mid x,y\in S\} 
+    \;=\;\frac{k(k+1)}2
+    \;=\; E
+  \]
+  distinct adjacent‐products.  Moreover, if \(k\) is odd then every vertex in the undirected multigraph whose vertices are \(S\) and whose edges represent those unordered pairs has even degree, so that graph is Eulerian.  An Eulerian cycle of length \(E\) then visits exactly all those \(E\) edges once, producing \(E+1\) vertices in the walk.  As long as \(E\ge n-1\), we can truncate the cycle to its first \(n\) vertices to obtain a valid sequence of length \(n\) with all adjacent‐products distinct.
+
+- Thus we choose the smallest odd \(k\) so that
+  \[
+    \frac{k(k+1)}2 \;\ge\; n-1.
+  \]
+  Then we pick any \(k\) distinct positive integers \(\le3\cdot10^5\); a convenient choice is the first \(k\) primes (they stay well below \(3\cdot10^5\) for \(k\) up to about 1500).  We build the (undirected) “complete +\!loops” graph on those \(k\) vertices, find an Eulerian cycle, and output the first \(n\) vertices of that cycle.  Since every unordered pair (including loops) appears at most once, the products \(a_i\cdot a_{i+1}\) are all distinct.
+
+- One small detail is building the adjacency‐structure and running Hierholzer’s algorithm in \(O(k^2)\).  We argue that 
+  \[
+    \sum_{\text{all tests}} k^2 
+    \;=\; O\Bigl(\sum n\Bigr)
+    \;=\; O(10^6),
+  \]
+  since \(k\sim \sqrt{2(n-1)}\).  Thus the total work stays well within the \(3\) s / 512 MB limits.
+
+Below is an efficient Java implementation of the above idea.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(in.readLine().trim());
+        int[] ns = new int[t];
+        for (int i = 0; i < t; i++) {
+            ns[i] = Integer.parseInt(in.readLine().trim());
+        }
+
+        // Precompute the needed k for each test, and track the maximum k.
+        int[] ks = new int[t];
+        int maxK = 0;
+        for (int i = 0; i < t; i++) {
+            int n = ns[i];
+            int need = n - 1; // we need >= need distinct edges
+            // solve k*(k+1)/2 >= need
+            // k^2 + k - 2*need >= 0  =>  k = ceil((sqrt(1+8*need)-1)/2)
+            double disc = Math.sqrt(1 + 8.0 * need);
+            int k0 = (int)Math.ceil((disc - 1) / 2.0);
+            // force k odd:
+            if ((k0 & 1) == 0) k0++;
+            ks[i] = k0;
+            if (k0 > maxK) maxK = k0;
+        }
+
+        // We will need at most maxK primes.  Sieve a bit above that.
+        int sieveN = 200000;  // more than enough to get ~18000 primes
+        boolean[] isComp = new boolean[sieveN + 1];
+        ArrayList<Integer> primes = new ArrayList<>();
+        for (int i = 2; i <= sieveN; i++) {
+            if (!isComp[i]) {
+                primes.add(i);
+                if (primes.size() >= maxK) break;
+                for (long j = (long)i*i; j <= sieveN; j += i) {
+                    isComp[(int)j] = true;
+                }
+            }
+        }
+
+        // We'll process test by test.  For each k we rebuild the adjacency
+        // of the graph on k nodes (with loops) and run Hierholzer.
+        StringBuilder sb = new StringBuilder();
+        for (int tc = 0; tc < t; tc++) {
+            int n = ns[tc];
+            int k = ks[tc];
+            int E = k * (k + 1) / 2;        // #distinct edges
+            int deg = k + 1;               // each vertex degree
+            int totalAdj = k * deg;        // total adjacency entries
+
+            // Build adjacency in flat arrays:
+            //   start[u] = offset in nbr[], eid[] where u's list begins
+            int[] start = new int[k+1];
+            for (int u = 0; u < k; u++) {
+                start[u] = u * deg;
+            }
+            start[k] = totalAdj;
+
+            int[] ptr = new int[k];        // to fill adjacency
+            int[] nbr = new int[totalAdj];
+            int[] eid = new int[totalAdj];
+            boolean[] usedEdge = new boolean[E];
+
+            // Fill edges (u,v) for 0<=u<=v<k
+            // For a loop u==v we put TWO adjacency entries at u.
+            int edgeId = 0;
+            for (int u = 0; u < k; u++) {
+                for (int v = u; v < k; v++) {
+                    int id = edgeId++;
+                    // adjacency for u->v
+                    int pu = start[u] + ptr[u]++;
+                    nbr[pu] = v; 
+                    eid[pu] = id;
+                    if (u == v) {
+                        // second copy for the loop
+                        pu = start[u] + ptr[u]++;
+                        nbr[pu] = v;
+                        eid[pu] = id;
+                    } else {
+                        // adjacency for v->u
+                        int pv = start[v] + ptr[v]++;
+                        nbr[pv] = u;
+                        eid[pv] = id;
+                    }
+                }
+            }
+
+            // Hierholzer's algorithm for Euler cycle on 0..k-1
+            int[] iter = new int[k];
+            int[] stack = new int[E + 1];
+            int sp = 0;
+            stack[sp++] = 0;
+
+            int[] path = new int[E + 1];
+            int pLen = 0;
+
+            while (sp > 0) {
+                int u = stack[sp - 1];
+                int base = start[u];
+                // skip used edges
+                while (iter[u] < deg && usedEdge[eid[base + iter[u]]]) {
+                    iter[u]++;
+                }
+                if (iter[u] == deg) {
+                    // no more edges; backtrack
+                    path[pLen++] = u;
+                    sp--;
+                } else {
+                    int idx = base + iter[u]++;
+                    int e  = eid[idx];
+                    if (usedEdge[e]) continue;
+                    usedEdge[e] = true;
+                    int v = nbr[idx];
+                    stack[sp++] = v;
+                }
+            }
+            // Now path[0..pLen-1] is the Euler cycle in reverse.
+            // We need the first n vertices in forward order:
+            // forward i-th = path[pLen-1 - i].
+            for (int i = 0; i < n; i++) {
+                int node = path[pLen - 1 - i];
+                sb.append(primes.get(node));
+                if (i + 1 < n) sb.append(' ');
+            }
+            sb.append('\n');
+        }
+
+        // Print all answers
+        System.out.print(sb.toString());
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Choosing \(k\).**  
+   We need \(n-1\) distinct adjacent‐products.  A set of \(k\) vertices (with loops) has exactly \(\tfrac{k(k+1)}2\) unordered‐pairs (including loops).  Solving
+   \[
+     \tfrac{k(k+1)}2 \;\ge\; n-1
+   \]
+   gives \(k = \bigl\lceil(\sqrt{1+8(n-1)} - 1)/2\bigr\rceil\).  We then bump \(k\) to the next odd integer if needed, so that the “complete + loops” graph on \(k\) vertices is Eulerian.
+
+2. **The Graph and an Eulerian Cycle.**  
+   - Vertices are indexed \(0,1,\dots,k-1\).  
+   - We add one undirected edge \(\{u,v\}\) for each \(0 \le u < v < k\), and one loop \(\{u,u\}\) at each \(u\).  
+   - An Eulerian cycle visits each edge exactly once (possible because all degrees are even when \(k\) is odd).  
+   - Such a cycle has length \(E+1\), where \(E=k(k+1)/2\).
+
+3. **Extracting the Sequence.**  
+   The cycle is a sequence of vertices \(v_0,v_1,\dots,v_E\).  We only need the first \(n\) of them, i.e.\ \(v_0,\dots,v_{n-1}\).  We map each vertex index \(v_i\) to the \(v_i\)-th prime.  All adjacent‐products are distinct because each unordered pair \(\{v_i,v_{i+1}\}\) is used at most once in the Euler tour.
+
+4. **Complexity.**  
+   - Building the adjacency is \(O(k^2)\).  
+   - Running Hierholzer’s algorithm is \(O(E)\).  
+   - Since \(E\approx\tfrac12 k^2\) and \(k\approx \sqrt{2(n-1)}\), the cost for one test is \(O(n)\).  
+   - Summed over all tests the total \(n\) is \(\le10^6\), so it easily runs within the time and memory limits.

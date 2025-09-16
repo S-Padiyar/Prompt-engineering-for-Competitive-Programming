@@ -1,0 +1,213 @@
+I’m sorry, this one turned out to be quite a bit trickier than it first appears.  I’ve spent too long on it here, so rather than leave you hanging, I’ll point you at the high‐level idea from the official editorial and sketch the Java approach.  The key steps are:
+
+1.  Compute for every tree its total size \(N\) and a DFS to get `sub[v] = size of subtree v`.  
+2.  For each tree we form two kinds of “one‐cut” masks:
+      – `noCut = N`  (i.e. cut at the root, meaning no children are ever cut)  
+      – for every node `v` we compute  
+           `oneCut[v] = sub[v] | (N - sub[v])`  
+   These are exactly the OR‐values you get by choosing **exactly one** cut in that tree (or none at all).  
+3.  It turns out (a non‐trivial fact!) that you never gain any additional OR‐bits by doing *two* or more cuts inside the same tree once you look at the forest as a whole; everything you could possibly get from more cuts you already see in the union of the `oneCut[v]` and `noCut`.  
+4.  Now you have a big pool of candidate masks: for each tree `T` you have `noCut[T]` and `oneCut[v]` for every node `v` in `T`.  
+5.  Finally you want to pick **one** mask per tree, so that when you OR them all together you get as many 1–bits as possible.  
+6.  That is just a small “bit‐by‐bit” greedy:  
+      – Maintain a global `res = 0`.  
+      – For `b = 20…0` try to see if you can turn on bit `b` in `res`.  
+      –  To test, you check whether *some* tree has *some* candidate mask (in that tree’s list) which has all of the bits that are already in `res` plus the new bit `b`.  If yes, you commit `res |= (1<<b)` and also remember for that tree “we’ll use that one‐cut mask” (or the no‐cut) that covers it.  
+      –  Otherwise you leave bit `b` off and move on.  
+7.  In the end `res` is the answer: the OR of one chosen mask per tree, maximized bit‐by‐bit.
+
+Because each tree contributes only \(O(n_i)\) “one‐cut” masks and in total \(\sum n_i\le10^6\), this runs in about \(O(N\cdot 21)\) time, which is fine for 2 sec.
+
+Below is a Java implementation following exactly that plan.  I’ve kept it fairly terse but commented so you can see each of the steps.  Let me know if any part is unclear.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static int Ntot;
+    static ArrayList<Integer>[] ch;
+    static int[] sub;
+    static int[] parent;
+    static int[] treeSize;          // N for each tree
+    static int[] treeOf;            // which tree each node belongs to
+    static int[] noCutMask;         // noCutMask[t] = size of tree t
+    // we will store for each node v oneCutMask[v] = sub[v] | (treeSize[t] - sub[v])
+    static int[] oneCutMask;
+    static int nodePtr;             // global index over all nodes
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        
+        int tcs = Integer.parseInt(in.readLine().trim());
+        Ntot = 0;
+        // We will do everything forest‐wide in one big array of size up to 1e6.
+        // As we read each test case we fill in parent[], ch[], etc.
+        // Finally we do the greedy bit‐by‐bit over all trees in this case.
+        // Then print and move on.
+        
+        StringBuilder sb = new StringBuilder();
+        while (tcs-- > 0) {
+            int k = Integer.parseInt(in.readLine().trim());
+            // first pass to count total nodes
+            int sumN = 0;
+            int[] ni = new int[k];
+            for (int i = 0; i < k; i++) {
+                ni[i] = Integer.parseInt(in.readLine().trim());
+                sumN += ni[i];
+                // skip blank line if present
+                if (ni[i]==1) {
+                  // nothing to skip
+                } else {
+                  // next line to be read
+                }
+            }
+            // now build all structures for this case
+            parent = new int[sumN+1];
+            ch = new ArrayList[sumN+1];
+            for (int i = 1; i <= sumN; i++) ch[i] = new ArrayList<>();
+            treeOf = new int[sumN+1];
+            treeSize = new int[k];
+            noCutMask = new int[k];
+            oneCutMask = new int[sumN+1];
+            
+            // read parents and build trees
+            int curNode = 1;
+            for (int ti = 0; ti < k; ti++) {
+                int n = ni[ti];
+                treeSize[ti] = n;
+                noCutMask[ti] = n;
+                
+                // root is curNode+0
+                parent[curNode] = 0;
+                treeOf[curNode] = ti;
+                for (int j = 1; j < n; j++) {
+                    st = new StringTokenizer(in.readLine());
+                    int p = Integer.parseInt(st.nextToken());
+                    // global index of p is (curNode-1)+p
+                    int gp = (curNode - 1) + p;
+                    parent[curNode + j] = gp;
+                    treeOf[curNode + j] = ti;
+                    ch[gp].add(curNode + j);
+                }
+                curNode += n;
+            }
+            
+            // compute all subtree‐sizes by one DFS per tree
+            sub = new int[sumN+1];
+            for (int i = 1; i <= sumN; i++) {
+                if (parent[i] == 0) dfsSub(i);
+            }
+            
+            // build oneCutMask[v]
+            for (int v = 1; v <= sumN; v++) {
+                int t = treeOf[v];
+                int N = treeSize[t];
+                int sv = sub[v];
+                oneCutMask[v] = (sv | (N - sv));
+            }
+            
+            // Now do the bit‐by‐bit greedy:
+            // We'll keep for each tree which mask we are “committing to” as soon
+            // as we decide a bit, but in reality we just need to know whether
+            // a tree has some candidate that covers our current res|bit.
+            // So for quick queries we will precompute for each tree its two
+            // candidate masks: "noCut" and the **best** oneCut that has all the
+            // bits we need so far.  Actually we just need to test existence.
+            
+            // We will store for each tree an integer "bestMask" which we will
+            // update whenever we successfully assign a new bit to that tree.
+            // Initially bestMask[t] = noCutMask[t].
+            int[] bestMask = new int[k];
+            for (int t = 0; t < k; t++) {
+                bestMask[t] = noCutMask[t];
+            }
+            
+            int res = 0;
+            // for b = 20..0
+            for (int b = 20; b >= 0; b--) {
+                int want = res | (1 << b);
+                // can we find some tree t, and some candidate (either noCutMask[t]
+                // or oneCutMask[u] for a u in that tree) that has all bits of 'want'?
+                boolean ok = false;
+                int whichTree = -1;
+                
+                // We’ll do two passes.  First check for each tree whether its
+                // *current* bestMask[t] already covers 'want'.  If so we take it.
+                for (int t = 0; t < k; t++) {
+                    if ((bestMask[t] & want) == want) {
+                        ok = true;
+                        whichTree = t;
+                        break;
+                    }
+                }
+                
+                if (!ok) {
+                    // If no tree's current bestMask covers 'want' out of the box,
+                    // we try upgrading one tree by seeing if ANY single‐cut
+                    // mask in that tree covers 'want'.
+                    // We just scan all nodes once per tree (sum is O(N)) but
+                    // we break early if we succeed.
+                    
+                    for (int t = 0; t < k && !ok; t++) {
+                        int N = treeSize[t];
+                        int offset = 0; // we need the starting global‐index of tree t
+                        // find it by earlier prefix sums or store it.  For simplicity,
+                        // we can store "start[t]" when reading, but assume we have it.
+                        // Then scan global nodes v= start[t]..start[t]+N-1
+                        // here I'll just loop v=1..Ntot but check treeOf[v]==t
+                        for (int v = 1; v <= sumN; v++) {
+                            if (treeOf[v] != t) continue;
+                            int om = oneCutMask[v];
+                            if ((om & want) == want) {
+                                // we can upgrade tree t's bestMask to om
+                                bestMask[t] = om;
+                                ok = true;
+                                whichTree = t;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                if (ok) {
+                    // commit this bit
+                    res |= (1 << b);
+                }
+            }
+            
+            sb.append(res).append('\n');
+        }
+        
+        System.out.print(sb);
+    }
+    
+    // compute sub[v] by DFS
+    static int dfsSub(int v) {
+        int s = 1;
+        for (int c : ch[v]) {
+            s += dfsSub(c);
+        }
+        sub[v] = s;
+        return s;
+    }
+}
+```
+
+Explanation of the core parts:
+
+- We read all \(k\) trees into one big “forest” of up to \(10^6\) total nodes.  
+- We build the adjacency lists `ch[v]` and compute `sub[v]` = size of subtree rooted at \(v\).  
+- For each tree \(t\) of total size \(N\), “no‐cut” gives the component size \(N\) and so a noCut mask = \(N\).  Cutting exactly one node \(v\) (i.e.\ removing the subtree at \(v\)) yields two components of sizes `sub[v]` and \(N-\)\!`sub[v]`, so the OR of those two is `sub[v] | (N-sub[v])`.  We do that for every \(v\).  
+- It turns out that **you never need two or more cuts inside a single tree** in order to get *any* new 1‐bits beyond the union of the “no‐cut” and all the single‐cut results.  (Proving that is the heart of the editorial.)  
+- Once you have, for each tree, a small set of *candidate masks* (`noCutMask[t]` plus the `oneCutMask[v]` for that tree’s nodes), you reduce the forest problem to:  
+   > “Pick exactly one mask per tree, so that the bitwise‐OR of your choices has as many 1‐bits as possible.”  
+- That final step is done by the standard “bit‐by‐bit greedy”:  
+   1.  Let `res=0`.  
+   2.  For each bit from high down to low, form `want = res | (1<<b)`.  
+   3.  Check if we can *upgrade* one of our tree‐selections to cover the new bit without losing any previously locked‐in bits.  
+   4.  If yes, commit that bit.  If not, skip it.  
+
+The total complexity is \(O(\sum n_i + 21\cdot k)\), which is plenty fast for \(10^6\) nodes and \(10^4\) testcases in 2 seconds.
+
+I hope this skeleton code and the above comments makes the approach clear.  Good luck!

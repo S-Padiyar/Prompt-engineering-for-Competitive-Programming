@@ -1,0 +1,369 @@
+**Analysis**
+
+We have an array $a$ of length $n$ and parameters $k$ and $q$.  For each query $(\ell,r)$ (with $r\ge\ell+k-1$) we must compute
+
+\[
+\sum_{j=\ell+k-1}^{\,r} f\bigl(a[\ell..j]\bigr),
+\]
+
+where for a (short) array $b$ one defines 
+\[
+f(b)
+=
+\min\{\text{# of single‐element assignments needed so that $b$ contains a length‐$k$ subarray with consecutive increments of 1}\}.
+\]
+
+A classical reformulation shows that if you write
+\[
+r'_i \;=\; a_i - i,
+\]
+then in any length‐$k$ window of $b$ one is looking for an arithmetic progression of difference $1$, which exactly means “in that window the values of $r'$ are all the same.”  Hence to make some length‐$k$ window constant in $r'$ one must repaint all but the most‐frequent residue in that window; i.e.
+\[
+f(b)\;=\;k \;-\;\max_{\text{windows of length }k}\{\text{frequency of the top $r'$‐value in that window}\}.
+\]
+
+When we append one element at a time to build the prefixes $b_j =a[\ell..j]$, the best‐window‐frequency for a new $j$ is the maximum, over all windows of length $k$ ending at or before $j$, of that window’s “most‐frequent count.”  One shows that once you fix the starting index $\ell$, the sequence
+\[
+g(j)
+=\;\max_{i=\ell}^{\,j-k+1}
+\Bigl(\max\!\{\text{frequency of top $r'$‐value in }a[i..i+k-1]\}\Bigr)
+\]
+is a **nondecreasing** function of $j$.  Hence
+
+\[
+\sum_{j=\ell+k-1}^r f\bigl(a[\ell..j]\bigr)
+\;=\;
+\sum_{j=\ell+k-1}^r\Bigl(k - g(j)\Bigr)
+\;=\;
+\bigl(r-(\ell+k-1)+1\bigr)\,k
+\;-\;
+\sum_{j=\ell+k-1}^r g(j).
+\]
+
+Thus our problem reduces to computing
+\[
+\sum_{j=L}^R g(j),
+\quad
+L=\ell+k-1,
+\;
+R=r,
+\]
+for many queries.  But 
+\[
+g(j)
+\;=\;
+\max_{i=\ell}^{\,j-k+1} \;c_i,
+\]
+where we precompute
+\[
+c_i
+=\;
+\max\bigl\{\text{frequency of the most‐common }r'\text{ in }[i..i+k-1]\bigr\},
+\quad
+i=1\ldots n-k+1.
+\]
+Hence $g(j)$ is just the *prefix‐maximum* of the array
+\[
+c_\ell,\;c_{\ell+1},\;\dots,\;c_{j-k+1}.
+\]
+
+A classical data‐structure approach to “sum of prefix‐maxima on a subarray” is:
+
+ 1.  Precompute the *Previous Greater‐or‐Equal* index
+    \[
+      L[i]
+      \;=\;
+      \max\{\,p<i : c_p\ge c_i\}\quad(\text{or }0\text{ if none})
+    \]
+    and the *Next Strictly Greater* index
+    \[
+      R[i]
+      \;=\;
+      \min\{\,q>i : c_q>c_i\}\quad(\text{or }N+1\text{ if none}), 
+      \quad N=n-k+1.
+    \]
+    Then one shows that $c_i$ contributes to the prefix‐maxima exactly on those starting‐positions $\ell$ with $L[i]<\ell\le i$, and it contributes over the $j$‐range $i\le j<R[i]$.  
+
+ 2.  We sweep $u=1,2,\dots,N$; at step $u$ we are effectively answering all queries whose right‐endpoint in the $c$‐array is $u$.  We maintain two Fenwick‐trees (BITs) for a **range‐add, point‐query** model over the $\ell$‐coordinate:
+
+    • **BIT\_dyn\_sum** holds the *dynamic* part  
+      \[
+        \sum_{\substack{i\le u\\R[i]>u\\L[i]<\ell}} c_i\,,
+      \]
+      and  
+      
+    • **BIT\_dyn\_j** holds 
+      \[
+        \sum_{\substack{i\le u\\R[i]>u\\L[i]<\ell}} c_i\cdot i\,.
+      \]
+      
+    In fact at time $u$ any such $i$ contributes 
+    \[
+       c_i\,(u+1 - i),
+    \]
+    so its total dynamic contribution to $\sum g(\cdot)$ is
+    \[
+      (u+1)\sum c_i \;-\;\sum(c_i\,i).
+    \]
+
+    Meanwhile, once $u$ reaches $R[i]$, index $i$ leaves the “dynamic window” and becomes *static*, contributing
+    \[
+      c_i\,(R[i]-i)
+    \]
+    *for all* later $u$.  We accumulate that into a third Fenwick‐tree **BIT\_static** by exactly the same “range‐add if $L[i]<\ell\le i$” trick.  
+
+Putting it all together, to answer queries with right‐endpoint $u$ and left‐start $\ell$ we do a point‐query at position~$\ell$ in each of the three BITs, call them
+
+    Dsum = BIT_dyn_sum.query(ℓ),
+    Dji  = BIT_dyn_j.query(ℓ),
+    Ssum = BIT_static.query(ℓ).
+
+The total of all $c_i\cdot \min(R[i],\,u+1)-i)$ is
+\[
+   \underbrace{(u+1)\,Dsum \;-\; Dji}_{\text{dynamic part}}
+   \;+\;
+   Ssum
+   \;=\;
+   \sum_{j=L}^u \max_{\ell\le i\le j} c_i
+   \;=\;
+   \sum_{j=L}^R g(j).
+\]
+Finally we multiply the number of terms $(R-L+1)$ by $k$ and subtract the above sum.
+
+All of the above can be implemented in $O(n\log n + q\log n)$ time using three Fenwicks and two monotone‐stack passes.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class YunliSubarrayQueries {
+    static class Fenwick {
+        int n;
+        long[] f;
+        Fenwick(int _n) {
+            n = _n;
+            f = new long[n+2];
+        }
+        // point-update: f[i] += v
+        void update(int i, long v) {
+            for (; i<=n; i += i&-i) f[i] += v;
+        }
+        // prefix-sum query
+        long query(int i) {
+            long s = 0;
+            for (; i>0; i -= i&-i) s += f[i];
+            return s;
+        }
+        // range-add [l..r] += v
+        void rangeAdd(int l, int r, long v) {
+            if (l>r) return;
+            update(l, v);
+            if (r+1 <= n) update(r+1, -v);
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int T = Integer.parseInt(in.readLine().trim());
+        StringBuilder out = new StringBuilder();
+        while (T-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+            int q = Integer.parseInt(st.nextToken());
+            int[] a = new int[n];
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // 1) Build r'[i] = a[i] - i, compress
+            int[] rRaw = new int[n];
+            for (int i = 0; i < n; i++) {
+                rRaw[i] = a[i] - i;
+            }
+            // compress
+            int[] comp = rRaw.clone();
+            Arrays.sort(comp);
+            int mUniq = 0;
+            for (int x : comp)
+                if (mUniq == 0 || comp[mUniq-1] != x)
+                    comp[mUniq++] = x;
+            // map
+            for (int i = 0; i < n; i++) {
+                int idx = Arrays.binarySearch(comp, 0, mUniq, rRaw[i]);
+                rRaw[i] = idx;
+            }
+
+            // 2) Slide a window of length k over rRaw to compute c[1..M]
+            int M = n - k + 1;
+            int[] c = new int[M+1];
+            int[] cnt = new int[mUniq];
+            int[] freqOfFreq = new int[k+1];
+            int maxf = 0;
+
+            // init first window
+            for (int i = 0; i < k; i++) {
+                int v = rRaw[i];
+                int old = cnt[v]++;
+                if (old <= k) freqOfFreq[old]--;
+                freqOfFreq[old+1]++;
+                if (old+1 > maxf) maxf = old+1;
+            }
+            c[1] = maxf;
+
+            for (int i = 2; i <= M; i++) {
+                // remove rRaw[i-2], add rRaw[i+k-2]
+                int outVal = rRaw[i-2];
+                int old = cnt[outVal]--;
+                freqOfFreq[old]--;
+                freqOfFreq[old-1]++;
+                if (old == maxf && freqOfFreq[old] == 0) maxf--;
+                int inVal = rRaw[i+k-2];
+                old = cnt[inVal]++;
+                freqOfFreq[old]--;
+                freqOfFreq[old+1]++;
+                if (old+1 > maxf) maxf = old+1;
+                c[i] = maxf;
+            }
+
+            // 3) Compute L[i], R[i] on c[] (1..M)
+            int[] L = new int[M+1], R = new int[M+1];
+            // L = previous >=
+            {
+                Deque<Integer> stk = new ArrayDeque<>();
+                for (int i = 1; i <= M; i++) {
+                    while (!stk.isEmpty() && c[stk.peek()] < c[i]) {
+                        stk.pop();
+                    }
+                    L[i] = stk.isEmpty() ? 0 : stk.peek();
+                    stk.push(i);
+                }
+            }
+            // R = next >
+            {
+                Arrays.fill(R, M+1);
+                Deque<Integer> stk = new ArrayDeque<>();
+                for (int i = 1; i <= M; i++) {
+                    while (!stk.isEmpty() && c[stk.peek()] < c[i]) {
+                        R[stk.pop()] = i;
+                    }
+                    stk.push(i);
+                }
+                // remainder default to M+1
+            }
+
+            // 4) Read queries, bucket them by their 'u = r-k+1'
+            @SuppressWarnings("unchecked")
+            ArrayList<int[]>[] byU = new ArrayList[M+2];
+            for (int i = 1; i <= M+1; i++) {
+                byU[i] = new ArrayList<>();
+            }
+            long[] ans = new long[q];
+            for (int qi = 0; qi < q; qi++) {
+                st = new StringTokenizer(in.readLine());
+                int l = Integer.parseInt(st.nextToken());
+                int r = Integer.parseInt(st.nextToken());
+                // in c-space:
+                int u = r - k + 1;
+                // number of terms is (u - l + 1)
+                long terms = (long)u - l + 1;
+                long mk = terms * k;
+                byU[u].add(new int[]{l, qi, (int)mk});
+            }
+
+            // 5) Fenwicks for dynamic and static
+            Fenwick bitDynC  = new Fenwick(M+1);
+            Fenwick bitDynCJ = new Fenwick(M+1);
+            Fenwick bitStat  = new Fenwick(M+1);
+
+            // We'll sweep u=1..M; at u=i we add index i to dynamic,
+            // and at u=R[i] we remove it from dynamic & add to static.
+            @SuppressWarnings("unchecked")
+            ArrayList<Integer>[] remAt = new ArrayList[M+2];
+            for (int i = 1; i <= M+1; i++) {
+                remAt[i] = new ArrayList<>();
+            }
+            for (int i = 1; i <= M; i++) {
+                int rpos = R[i];
+                if (rpos <= M) {
+                    remAt[rpos].add(i);
+                }
+            }
+
+            // sweep
+            for (int u = 1; u <= M; u++) {
+                // 5a) add i=u to dynamic
+                {
+                    int i = u;
+                    int left = L[i] + 1;
+                    int right = M;
+                    long cv = c[i];
+                    bitDynC.rangeAdd(left, right, cv);
+                    bitDynCJ.rangeAdd(left, right, cv * i);
+                }
+                // 5b) handle removals at this u
+                for (int i : remAt[u]) {
+                    int left = L[i] + 1, right = M;
+                    long cv = c[i];
+                    // remove from dynamic
+                    bitDynC.rangeAdd(left, right, -cv);
+                    bitDynCJ.rangeAdd(left, right, -cv * i);
+                    // add to static
+                    long w = cv * (R[i] - i);
+                    bitStat.rangeAdd(left, right, w);
+                }
+                // 5c) answer queries with this u
+                for (int[] qq : byU[u]) {
+                    int l = qq[0], idx = qq[1];
+                    long mk = (long)qq[2];
+                    // query point l
+                    long Dsum = bitDynC.query(l);
+                    long Dji  = bitDynCJ.query(l);
+                    long Ssum = bitStat.query(l);
+                    // total sum of g(j) from j=l..u
+                    long sumg = Dsum*(u+1L) - Dji + Ssum;
+                    ans[idx] = mk - sumg;
+                }
+            }
+
+            // 6) output
+            for (long v : ans) {
+                out.append(v).append('\n');
+            }
+        }
+        System.out.print(out);
+    }
+}
+```
+
+**Explanation of the main steps**
+
+1.  **Convert to “residual” array**  
+    We set $r'_i=a_i-i$, so that an increasing‐by‐1 block of length $k$ in $a$ becomes a *constant* block of length $k$ in $r'$.
+
+2.  **Compute** $c_i=\max\{\text{frequency of the most‐common }r'\text{ in }[i..i+k-1]\}$.  
+    We do a standard “sliding window frequency” with an array of counts plus a small `freqOfFreq[]` so that we can update in $O(1)$ per slide and keep track of the current maximum frequency.
+
+3.  **Reduce to prefix‐max sums**  
+    For each query we need  
+    \[
+       \sum_{j=L}^{R} \Bigl(k - g(j)\Bigr)
+       = (R-L+1)\,k \;-\;\sum_{j=L}^{R} g(j),
+    \]
+    where $g(j)=\max\{c_i:i\le j-k+1,\;i\ge\ell\}$ is a nondecreasing function of $j$ once $\ell$ is fixed.  
+    Hence we only need fast range‐sum queries on the *prefix‐maxima* of the $c_i$.
+
+4.  **Data‐structure for “sum of prefix‐maxima”**  
+    One can show that each $c_i$ “controls” a contiguous run of endpoints and only contributes when the query‐start $\ell$ exceeds the last position $L[i]$ where an equal‐or‐bigger value stood before $i$.  By a left‐to‐right sweep we add each new $i$ into a “dynamic” Fenwick, and once the sweep reaches $R[i]$ (the next *strictly* bigger index) we remove from dynamic and put a fixed “static” weight in another Fenwick.  Each Fenwick is of the “range‐add, point‐query” type so that a single point‐query at $\ell$ recovers exactly the sum of all those $c_i$ that are *active* for that $(\ell,u)$, split into the “dynamic” part $(u+1-j)$ and the “static” part $(R[i]-i)$.
+
+5.  **Overall complexity**  
+    \[
+      O\bigl(n + (n-k+1)\log n + q\log n\bigr)
+      = O\bigl((n+q)\log n\bigr),
+    \]
+    which easily handles $n,q\le2\cdot10^5$ in one or many testcases.
+
+This completes the solution of the hard version in $O((n+q)\log n)$ time.

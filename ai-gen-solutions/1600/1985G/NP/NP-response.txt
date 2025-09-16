@@ -1,0 +1,142 @@
+**Analysis**
+
+We want to count the number of integers \(n\) in the range
+\[
+10^l \;\le\; n \;<\; 10^r
+\]
+such that
+\[
+D(k n)\;=\;k\,D(n),
+\]
+where \(D(x)\) is the sum of decimal digits of \(x\).  Directly checking each integer is impossible when \(r\) can be as large as \(10^9\).
+
+A well‐known fact about digit sums is that
+\[
+D(a+b)\;=\;D(a)+D(b)\;-\;9\,(\text{\# of carries in }a+b),
+\]
+and similarly, when you multiply by \(k\), every digit‐wise multiplication & addition of partial products either preserves digit sum or loses \(9\) per carry that occurs.  One can show
+
+\[
+D(k\,n)\;=\;k\,D(n)\;-\;9\,\bigl(\sum \text{(all carries in the digit‐by‐digit multiply)}\bigr).
+\]
+
+Hence \(D(k\,n)=k\,D(n)\) if and only if no carry ever occurs in the decimal multiplication of \(n\) by \(k\).  That in turn forces every decimal digit \(d\) of \(n\) to satisfy
+
+\[
+k\,d < 10
+\quad\Longrightarrow\quad
+d \;\le\;\left\lfloor\frac{9}{k}\right\rfloor.
+\]
+
+Let
+\[
+B \;=\;\left\lfloor \tfrac{9}{k}\right\rfloor.
+\]
+Then each digit of \(n\) must lie in \(\{0,1,2,\dots,B\}\).  But \(n\) must also lie between \(10^l\) and \(10^r\); that forces the decimal length of \(n\) to be
+\[
+\ell \;\in\;\{\,l+1,\;l+2,\;\dots,\;r\},
+\]
+with the leading digit nonzero (so it actually lies in \(\{1,2,\dots,B\}\)).
+
+- If \(B=0\), then no nonzero leading digit is allowed → answer is 0.
+- Otherwise \(B\ge1\).  For a fixed length \(\ell\),
+  - the leading digit has \(B\) choices \(\{1,\dots,B\}\),
+  - each of the remaining \(\ell-1\) digits has \((B+1)\) choices \(\{0,\dots,B\}\).
+
+So the number of valid \(\ell\)-digit \(n\) is
+\[
+B \,\times (B+1)^{\ell-1}.
+\]
+We sum that for \(\ell\) from \(l+1\) to \(r\).  Hence the total is
+\[
+\sum_{\ell=l+1}^{r}
+  B\,(B+1)^{\ell-1}
+\;=\;
+B\;\sum_{i=l}^{r-1}(B+1)^i
+\;=\;
+B\;\frac{(B+1)^l\bigl((B+1)^{\,r-l}-1\bigr)}{\,B\,}
+\;=\;
+(B+1)^l\;\Bigl((B+1)^{\,r-l}-1\Bigr).
+\]
+(Here we used the geometric‐series formula and cancelled the factor \(B\).)
+
+Since everything is to be taken modulo \(10^9+7\), we implement a fast modular exponentiation and compute
+\[
+\text{ans}
+\;=\;
+\begin{cases}
+0, & B=0,\\
+\bigl((B+1)^l\bigr)\;\bigl((B+1)^{\,r-l}-1\bigr)\bmod(10^9+7),
+& B\ge1.
+\end{cases}
+\]
+
+This takes \(O(\log r)\) time per test via fast exponentiation, which is more than fast enough for up to \(10^4\) tests.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+
+    // Fast exponentiation x^e mod MOD
+    static long modPow(long x, long e) {
+        long result = 1;
+        x %= MOD;
+        while (e > 0) {
+            if ((e & 1) == 1) {
+                result = (result * x) % MOD;
+            }
+            x = (x * x) % MOD;
+            e >>= 1;
+        }
+        return result;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            long l = Long.parseLong(st.nextToken());
+            long r = Long.parseLong(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+
+            // Maximum digit allowed so that k*d < 10
+            long B = 9 / k;
+            if (B == 0) {
+                // No nonzero leading digit possible
+                sb.append(0).append('\n');
+                continue;
+            }
+
+            long base = (B + 1) % MOD;
+
+            // (B+1)^l  mod
+            long p1 = modPow(base, l);
+            // (B+1)^(r-l) mod
+            long p2 = modPow(base, r - l);
+
+            // ans = p1 * (p2 - 1) mod
+            long ans = (p1 * ((p2 - 1 + MOD) % MOD)) % MOD;
+            sb.append(ans).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1.  We reduce the digit‐sum condition \(D(k\,n)=k\,D(n)\) to the no‐carrying condition in decimal multiplication by \(k\).
+2.  That forces every digit \(d\) of \(n\) to satisfy \(k\,d<10\), i.e.\ \(d\le\lfloor9/k\rfloor\).
+3.  We count how many \(\ell\)-digit numbers use only digits \(0\) through \(B\), with the first digit nonzero.  Summing over \(\ell\in[l+1\,,\,r]\) yields a geometric series.
+4.  We handle everything modulo \(10^9+7\), using fast exponentiation to keep it efficient even for very large \(l,r\).

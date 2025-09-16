@@ -1,0 +1,244 @@
+**Analysis**
+
+We have a tree \(T\) on \(n\) vertices.  We perform exactly one "shuffle" on \(T\), which turns out to be equivalent to choosing an ordering (a permutation) of the vertices and then building a new tree \(T_2\) in which a vertex \(u\) becomes a leaf if and only if, in our permutation, \(u\) appears **after** all of its neighbors.  (Equivalently, if we orient each edge \((u,v)\) toward the later‐in‐the‐permutation vertex, then a leaf in the new tree is exactly a **sink** of that orientation.)
+
+It is easy to see that in any orientation of a tree, the sinks form an independent set, and conversely **any** independent set can be realized as the set of sinks by an appropriate acyclic orientation (just direct every edge toward the chosen independent–set vertex).  Hence
+
+\[
+\max_{\text{shuffle}}(\#\text{leaves in }T_2)
+\;=\;
+\max_{\text{acyclic orientation}}(\#\text{sinks})
+\;=\;
+\alpha(T),
+\]
+
+the size of a maximum independent set of the tree \(T\).
+
+However, there is one extra subtlety:  if we choose a leaf of \(T\) as the very first vertex in the permutation (so it is the "root" of the shuffle), it will end up having exactly one child in \(T_2\) and so **also** count as a leaf in \(T_2\).  That gives us an extra “\(+1\)” if and only if we can choose a leaf \(v\) of \(T\) that **does not** appear in *every* maximum independent set of \(T\).  Equivalently, removing \(v\) from \(T\) does **not** decrease \(\alpha(T)\).  In that case we lose nothing from \(\alpha(T)\) by refusing to pick \(v\) in our independent set, and then we get to “use” \(v\) as the root leaf—adding one more leaf in \(T_2\).
+
+Putting it all together, the answer is
+
+\[
+\max_{\text{shuffle}}(\#\text{leaves in }T_2)
+\;=\;
+\alpha(T)
+\;+\;
+\bigl[\exists\text{ a leaf }v\text{ with }\alpha(T\setminus\{v\})=\alpha(T)\bigr],
+\]
+
+where \(\alpha(\cdot)\) denotes the size of a maximum independent set and \([P]\) is the Iverson bracket (1 if \(P\) is true, 0 otherwise).
+
+We can compute \(\alpha(T)\) by the usual tree‐DP:
+
+- Root the tree arbitrarily, say at vertex 1.
+- Define
+  \[
+     \text{dp0}[u] = \max(\text{independent set in the subtree of }u\text{ if }u\notin S),
+     \quad
+     \text{dp1}[u] = 1 + \sum_{\text{child }w}\text{dp0}[w].
+  \]
+- Then 
+  \(\displaystyle \alpha(T)=\max(\text{dp0}[1],\,\text{dp1}[1])\).
+
+To decide whether there is a leaf \(v\) with \(\alpha(T\setminus\{v\})=\alpha(T)\), we need to check whether \(v\) can be *excluded* from *some* maximum independent set of \(T\).  We do a second DP (a “reconstruction of choices”) which tracks for each node \(u\) whether it is possible, *in some maximum‐size solution*, to have \(u\notin S\).  We call these boolean arrays `poss0[u]` (can \(u\) be 0/excluded?) and `poss1[u]` (can \(u\) be 1/included?).  We initialize these at the root according to which of \(\text{dp0}[1],\text{dp1}[1]\) achieve the overall maximum, and then propagate *down* the tree:
+
+- If at a node \(u\) we *did* include \(u\) in the MIS (`state=1`), then *all* children must be in state 0.
+- If at a node \(u\) we did *not* include \(u\) (`state=0`), then each child \(w\) must choose whichever of \(\text{dp0}[w]\) or \(\text{dp1}[w]\) was used in computing \(\text{dp0}[u]\), and if they are equal the child can be in either state.
+
+After this “down‐pass,” for every leaf \(v\) of the original tree we check `poss0[v]`.  If it is true for *any* leaf \(v\), that means \(v\) can be left out of a maximum independent set (so removing \(v\) does not decrease \(\alpha\)), and hence we get the extra +1.
+
+Total time per test is \(O(n)\), so with \(\sum n\le3\cdot10^5\) it runs in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader() { br = new BufferedReader(new InputStreamReader(System.in)); }
+        String next() {
+            while (st == null || !st.hasMoreTokens()) {
+                try { st = new StringTokenizer(br.readLine()); }
+                catch (IOException e) { throw new RuntimeException(e); }
+            }
+            return st.nextToken();
+        }
+        int nextInt() { return Integer.parseInt(next()); }
+    }
+
+    public static void main(String[] args) {
+        FastReader in = new FastReader();
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            // Read tree
+            List<Integer>[] g = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) {
+                g[i] = new ArrayList<>();
+            }
+            for (int i = 0; i < n-1; i++) {
+                int u = in.nextInt(), v = in.nextInt();
+                g[u].add(v);
+                g[v].add(u);
+            }
+
+            // 1) Root the tree at 1, build a postorder
+            int[] parent = new int[n+1];
+            parent[1] = 0;
+            List<Integer> post = new ArrayList<>(n);
+
+            // Iterative DFS to get parent[] and postorder
+            Deque<int[]> stack = new ArrayDeque<>();
+            stack.push(new int[]{1, 0, 0}); // {node, parent, state=0:pre,1:post}
+            while (!stack.isEmpty()) {
+                int[] cur = stack.pop();
+                int u = cur[0], p = cur[1], st = cur[2];
+                if (st == 0) {
+                    parent[u] = p;
+                    // push post‐state
+                    stack.push(new int[]{u, p, 1});
+                    for (int w : g[u]) {
+                        if (w == p) continue;
+                        stack.push(new int[]{w, u, 0});
+                    }
+                } else {
+                    post.add(u);
+                }
+            }
+
+            // Build child lists
+            List<Integer>[] children = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) {
+                children[i] = new ArrayList<>();
+            }
+            for (int v = 2; v <= n; v++) {
+                children[parent[v]].add(v);
+            }
+
+            // 2) DP for maximum independent set
+            int[] dp0 = new int[n+1], dp1 = new int[n+1];
+            for (int u : post) {
+                // dp1[u] = 1 + sum dp0[child]
+                dp1[u] = 1;
+                for (int w : children[u]) {
+                    dp1[u] += dp0[w];
+                }
+                // dp0[u] = sum of max(dp0[child], dp1[child])
+                int s = 0;
+                for (int w : children[u]) {
+                    s += Math.max(dp0[w], dp1[w]);
+                }
+                dp0[u] = s;
+            }
+            // Best MIS size on the whole tree:
+            int alpha = Math.max(dp0[1], dp1[1]);
+
+            // 3) We now do a "possible states" DP to see which nodes can be 0/excluded
+            //    or 1/included in *some* optimum solution.
+            boolean[] poss0 = new boolean[n+1], poss1 = new boolean[n+1];
+
+            // We'll push (node,state) into a queue
+            Deque<int[]> q = new ArrayDeque<>();
+            // Initialize at root = 1
+            if (dp0[1] == alpha) {
+                poss0[1] = true;
+                q.add(new int[]{1,0});
+            }
+            if (dp1[1] == alpha) {
+                poss1[1] = true;
+                q.add(new int[]{1,1});
+            }
+
+            // Propagate down
+            while (!q.isEmpty()) {
+                int[] cur = q.poll();
+                int u = cur[0], st = cur[1];
+                if (st == 1) {
+                    // u is included => all children must be 0
+                    for (int w : children[u]) {
+                        if (!poss0[w]) {
+                            poss0[w] = true;
+                            q.add(new int[]{w, 0});
+                        }
+                    }
+                } else {
+                    // u is excluded => for each child we must match
+                    // whichever of dp0[w], dp1[w] was used
+                    for (int w : children[u]) {
+                        if (dp0[w] > dp1[w]) {
+                            // dp0[w] was used
+                            if (!poss0[w]) {
+                                poss0[w] = true;
+                                q.add(new int[]{w,0});
+                            }
+                        } else if (dp1[w] > dp0[w]) {
+                            // dp1[w] was used
+                            if (!poss1[w]) {
+                                poss1[w] = true;
+                                q.add(new int[]{w,1});
+                            }
+                        } else {
+                            // equal => child can be either 0 or 1
+                            if (!poss0[w]) {
+                                poss0[w] = true;
+                                q.add(new int[]{w,0});
+                            }
+                            if (!poss1[w]) {
+                                poss1[w] = true;
+                                q.add(new int[]{w,1});
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4) Now check if there is any *leaf* v (degree == 1) with poss0[v] == true.
+            //    If so, we can do alpha+1; otherwise just alpha.
+            int ans = alpha;
+            for (int v = 1; v <= n; v++) {
+                if (g[v].size() == 1) {
+                    if (poss0[v]) {
+                        ans = alpha + 1;
+                        break;
+                    }
+                }
+            }
+
+            out.println(ans);
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of key steps**
+
+1. **Tree‐DP for \(\alpha(T)\).**  
+   We root the tree at node 1 (arbitrary), do a post‐order, and set
+   \[
+     \text{dp1}[u] \;=\; 1 \;+\;\sum_{w\in\text{children}(u)}\text{dp0}[w],\quad
+     \text{dp0}[u] \;=\;\sum_{w\in\text{children}(u)}\max(\text{dp0}[w],\text{dp1}[w]).
+   \]
+   Then \(\alpha(T)=\max(\text{dp0}[1],\text{dp1}[1])\).
+
+2. **Reconstructing choice‐possibilities.**  
+   We build two boolean arrays `poss0[u], poss1[u]`, meaning “in *some* maximum‐size independent set of the entire tree, can \(u\) be excluded (0) / included (1)?”  
+   We start at the root: if `dp0[1]` achieves \(\alpha(T)\) we mark `poss0[1]=true`, and if `dp1[1]` does we mark `poss1[1]=true`.  
+   Then we do a BFS/DFS *down* the tree enforcing the DP‐choice constraints:
+   - If \(u\) is included (`state=1`), then *all* children must be excluded (`0`) because you cannot pick adjacent vertices.
+   - If \(u\) is excluded (`state=0`), then each child \(w\) must choose whichever of \(\text{dp0}[w]\) or \(\text{dp1}[w]\) actually contributed to \(\text{dp0}[u]\).  If \(\text{dp0}[w]\) and \(\text{dp1}[w]\) are equal, the child can be either.
+
+3. **The “+1 leaf” trick.**  
+   In the shuffle, if we pick a *leaf* \(v\) of the original tree to be the very first (the root of the shuffle), that vertex ends up having exactly one child in \(T_2\), and hence **it** is also a leaf in \(T_2\).  We only get that extra leaf if we can afford *not* to pick \(v\) in a maximum independent set of \(T\).  Concretely, we check if `poss0[v]` is true for some leaf \(v\).  If so, our final answer is
+   \[
+     \alpha(T)\;+\;1,
+   \]
+   otherwise it is just \(\alpha(T)\).
+
+Total complexity is \(O(n)\) per test, easily fitting the constraint \(\sum n\le3\times10^5\).

@@ -1,0 +1,154 @@
+**Analysis**
+
+We have a rooted “target” tree \(T\) with \(n\) vertices (numbered \(1\) through \(n\)), rooted at \(1\).  We want to find the smallest integer \(d\) so that a *perfect* binary tree of depth \(d\) (i.e.\ each internal node has exactly two children, every root–leaf path is length \(d\)) can be *transformed* into \(T\) by repeatedly deleting vertices and splicing their children up to their parent.
+
+It turns out one can show by a classic “prefix‐code/Kraft‐inequality” argument that if a node \(v\) of \(T\) has children \(u_1,\dots,u_k\) whose subtrees themselves demand depths
+\[
+   D_i = F(u_i)\quad(i=1\ldots k),
+\]
+then the minimum depth \(F(v)\) of a perfect subtree at \(v\) that can be transformed into that forest of \(k\) children is
+\[
+   F(v)\;=\;\max\!\Bigl(\; \max_i(D_i+1)\,,\;\big\lceil\log_2\!\bigl(\sum_{i=1}^k 2^{D_i}\bigr)\bigr\rceil\Bigr).
+\]
+- The term \(\max_i(D_i+1)\) simply enforces that every child subtree of requirement \(D_i\) must sit at depth at least \(D_i\), and since it must *be* a child of \(v\), we need \(d\ge D_i+1\).
+- The “Kraft‐sum” \(\sum_i2^{D_i}\le2^d\) is exactly the condition for embedding those \(k\) sub‐subtrees (of "size" \(2^{D_i}\)) disjointly into a perfect binary tree of depth \(d\).  Taking \(\lceil\log_2(\sum2^{D_i})\rceil\) is the minimal \(d\) with \(2^d\ge\sum2^{D_i}\).
+
+We do a post‐order DP, computing \(F(v)\) from the \(F(\text{child})\).  Since the input guarantees \(p_i< i\), children of \(i\) are all larger than \(i\), so simply processing vertices in descending order \(n,n-1,\dots,1\) is a valid post‐order.
+
+We store the tree in a single adjacency‐list (arrays `head[]`, `to[]`, `nxt[]`) and keep an integer array `F[]`.  At each node we:
+
+1. If it has no children, set `F[v]=0`.
+2. Otherwise gather the multiset of child‐DPs \(\{D_i\}\), find
+   \[
+     M=\max_iD_i,\quad
+     \text{sum}= \sum_i 2^{D_i-M}\quad(\text{a real number}\le k),
+   \]
+   compute 
+   \[
+     h_1 = M + \bigl\lceil\log_2(\text{sum})\bigr\rceil,
+     \quad
+     h_2 = M+1,
+     \quad
+     F(v)=\max(h_1,h_2).
+   \]
+   We use `double` and `Math.scalb(1.0, D_i-M)` to get exactly \(2^{D_i-M}\), sum them in a `double`, then `Math.log(sum)/Math.log(2)` plus a small epsilon and `Math.ceil`.
+
+Finally we print `F[1]`, which is the minimal perfect‐tree depth Chloe needs.
+
+This runs in \(O(n)\) per test (summing over all children across all nodes is \(n-1\)) and is comfortably within time and memory limits for \(n\le10^6\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 1000000 + 5;
+    static int[] head = new int[MAXN];
+    static int[] to   = new int[MAXN];
+    static int[] nxt  = new int[MAXN];
+    static int   edgeCnt;
+    static int[] F    = new int[MAXN];
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out  = new PrintWriter(new BufferedWriter(new OutputStreamWriter(System.out)));
+        int t = Integer.parseInt(in.readLine().trim());
+        
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine().trim());
+            // Clear adjacency
+            for (int i = 1; i <= n; i++) head[i] = 0;
+            edgeCnt = 0;
+
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            for (int i = 2; i <= n; i++) {
+                int p = Integer.parseInt(st.nextToken());
+                // add edge p -> i
+                edgeCnt++;
+                to[edgeCnt]  = i;
+                nxt[edgeCnt] = head[p];
+                head[p]      = edgeCnt;
+            }
+
+            // Process nodes in descending order (post-order)
+            for (int v = n; v >= 1; v--) {
+                int e = head[v];
+                if (e == 0) {
+                    // no children
+                    F[v] = 0;
+                    continue;
+                }
+                // gather children D_i:
+                int M = 0;
+                // first pass: find max
+                for (int ee = e; ee != 0; ee = nxt[ee]) {
+                    int c = to[ee];
+                    if (F[c] > M) M = F[c];
+                }
+                // second pass: sum 2^(D_i - M)
+                double sum = 0.0;
+                for (int ee = e; ee != 0; ee = nxt[ee]) {
+                    int c = to[ee];
+                    // exactly 2^(F[c] - M):
+                    sum += Math.scalb(1.0, F[c] - M);
+                }
+                // now log2(sum), careful with precision
+                double log2sum = Math.log(sum) / Math.log(2.0);
+                // we subtract a tiny epsilon to protect against  rounding upward
+                int  tceil   = (int)Math.ceil(log2sum - 1e-12);
+                int  h1      = M + tceil;    // from Kraft‐sum
+                int  h2      = M + 1;         // from child‐depth
+                F[v]         = Math.max(h1, h2);
+            }
+
+            // answer is F[1]
+            out.println(F[1]);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **DP definition**  
+   Let
+     \[
+        F(v) = \text{the minimum depth of a perfect binary tree rooted at }v
+                \text{ that can be spliced–down to the given subtree at }v.
+     \]
+   - If \(v\) is a leaf, \(F(v)=0\).
+   - Otherwise if its children demand depths \(D_1,\dots,D_k\), one shows two necessary constraints:
+     1. Each child of depth-demand \(D_i\) forces our depth \(d\ge D_i+1\).
+     2.  A perfect tree of depth \(d\) has \(2^d\) “slots” (by Kraft’s inequality), so 
+        \(\sum_{i=1}^k2^{D_i}\le 2^d\), i.e.\ \(d\ge\lceil\log_2(\sum2^{D_i})\rceil\).
+   Hence
+     \[
+       F(v)
+         = \max\!\Bigl(\max_i(D_i+1),\;\bigl\lceil\log_2\!\sum_{i=1}^k2^{D_i}\bigr\rceil\Bigr).
+     \]
+
+2. **Post‐order evaluation**  
+   Because the input has \(p_i< i\), every child of \(i\) has index \(>i\).  Thus a simple loop
+   \(\;v=n,n-1,\dots,1\)\; is already a valid post‐order: by the time we reach \(v\), all \(F(c)\)
+   for children \(c\) are ready.
+
+3. **Handling huge exponents**  
+   We only need \(\sum 2^{D_i}\) up to taking \(\log_2\).  We factor out the largest exponent
+   \(M=\max_iD_i\):
+     \[
+       \sum_{i=1}^k2^{D_i}
+         = 2^M\sum_{i=1}^k2^{D_i-M}.
+     \]
+   We compute \(\sum 2^{D_i-M}\) by `double sum += Math.scalb(1.0, D_i-M)`, then
+   \(\lceil\log_2(\sum2^{D_i-M})\rceil\) is just
+     \[
+       \Bigl\lceil\,\log_2(\sum)\Bigr\rceil
+       = \bigl\lceil\,\tfrac{\ln(\sum)}{\ln(2)}\bigr\rceil.
+     \]
+   Finally we add back \(M\).
+
+This runs in \(O(n)\) per test (total \(\sum n\le10^6\)) and uses only \(O(n)\) memory.

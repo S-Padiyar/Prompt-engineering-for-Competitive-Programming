@@ -1,0 +1,161 @@
+**Analysis**
+
+We have an array a of length n.  Let \(c_i\) be the \(i\)-th cyclic shift of a, and define the big array
+
+\[
+   b \;=\; c_1 \;+\; c_2\;+\;\cdots+\;c_n
+\]
+
+where each \(c_i\) itself has length \(n\), so \(\lvert b\rvert = n^2\).  We are asked \(q\) queries, each asking for
+
+\[
+   \sum_{k=\ell}^{r} b_k,
+\]
+
+where \(1\le \ell\le r\le n^2\).  Obviously \(n^2\) can be as large as \((2\times10^5)^2=4\cdot10^{10}\), far too big to build \(b\) explicitly.
+
+However, \(b\) is just \(n\) blocks of length \(n\) each:
+
+- Block \(0\) (in \(0\)-based) is \(c_1\), i.e.\ \(a[0],a[1],\dots,a[n-1]\).
+- Block \(1\) is \(c_2\), i.e.\ \(a[1],a[2],\dots,a[n-1],a[0]\).
+- …
+- Block \(i\) is the cyclic shift starting at \(a[i]\), i.e.\ \(a[i],a[i+1],\dots,a[n-1],a[0],\dots,a[i-1]\).
+
+We need to sum a (possibly large) subarray of \(b\).  Any subarray \([\ell,r]\) of \(b\) either lies entirely in a single block, or spans several blocks:
+
+1.  **Same block**: If \(\lfloor(\ell-1)/n\rfloor=\lfloor(r-1)/n\rfloor\), then both \(\ell\) and \(r\) lie in the same cyclic-shift block.  We can map the positions in that block back into a subarray of \(a\), taking care of wrap around using prefix sums.
+
+2.  **Multiple blocks**:
+   - A **left partial** “tail” in the \(\ell\)-block,
+   - Some number of **full blocks** each summing to \(\sum_{i=0}^{n-1}a_i\),
+   - A **right partial** “head” in the \(r\)-block.
+
+All of these can be answered in \(O(1)\) time once we have a prefix‐sum array of \(a\).  Doing \(O(1)\) work per query and \(O(n)\) preprocessing per test case is fast enough since \(\sum n\le2\times10^5\) and \(\sum q\le2\times10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int q = Integer.parseInt(st.nextToken());
+
+            // Read array a[0..n-1]
+            st = new StringTokenizer(br.readLine());
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // Build prefix sums: pre[i] = sum of a[0..i-1], pre[0]=0
+            long[] pre = new long[n+1];
+            for (int i = 0; i < n; i++) {
+                pre[i+1] = pre[i] + a[i];
+            }
+            long sumA = pre[n];  // total sum of one block (one copy of a)
+
+            // Process queries
+            while (q-- > 0) {
+                // Read 1-based l,r ; convert to 0-based
+                st = new StringTokenizer(br.readLine());
+                long l = Long.parseLong(st.nextToken()) - 1;
+                long r = Long.parseLong(st.nextToken()) - 1;
+
+                // Which block and which offset inside that block?
+                int lb = (int)(l / n), lo = (int)(l % n);
+                int rb = (int)(r / n), ro = (int)(r % n);
+
+                long answer = 0;
+                
+                // Case 1: both endpoints in the same block
+                if (lb == rb) {
+                    int len = ro - lo + 1;
+                    answer = partialSumInBlock(pre, n, lb, lo, len);
+                } else {
+                    // Left partial block
+                    int lenL = n - lo;
+                    answer += partialSumInBlock(pre, n, lb, lo, lenL);
+
+                    // Full blocks in between
+                    long full = rb - lb - 1;
+                    if (full > 0) {
+                        answer += full * sumA;
+                    }
+
+                    // Right partial block
+                    int lenR = ro + 1;
+                    answer += partialSumInBlock(pre, n, rb, 0, lenR);
+                }
+
+                sb.append(answer).append('\n');
+            }
+        }
+
+        System.out.print(sb);
+    }
+
+    /**
+     * Compute the sum of 'len' elements inside the block whose
+     * cyclic‐shift start index is 'shift'
+     * (0-based), beginning at offset 'off' (0-based) within that block.
+     *
+     * pre is the prefix‐sum array of the original a[0..n-1]:
+     *   pre[k] = a[0] + a[1] + ... + a[k-1].
+     *
+     * We map the block's positions into the cyclic a[] and sum,
+     * handling wrap neatly.
+     */
+    private static long partialSumInBlock(long[] pre, int n,
+                                          int shift, int off, int len) {
+        // Index in a[] where we start extracting
+        int start = shift + off;
+        if (start >= n) {
+            start -= n;  // equivalent to (start % n) but start < 2n
+        }
+
+        // If we don't wrap around the end of a[]
+        if (start + len <= n) {
+            return pre[start + len] - pre[start];
+        } else {
+            // We wrap around: first chunk to end of a[], then from a[0]
+            long part1 = pre[n] - pre[start];
+            int rem = (start + len) - n;
+            long part2 = pre[rem];  // pre[rem] = sum of a[0..rem-1]
+            return part1 + part2;
+        }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Block Identification**  
+   The big array \(b\) of length \(n^2\) is viewed as \(n\) consecutive blocks each of length \(n\).  
+   - Block index \(B\) (0-based) spans positions \([Bn..Bn+n-1]\) of \(b\).  
+   - To handle a query \([\ell,r]\), convert to 0-based and compute  
+     \[
+       \text{lb} = \lfloor \ell/n\rfloor,\quad 
+       \text{lo} = \ell \bmod n;\quad
+       \text{rb} = \lfloor r/n\rfloor,\quad
+       \text{ro} = r \bmod n.
+     \]
+2. **Same‐Block Query**  
+   If \(\text{lb} = \text{rb}\), the whole query lies in one cyclic shift.  We translate the offset \(\text{lo}\) in that block of length \(n\) back into indices of \(a\), handling wrap via prefix sums.
+3. **Multi‐Block Query**  
+   Otherwise the range covers:  
+   - A **left partial** tail in block \(\text{lb}\),  
+   - Zero or more **entire blocks** each of whose sum is \(\sum_{i=0}^{n-1}a_i\),  
+   - A **right partial** head in block \(\text{rb}\).  
+
+   We add these three pieces in \(O(1)\) time each (using prefix sums), so each query is \(O(1)\).  
+
+Overall the preprocessing is \(O(n)\) and each of the \(q\) queries is \(O(1)\).  Summed over all test cases, this runs in \(O\bigl(\sum n + \sum q\bigr)\le4\times10^5\), easily within time limits.

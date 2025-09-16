@@ -1,0 +1,165 @@
+**Analysis**
+
+We have an array a[1…l] of “target‐values” and an n×m grid b, whose entries are also small integers (≤7).  Two players, T (Tsovak) and N (Narek), alternate choosing cells of the grid in strictly down‐right order, each time matching the next value of a.  If on your turn you cannot find the required value in the remaining submatrix, you lose; also if you manage to pick the last element of a, your opponent then has no move and so loses.
+
+We want to know whether the first player (T) wins under optimal play.
+
+A standard way is to define
+
+    win[k][r][c] = “from step k, with submatrix whose upper‐left corner is (r,c), the player to move has a forced win.”
+
+Then the recurrence is
+
+    win[l+1][r][c] = false  (no more targets ⇒ current player loses)
+
+and for k≤l,
+
+    win[k][r][c] = OR_{(i,j) ∈ positions of a[k], i≥r, j≥c} ( NOT win[k+1][ i+1, j+1 ] ).
+
+That says: at step k you must pick some cell (i,j) matching a[k] in the current submatrix.  After that, the opponent faces step k+1 on the submatrix (i+1…n, j+1…m).  If any choice leads the opponent to a losing position, you win; if you have no legal choice you lose.
+
+We only need win[1][1][1].  A direct 3D DP has size O(l·n·m) ≃ 300·300·300≈27 million booleans, and each transition might scan many cells, which is too big.  We exploit two facts:
+
+ 1.  The values in a and b are ≤7, so there are at most 7 distinct cell‐lists to consider.
+ 2.  The recurrence for win[k] uses only win[k+1], and in fact is a 2D “suffix‐OR” over a sparse “val[r][c]” array of size n×m.
+
+Concretely:
+
+  • We maintain two 2D boolean arrays of size (n+2)×(m+2):  
+      winNext[r][c] = win[k+1][r][c]  
+      winCurr[r][c] = win[k][c]  
+    (We actually only ever index r,c up to n+1,m+1; beyond the grid we treat as “false.”)
+
+  • To build winCurr from winNext and the k‐th target v=a[k], we first build  
+      val[r][c] = true  
+        exactly at those grid‐cells (r,c) whose entry b[r][c]=v _and_ for which_ winNext[r+1][c+1]==false_  
+    (picking (r,c) forces the opponent into a losing state).  
+
+  • Then  
+      winCurr[r][c] = val[r][c]  OR  winCurr[r+1][c]  OR  winCurr[r][c+1],  
+    computed in decreasing order of r and c (so that the OR of the suffix can be formed in O(1) per cell).
+
+  • Finally we swap winNext⇄winCurr and proceed to k–1.
+
+At the end we look at winNext[1][1] (which then is win[1][1][1]).  If true, T wins; else N wins.
+
+This runs in O(l·(n·m + size_of_poslists)), and since ∑nm≤10^5, ∑l≤300, it is sufficiently fast in Java.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(in.readLine());
+        int t = Integer.parseInt(st.nextToken());
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            st = new StringTokenizer(in.readLine());
+            int l = Integer.parseInt(st.nextToken());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+
+            // read the target array a[1..l]
+            int[] a = new int[l+1];
+            st = new StringTokenizer(in.readLine());
+            for (int i = 1; i <= l; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // read the grid and build position‐lists for values 1..7
+            @SuppressWarnings("unchecked")
+            ArrayList<int[]>[] pos = new ArrayList[8];
+            for (int v = 1; v <= 7; v++) {
+                pos[v] = new ArrayList<>();
+            }
+            for (int i = 1; i <= n; i++) {
+                st = new StringTokenizer(in.readLine());
+                for (int j = 1; j <= m; j++) {
+                    int v = Integer.parseInt(st.nextToken());
+                    // record that grid‐cell (i,j) has value v
+                    pos[v].add(new int[]{i, j});
+                }
+            }
+
+            // We'll do DP downwards from k=l..1
+            // winNext[r][c] = win[k+1][r][c], winCurr[r][c] = win[k][r][c]
+            boolean[][] winNext = new boolean[n+2][m+2];
+            boolean[][] winCurr = new boolean[n+2][m+2];
+            // valGen trick to avoid clearing the val[][] every time
+            int[][] valGen = new int[n+2][m+2];
+            int gen = 1;
+
+            // Initialize winNext = false (this is win[l+1][r][c] = false).
+            // Now proceed k = l down to 1:
+            for (int k = l; k >= 1; k--, gen++) {
+                int v = a[k];
+                // Mark val[r][c] = true exactly where b[r][c]==v and winNext[r+1][c+1]==false
+                for (int[] xy : pos[v]) {
+                    int r = xy[0], c = xy[1];
+                    if (!winNext[r+1][c+1]) {
+                        valGen[r][c] = gen;
+                    }
+                }
+                // Build winCurr as the 2D suffix‐OR of val
+                // Borders are false:
+                for (int c = 1; c <= m+1; c++) {
+                    winCurr[n+1][c] = false;
+                }
+                for (int r = 1; r <= n; r++) {
+                    winCurr[r][m+1] = false;
+                }
+                // fill the interior from bottom‐right upwards
+                for (int r = n; r >= 1; r--) {
+                    for (int c = m; c >= 1; c--) {
+                        boolean canWinHere = (valGen[r][c] == gen)
+                            || winCurr[r+1][c]
+                            || winCurr[r][c+1];
+                        winCurr[r][c] = canWinHere;
+                    }
+                }
+                // swap winNext and winCurr for the next iteration
+                boolean[][] tmp = winNext;
+                winNext = winCurr;
+                winCurr = tmp;
+            }
+
+            // At the end winNext[1][1] = win[1][1][1].
+            sb.append(winNext[1][1] ? 'T' : 'N').append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1. **pos‐lists**  
+   Since all grid‐values are ≤7, for each value v we collect a list of all `(r,c)` where `b[r][c]==v`.
+
+2. **DP definition**  
+   `win[k][r][c]` = “current player to move, faced with target index k and submatrix starting at row r and column c, has a forced win?”
+
+3. **Recurrence**  
+   If `k>l` no targets remain ⇒ lose ⇒ `win[k][r][c]=false`.  
+   Otherwise
+     win[k][r][c] = OR over all legal picks `(i,j)` matching `a[k]` with `i>=r, j>=c`
+                         of NOT win[k+1][i+1][j+1].
+
+4. **2D suffix‐OR optimization**  
+   For each k we build a small “val[r][c]” array that is true exactly at the cells `(r,c)` matching `a[k]` _and_ for which the opponent’s state `win[k+1][r+1][c+1]` is false (so they would lose).  Then  
+     win[k][r][c] = OR_{all i>=r, j>=c} val[i][j],  
+   which is simply a 2D suffix‐OR that one can fill in O(n·m) by visiting the grid from bottom‐right to top‐left and doing  
+     win[k][r][c] = val[r][c] OR win[k][r+1][c] OR win[k][r][c+1].
+
+5. **Rolling‐array**  
+   We never need more than the “next” layer, so we maintain two 2D arrays `winNext` = win[k+1], `winCurr` = win[k], and swap them each iteration.
+
+6. **Answer**  
+   After computing down to k=1, we examine `win[1][1][1]`.  If true, Tsovak (the first player) wins; otherwise Narek wins.
+
+This runs in O(l·(n·m + total_positions)) which under the problem constraints is quite safe in Java.

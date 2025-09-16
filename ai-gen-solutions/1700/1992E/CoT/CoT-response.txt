@@ -1,0 +1,188 @@
+**Analysis**
+
+We have a (wrong) algorithm that, given integers \(n,a,b\), does
+
+1. Treats \(n\) as a string \(\mathrm{str}(n)\) of length \(L\).
+2. Forms the string 
+   
+   \[
+     S = \underbrace{\mathrm{str}(n)\;\|\;\mathrm{str}(n)\;\|\;\cdots\|\;\mathrm{str}(n)}_{a\text{ times}},
+   \]
+   so \(\lvert S\rvert = a\cdot L\).
+3. "Subtracts" \(b\) by chopping off the last \(b\) characters of \(S\).  If \(b\ge\lvert S\rvert\) it becomes empty.
+4. Outputs the remaining non‐empty string and interprets it as an integer.
+
+We want those \((a,b)\) (with \(1\le a\le10000\), \(1\le b\le\min(10000,a\,n)\)) for which that *wrong* procedure still prints exactly the correct integer
+\[
+   n\cdot a - b
+\]
+(as a non‐empty string).
+
+---
+
+**Key observation**  
+
+Let \(n\) have \(L\) digits, and write its decimal string as  
+\[
+   \mathrm{str}(n)=d_0d_1\cdots d_{L-1}.
+\]
+When you concatenate \(a\) copies you get a string \(S\) of length \(M=aL\).  Chopping off the last \(b\) characters leaves the *prefix* of length
+\[
+   M - b \;=\; aL - b.
+\]
+Call that length \(k\).  Then the resulting integer is the first \(k\) digits of the infinite periodic string
+\[
+   d_0d_1\cdots d_{L-1}\,d_0d_1\cdots d_{L-1}\cdots
+\]
+(we repeat \(\mathrm{str}(n)\) over and over).  Denote by \(P(k)\) the integer whose decimal representation is those first \(k\) digits.  One checks easily
+\[
+   b \;=\; aL - k,
+\]
+and we want
+\[
+   P(k)\;=\;n\,a \;-\; b
+         \;=\;n\,a - (aL - k)
+         \;=\;a\,(n - L)\;+\;k.
+\]
+Hence
+\[
+   a\,(n - L)\;=\;P(k)\;-\;k,
+\]
+so if we set
+\[
+   \Delta = n - L,\quad 
+   \text{we need}\quad P(k)-k \;\equiv\;0\pmod{\Delta}, 
+   \quad a=\frac{P(k)-k}{\Delta},
+\]
+with
+\[
+   1\;\le a\le 10000,\qquad
+   1\le b = aL - k \le 10000,\qquad
+   aL-k\ge1\quad(\text{so the output is nonempty}).
+\]
+
+The only degenerate case is \(n-L=0\).  That happens only if \(n=1\) (since \(L\) is the digit‐length of \(n\)).  A brief check shows that for \(n=1\), one gets exactly the infinite solution
+\[
+   a=2,3,4,\dots,10000,\quad b=a-1,
+\]
+i.e.\ \(9999\) pairs.
+
+For \(n>1\) we have \(\Delta>0\).  We can then just loop over possible prefix‐lengths \(k=1,2,3,\dots\), build
+\[
+   P(k)=\text{the first }k\text{ digits of the infinite repetition of }\mathrm{str}(n),
+\]
+(which one can do by maintaining a small `BigInteger` prefix), test whether \((P(k)-k)\bmod\Delta=0\), compute
+\[
+  a=\frac{P(k)-k}{\Delta},
+\quad
+  b=a\,L-k,
+\]
+and check \(1\le a,b\le 10000\).  Since \(P(k)\) grows roughly like \(10^{k}\), once \((P(k)-k)>\Delta\cdot10000\) we know all further \(a\) would exceed \(10000\), so we stop.
+
+We collect all valid \((a,b)\), sort them by \(a\), and print them.
+
+---
+
+```java
+import java.io.*;
+import java.math.BigInteger;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        BufferedWriter out = new BufferedWriter(new OutputStreamWriter(System.out));
+
+        int t = Integer.parseInt(in.readLine().trim());
+        for (int _case = 0; _case < t; _case++) {
+            int n = Integer.parseInt(in.readLine().trim());
+            String s = String.valueOf(n);
+            int L = s.length();
+
+            // Special case n=1
+            if (n == 1) {
+                // All a=2..10000, b=a-1
+                out.write("9999\n");
+                for (int a = 2; a <= 10000; a++) {
+                    out.write(a + " " + (a - 1) + "\n");
+                }
+                continue;
+            }
+
+            int delta = n - L;  // must be >0 for n>1
+            BigInteger BIG_DELTA = BigInteger.valueOf(delta);
+            int maxA = 10000, maxB = 10000;
+
+            // We'll build prefixes of the infinite repetition of s
+            List<int[]> ans = new ArrayList<>();
+            BigInteger prefixVal = BigInteger.ZERO;
+            // We'll cycle through digits of s
+            char[] digits = s.toCharArray();
+            int pos = 0;
+
+            // A reasonable cut-off: as soon as (P(k)-k) > delta*10000, further a's >10000
+            BigInteger limit = BIG_DELTA.multiply(BigInteger.valueOf(maxA));
+
+            // Try prefix lengths k = 1,2,3,...
+            for (int k = 1; k <= 200; k++) {
+                // Extend prefix by one digit
+                prefixVal = prefixVal.multiply(BigInteger.TEN)
+                                     .add(BigInteger.valueOf(digits[pos] - '0'));
+                pos = (pos + 1) % L;
+
+                BigInteger numer = prefixVal.subtract(BigInteger.valueOf(k));
+                // If numer < 0, a would be negative or zero → skip
+                if (numer.signum() <= 0) {
+                    continue;
+                }
+                // If numer > delta*10000, we can stop
+                if (numer.compareTo(limit) > 0) {
+                    break;
+                }
+
+                // Check divisibility
+                if (numer.mod(BIG_DELTA).equals(BigInteger.ZERO)) {
+                    BigInteger aBig = numer.divide(BIG_DELTA);
+                    int a = aBig.intValue();
+                    if (a >= 1 && a <= maxA) {
+                        int b = a * L - k;
+                        if (b >= 1 && b <= maxB) {
+                            // Valid pair
+                            ans.add(new int[]{a, b});
+                        }
+                    }
+                }
+            }
+
+            // Sort by increasing a
+            ans.sort(Comparator.comparingInt(x -> x[0]));
+
+            // Output
+            out.write(ans.size() + "\n");
+            for (int[] p : ans) {
+                out.write(p[0] + " " + p[1] + "\n");
+            }
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of key steps**
+
+1. **Case \(n=1\).**  
+   Then \(L=1\) and the equation \(a(n-L)=P(k)-k\) becomes \(0 = P(k)-k\).  One checks only \(k=1\) works (prefix `"1"` gives \(P(1)=1\)), and that forces \(b=a\cdot1-1=a-1\).  All \(a=2,3,\dots,10000\) then give valid \((a,b)\).  
+
+2. **General case \(n>1\).**  
+   - Let \(L=\) digit‐length of \(n\), \(\Delta = n-L\).  
+   - The necessary and sufficient condition is
+     \[
+       a\,(n-L) \;=\; P(k)-k,
+       \quad b = aL - k,
+       \quad 1\le a,b\le10000.
+     \]
+   - We generate the prefix integer \(P(k)\) *digit by digit* in a `BigInteger prefixVal`, cycling through the digits of \(\mathrm{str}(n)\).  
+   - For each \(k\) we form \(\mathrm{numer} = P(k)-k\).  If \(\mathrm{numer}\ge1\) and divisible by \(\Delta\), we set \(a=\mathrm{numer}/\Delta\), check \(1\le a\le10000\), compute \(b=aL-k\), and check \(1\le b\le10000\).  
+   - We also stop once \(\mathrm{numer}>\Delta\cdot10000\), since then \(a>(10000)\) and larger \(k\) only makes \(P(k)\) bigger.
+
+This runs in \(O(t\cdot K)\) time where \(K\approx100\) suffices (because the prefix integer grows fast), easily within the limits even for \(t\le100\).

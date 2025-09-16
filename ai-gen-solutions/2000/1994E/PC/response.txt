@@ -1,0 +1,106 @@
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 1000005;
+    static int[] head = new int[MAXN];
+    static int[] to   = new int[MAXN];
+    static int[] nxt  = new int[MAXN];
+    static int   ec;
+    static int[] size = new int[MAXN];
+    static int[] stackNode  = new int[MAXN];
+    static int[] stackState = new int[MAXN];
+
+    static void addEdge(int u, int v) {
+        to[ec] = v;
+        nxt[ec] = head[u];
+        head[u] = ec++;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder out = new StringBuilder();
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            int k = Integer.parseInt(in.readLine().trim());
+            boolean multiple = (k >= 2);
+            long globalOR = 0;
+            long bestSingle = 0L;
+
+            for (int ti = 0; ti < k; ti++) {
+                int n = Integer.parseInt(in.readLine().trim());
+                // init adjacency
+                for (int i = 1; i <= n; i++) head[i] = -1;
+                ec = 0;
+
+                if (n > 1) {
+                    StringTokenizer st = new StringTokenizer(in.readLine());
+                    for (int i = 2; i <= n; i++) {
+                        int p = Integer.parseInt(st.nextToken());
+                        addEdge(p, i);
+                    }
+                } else {
+                    // single node tree: no parents line or empty
+                    if (n == 1) {
+                        String line = in.readLine().trim();
+                        if (!line.isEmpty()) {
+                            // in case there's an extra blank
+                        }
+                    }
+                }
+
+                // iterative post-order DFS from root=1
+                int sp = 0;
+                stackNode[sp] = 1;
+                stackState[sp] = 0;
+                sp++;
+                while (sp > 0) {
+                    sp--;
+                    int u = stackNode[sp];
+                    int stt = stackState[sp];
+                    if (stt == 0) {
+                        // pre
+                        stackNode[sp] = u;
+                        stackState[sp] = 1;
+                        sp++;
+                        // push children
+                        for (int e = head[u]; e != -1; e = nxt[e]) {
+                            int v = to[e];
+                            stackNode[sp] = v;
+                            stackState[sp] = 0;
+                            sp++;
+                        }
+                    } else {
+                        // post
+                        int s = 1;
+                        for (int e = head[u]; e != -1; e = nxt[e]) {
+                            s += size[to[e]];
+                        }
+                        size[u] = s;
+                    }
+                }
+
+                int N = size[1];
+                if (multiple) {
+                    for (int i = 1; i <= n; i++) {
+                        globalOR |= size[i];
+                    }
+                } else {
+                    long best = N; 
+                    for (int i = 2; i <= n; i++) {
+                        long s = size[i];
+                        long cand = s | (N - s);
+                        if (cand > best) best = cand;
+                    }
+                    bestSingle = best;
+                }
+            }
+
+            long ans = multiple ? globalOR : bestSingle;
+            out.append(ans).append('\n');
+        }
+        System.out.print(out.toString());
+    }
+}
+```

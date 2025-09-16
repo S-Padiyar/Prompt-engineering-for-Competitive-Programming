@@ -1,0 +1,193 @@
+**Analysis**
+
+We have an undirected graph on \(n\) vertices and \(m\) edges.  Marian starts at vertex \(1\), Robin at vertex \(n\).  Some of the vertices \(a_1,\dots,a_h\) each hold a single horse.  A horse, once mounted, immediately halves the remaining travel‐time on every subsequent edge.  You may mount at most one horse (and it lasts to the end), you cannot dismount, and mounting costs zero time.  Both travelers depart at time \(0\), may wait at vertices for the other, and the meeting must occur at a vertex.  We want to minimize the time \(T\) such that they can both be at the same vertex at or before \(T\).
+
+Key observation:  Since waiting is allowed, the meeting time is
+\[
+  T = \min_{v\in V}\,\max\bigl(\text{time\_Marian\_to}(v),\;\text{time\_Robin\_to}(v)\bigr),
+\]
+where each “time\_X\_to(\(v\))” is the minimum travel‐time from X’s start to \(v\), using at most one horse along the way (and paying full cost on edges up to mounting and half cost after).
+
+We can compute for each start (1 for Marian, \(n\) for Robin) the distance to every vertex in **two states**:
+
+  • **State 0** = “on foot, not yet mounted.”  
+  • **State 1** = “already mounted, travelling at half‐speed.”
+
+We do a 0–1 (well, nonnegative) Dijkstra on \(2n\) nodes:
+
+  – Node \((u,0)\) is “we are at \(u\) on foot.”  
+  – Node \((u,1)\) is “we are at \(u\) on horseback.”  
+
+Transitions:
+
+  1. From \((u,0)\) to \((u,1)\) at cost 0 if \(u\) has a horse.  
+  2. From \((u,0)\) to \((v,0)\) at cost \(w\) for each edge \(u\!-\!v\) of weight \(w\).  
+  3. From \((u,1)\) to \((v,1)\) at cost \(w/2\) for each edge \(u\!-\!v\).  
+
+We run this Dijkstra twice: once from \((1,0)\) for Marian, once from \((n,0)\) for Robin.  Let
+
+\[
+  d_{M,0}[u],\,d_{M,1}[u]
+  \quad\text{be Marian’s best times to \((u,0)\) and \((u,1)\)}, 
+\]
+and similarly \(\;d_{R,0}[u],\,d_{R,1}[u]\) for Robin.  Then the actual best time to reach vertex \(u\) is
+
+\[
+  D_M[u] = \min\bigl(d_{M,0}[u],\,d_{M,1}[u]\bigr),
+  \quad
+  D_R[u] = \min\bigl(d_{R,0}[u],\,d_{R,1}[u]\bigr).
+\]
+
+Finally
+
+\[
+  \text{answer}
+  \;=\;
+  \min_{u=1\ldots n}
+  \max\bigl(D_M[u],\,D_R[u]\bigr),
+\]
+or \(-1\) if no vertex \(u\) is reachable by both.
+
+Each test case takes \(O\bigl((n+m)\log(n)\bigr)\) for one Dijkstra, so \(O\bigl((n+m)\log n\bigr)\) per test.  Since \(\sum n,\sum m\le 2\times10^5\), this easily fits under the 5s limit with a good priority queue implementation in Java.
+
+---
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final long INF = Long.MAX_VALUE / 4;
+
+    static class Edge {
+        int to;
+        int w;
+        Edge(int t, int ww) { to = t; w = ww; }
+    }
+
+    // Dijkstra over 2*n states: (u,0) = on foot, (u,1) = on horseback.
+    // horse[u] = true if there's a horse at u.
+    // Returns an array best[u] = min time to reach u in either state.
+    static long[] multiStateDijkstra(int n, List<Edge>[] adj, boolean[] horse, int start) {
+        int N = 2 * n;
+        long[] dist = new long[N];
+        Arrays.fill(dist, INF);
+        // priority queue of (dist, nodeIndex)
+        PriorityQueue<long[]> pq = new PriorityQueue<>(Comparator.comparingLong(a -> a[0]));
+
+        // start at (start, state=0)
+        dist[start] = 0L;
+        pq.add(new long[]{0L, start});
+
+        while (!pq.isEmpty()) {
+            long[] cur = pq.poll();
+            long cd = cur[0];
+            int idx = (int) cur[1];
+            if (cd > dist[idx]) continue;
+            
+            int u = idx < n ? idx : (idx - n);
+            int state = idx < n ? 0 : 1;
+
+            // If on foot and there's a horse here, try mounting for 0 cost:
+            if (state == 0 && horse[u]) {
+                int nxt = u + n; // (u,1)
+                if (dist[nxt] > cd) {
+                    dist[nxt] = cd;
+                    pq.add(new long[]{cd, nxt});
+                }
+            }
+
+            // Traverse edges
+            for (Edge e : adj[u]) {
+                int v = e.to;
+                long cost = cd + (state == 0 ? e.w : e.w / 2);
+                int nxtIdx = (state == 0 ? v : v + n);
+                if (dist[nxtIdx] > cost) {
+                    dist[nxtIdx] = cost;
+                    pq.add(new long[]{cost, nxtIdx});
+                }
+            }
+        }
+
+        // Build the best[u] = min(dist[u,0], dist[u,1])
+        long[] best = new long[n];
+        for (int u = 0; u < n; u++) {
+            best[u] = Math.min(dist[u], dist[u + n]);
+        }
+        return best;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            int h = Integer.parseInt(st.nextToken());
+
+            // read horse locations
+            boolean[] horse = new boolean[n];
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < h; i++) {
+                int v = Integer.parseInt(st.nextToken()) - 1;
+                horse[v] = true;
+            }
+
+            // build graph
+            List<Edge>[] adj = new ArrayList[n];
+            for (int i = 0; i < n; i++) adj[i] = new ArrayList<>();
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(in.readLine());
+                int u = Integer.parseInt(st.nextToken()) - 1;
+                int v = Integer.parseInt(st.nextToken()) - 1;
+                int w = Integer.parseInt(st.nextToken());
+                adj[u].add(new Edge(v, w));
+                adj[v].add(new Edge(u, w));
+            }
+
+            // Dijkstra from Marian's start (1 → index 0)
+            long[] Dm = multiStateDijkstra(n, adj, horse, 0);
+            // Dijkstra from Robin's start (n → index n-1)
+            long[] Dr = multiStateDijkstra(n, adj, horse, n - 1);
+
+            // find min over vertices of max(Dm[u], Dr[u])
+            long ans = INF;
+            for (int u = 0; u < n; u++) {
+                if (Dm[u] < INF && Dr[u] < INF) {
+                    long meet = Math.max(Dm[u], Dr[u]);
+                    if (meet < ans) ans = meet;
+                }
+            }
+            out.println(ans == INF ? -1 : ans);
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of the Main Steps**
+
+1. We convert each vertex \(u\) into two “states” in our Dijkstra:
+   - \((u,0)\) = on foot, not yet mounted.
+   - \((u,1)\) = on horseback.
+
+2. From \((u,0)\) you may  
+   - do a zero‐cost transition to \((u,1)\) if there is a horse at \(u\).  
+   - traverse any edge \(u\!-\!v\) at full cost \(w\), staying in on‐foot state.
+
+3. From \((u,1)\) you traverse edges \(u\!-\!v\) at half cost \(w/2\), staying mounted.
+
+4. We run Dijkstra on this \(2n\)-node graph **twice**—once from \((1,0)\) for Marian, once from \((n,0)\) for Robin—to get, for each \(u\), the best time to reach \(u\) in either state.
+
+5. Finally we take  
+\[
+   \min_{u=1\ldots n}\max\bigl(\text{MarianTime}(u),\;\text{RobinTime}(u)\bigr).
+\]
+If no vertex is reachable by both, we output \(-1\).
+
+This runs in \(O((n+m)\log n)\) per test, which is efficient enough for \(\sum n,\sum m\le 2\cdot10^5\).

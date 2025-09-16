@@ -1,0 +1,183 @@
+**Analysis**
+
+We want to count all integers \(n\) in the interval
+\[
+10^l \;\le\; n \;<\; 10^r
+\]
+such that
+\[
+D(k\cdot n)\;=\;k\;D(n),
+\]
+where \(D(x)\) is the digit‐sum of \(x\), and finally take the count modulo \(10^9+7\).
+
+It is a well‐known fact that for any nonnegative integers \(n\) and \(k\),
+
+\[
+D(k\,n)\;\le\;k\,D(n),
+\]
+
+with equality if and only if the (base‐10) “grade‐school” multiplication \(k\times n\) incurs no carries at any digit.  Concretely, if the decimal digits of \(n\) are \(\dots,d_2,d_1,d_0\), then when you form
+
+\[
+k\cdot n
+\;=\;\dots\;\bigl(k\,d_2+\text{carry}_2\bigr)\,
+\bigl(k\,d_1+\text{carry}_1\bigr)\,
+\bigl(k\,d_0+\text{carry}_0\bigr)
+\]
+you only ever get \(\text{carry}_i=0\) if and only if
+\[
+k\,d_i<10
+\quad\text{for every digit }d_i.
+\]
+
+Hence the necessary and sufficient condition for
+\(\;D(k\,n)=k\,D(n)\)
+is
+\[
+\max\{d_i\}\;\le\;\left\lfloor\frac{9}{k}\right\rfloor.
+\]
+Set
+\[
+c=\left\lfloor\frac{9}{k}\right\rfloor.
+\]
+- If \(k\ge10\), then \(c=0\).  The only digit that is allowed is 0, so the only “number” with all digits 0 is \(n=0\); but our range \(\;10^l\le n<10^r\) never includes 0, so there are **no** valid \(n\).  The answer is 0.
+- If \(1\le k\le9\), then \(1\le c\le9\).  Every decimal digit of \(n\) must lie in \(\{0,1,\dots,c\}\), and in addition the leading digit of \(n\) (to make it a true \(d\)-digit number) must be in \(\{1,2,\dots,c\}\).
+
+Numbers \(n\) with exactly \(d\) digits (in base 10) contributing to our range \([10^l,10^r)\) are those with
+\[
+d\;=\;l+1,\;l+2,\;\dots,\;r,
+\]
+because \(10^l\) has exactly \(l+1\) digits, and we go up to but not including \(10^r\).  The count of \(d\)-digit numbers whose digits all lie in \(\{0,1,\dots,c\}\) and whose first (most significant) digit is nonzero is
+
+\[
+\underbrace{c}_{\text{choices for leading digit }1\ldots c}
+\;\times\;
+\underbrace{(c+1)^{\,d-1}}_{\text{choices for the remaining }d-1\text{ digits}}.
+\]
+
+Hence the total count is
+\[
+\sum_{d=l+1}^{\,r}
+c\,(c+1)^{\,d-1}
+\;=\;
+c\;\sum_{d=l+1}^{r}(c+1)^{d-1}
+\;=\;
+c\;\sum_{j=l}^{r-1}(c+1)^j.
+\]
+This is a geometric series.  One finds a closed‐form
+
+\[
+\sum_{j=l}^{r-1}(c+1)^j
+\;=\;
+\frac{(c+1)^l\bigl((c+1)^{(r-l)}-1\bigr)}{(c+1)-1}
+\;=\;
+\frac{(c+1)^l\bigl((c+1)^{r-l}-1\bigr)}{c}.
+\]
+Multiplying back by the factor of \(c\) up front gives the final simple formula
+
+\[
+\boxed{
+\text{Answer}
+\;=\;
+(c+1)^l\;\bigl((c+1)^{\,r-l}-1\bigr)\;\bmod(10^9+7),
+}
+\]
+where
+\[
+c \;=\;\left\lfloor\frac{9}{k}\right\rfloor,
+\]
+and if \(k\ge10\) then \(c=0\) so the answer is 0 automatically.
+
+All we need is fast modular exponentiation to compute \((c+1)^l\) and \((c+1)^{\,r-l}\bmod10^9+7\).
+
+**Complexity.**
+- We have up to \(10^4\) test‐cases.
+- For each test we do two modular exponentiations with exponents up to \(10^9\); each exponentiation takes \(O(\log(\text{exponent}))\approx O(30)\) multiplications.  
+- Total complexity is comfortably within the 2‐second limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+
+    // fast exponentiation mod
+    static long modPow(long base, long exp) {
+        long result = 1 % MOD;
+        base %= MOD;
+        while (exp > 0) {
+            if ((exp & 1) == 1) {
+                result = (result * base) % MOD;
+            }
+            base = (base * base) % MOD;
+            exp >>= 1;
+        }
+        return result;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        for (int _case = 0; _case < t; _case++) {
+            st = new StringTokenizer(br.readLine());
+            long l = Long.parseLong(st.nextToken());
+            long r = Long.parseLong(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+
+            // Compute c = floor(9/k).  If k>=10 then c=0 => no valid numbers
+            long c = (k >= 10 ? 0 : 9 / k);
+
+            if (c == 0) {
+                sb.append(0).append('\n');
+                continue;
+            }
+
+            // Let base = c+1
+            long base = c + 1;
+
+            // We want (c+1)^l * ((c+1)^(r-l) - 1) mod MOD
+            long part1 = modPow(base, l);       // (c+1)^l % MOD
+            long part2 = modPow(base, r - l);   // (c+1)^(r-l) % MOD
+
+            long ans = part1 * ((part2 - 1 + MOD) % MOD) % MOD;
+            sb.append(ans).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+Explanation of the key steps:
+
+1. **No‐carry criterion**  
+   We require each digit \(d_i\) of \(n\) to satisfy \(k\,d_i < 10\).  Equivalently \(d_i \le \lfloor9/k\rfloor\).  
+
+2. **Counting \(d\)-digit numbers**  
+   If each digit is in \(\{0,1,\dots,c\}\) and the leading digit is nonzero (so in \(\{1,\dots,c\}\)), there are  
+   \[
+     c\;\times\;(c+1)^{d-1}
+   \]
+   such \(d\)-digit numbers.
+
+3. **Summation over lengths**  
+   We sum \(d\) from \(l+1\) up to \(r\).  This becomes a geometric series in \((c+1)\).
+
+4. **Closed‐form**  
+   The sum simplifies to
+   \[
+     (c+1)^l\,\bigl((c+1)^{\,r-l}-1\bigr)\pmod{10^9+7}.
+   \]
+
+5. **Edge cases**  
+   - If \(k\ge10\), then \(c=0\) and the answer is 0.
+   - We take all final answers modulo \(10^9+7\).
+
+This runs in \(O(t\log(r))\) which is efficient for \(t\le10^4\) and \(r\) up to \(10^9\).

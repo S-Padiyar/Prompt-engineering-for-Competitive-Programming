@@ -1,0 +1,2 @@
+Malformed secondary AI response for Problem ID 1991E, round 3:
+“The Bob fallback may pick an unoffered color (for example in the n=1 case if Alice offers {2,3}, your code picks color 1). Please fix Bob’s logic so that whenever his preferred side is empty, he still picks a vertex and assigns a color strictly from the offered pair. Provide a single, self-contained Java 8+ solution in one code block ready for submission.”

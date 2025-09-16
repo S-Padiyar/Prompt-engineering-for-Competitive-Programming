@@ -1,0 +1,12 @@
+[
+  {
+    "timestamp": "2025-07-24T05:50:32.667841",
+    "role": "user",
+    "content": "Please provide a single complete Java solution (no markdown fences or extra explanation), ready for submission."
+  },
+  {
+    "timestamp": "2025-07-24T05:52:17.125357",
+    "role": "assistant",
+    "content": "import java.io.*;\nimport java.util.*;\n\npublic class Main {\n    static BufferedReader in;\n    static StringTokenizer tok;\n\n    static String nextToken() throws IOException {\n        while (tok == null || !tok.hasMoreTokens()) {\n            String line = in.readLine();\n            if (line == null) return null;\n            tok = new StringTokenizer(line);\n        }\n        return tok.nextToken();\n    }\n\n    static int nextInt() throws IOException {\n        return Integer.parseInt(nextToken());\n    }\n\n    static int gcd(int a, int b) {\n        while (b != 0) {\n            int t = a % b;\n            a = b;\n            b = t;\n        }\n        return a;\n    }\n\n    public static void main(String[] args) throws IOException {\n        in = new BufferedReader(new InputStreamReader(System.in));\n        tok = null;\n\n        int t = nextInt();\n        StringBuilder out = new StringBuilder();\n\n        while (t-- > 0) {\n            int n = nextInt();\n            int[] p = new int[n+1];\n            for (int i = 1; i <= n; i++) {\n                p[i] = nextInt();\n            }\n\n            int[] pos = new int[n+1];\n            for (int i = 1; i <= n; i++) {\n                pos[p[i]] = i;\n            }\n\n            long answer = 0;\n            for (int i = 1; i <= n; i++) {\n                int a = p[i], x = i;\n                int d1 = gcd(a, x);\n                int x1 = x / d1;\n                int a1 = a / d1;\n\n                for (int v = x1; v <= n; v += x1) {\n                    int j = pos[v];\n                    if (j <= i) continue;\n                    int k = v / x1;\n                    int g = gcd(a1, j);\n                    int yPrime = j / g;\n                    if (k % yPrime == 0) {\n                        answer++;\n                    }\n                }\n            }\n\n            out.append(answer).append('\\n');\n        }\n\n        System.out.print(out);\n    }\n}"
+  }
+]

@@ -1,0 +1,285 @@
+**Analysis**
+
+We have a robot moving on the integer grid inside the rectangle \([0,w]\times[0,h]\), starting at the origin \((0,0)\).  We are given a script \(s\) of length \(n\), consisting of moves \(L,R,U,D\).  When the robot is about to step out of the rectangle across a vertical wall (\(x<0\) or \(x>w\)), the entire script has its horizontal moves \(L\leftrightarrow R\) flipped (and the robot does *not* move on that step, it retries the same instruction in its new flipped form).  Likewise, stepping outside across a horizontal wall (\(y<0\) or \(y>h\)) causes a global flip \(U\leftrightarrow D\).  All those flips persist for the remainder of the script and into subsequent repetitions.  We repeat the *possibly‐mutated* script \(k\) times in a row, and we wish to count how many times the robot visits \((0,0)\) (not counting the very start).
+
+A key observation is that reflecting the script’s moves on each wall‐hit is exactly equivalent to imagining that the robot is moving on the infinite integer line, but each time it crosses a multiple of \(w\) (resp. \(h\)) in the raw coordinate it “folds back” by a reflection.  Concretely, define the *raw cumulative* sums
+
+\[
+  X_{\mathrm{raw}}(t)\;=\;\sum_{j=1}^t \Delta x_j,\quad
+  Y_{\mathrm{raw}}(t)\;=\;\sum_{j=1}^t \Delta y_j,
+\]
+
+where \((\Delta x_j,\Delta y_j)\) is \((+1,0)\) for an \(R\), \((-1,0)\) for an \(L\), \((0,+1)\) for a \(U\), \((0,-1)\) for a \(D\).  Then the *actual* position after \(t\) instructions is
+
+\[
+  x(t)=\mathrm{reflect}\bigl(X_{\mathrm{raw}}(t),w\bigr),\quad
+  y(t)=\mathrm{reflect}\bigl(Y_{\mathrm{raw}}(t),h\bigr),
+\]
+
+where
+
+\[
+  \mathrm{reflect}(z,w)=
+    \begin{cases}
+      z\bmod(2w),&\text{if }z\bmod(2w)\le w\;,\\
+      2w-(z\bmod(2w)),&\text{otherwise}.
+    \end{cases}
+\]
+
+One checks immediately that \(x(t)=0\) exactly when \(X_{\mathrm{raw}}(t)\equiv 0\pmod{2w}\), and similarly \(y(t)=0\) exactly when \(Y_{\mathrm{raw}}(t)\equiv 0\pmod{2h}\).
+
+We repeat the script \(k\) times.  Let
+\[
+  A=X_{\mathrm{raw}}(n),\quad B=Y_{\mathrm{raw}}(n)
+\]
+be the net raw displacement of one full pass of the script.  Then after \((r-1)\) full runs plus the \(i\)th instruction of the \(r\)-th run, the raw sums are
+\[
+  X_{\mathrm{raw}}=(r-1)\,A \;+\;\bigl(\text{prefix‐sum of }\Delta x\text{ up to }i\bigr),
+\]
+and similarly for \(Y_{\mathrm{raw}}\).  We must count all pairs \((r,i)\), \(1\le r\le k\), \(1\le i\le n\), for which simultaneously
+
+  \((r-1)\,A + X_i \equiv 0 \pmod{2w}\),  
+  \((r-1)\,B + Y_i \equiv 0 \pmod{2h}\),
+
+where \(X_i=\sum_{j=1}^i\Delta x_j\), \(Y_i=\sum_{j=1}^i\Delta y_j\).  This reduces to solving two linear congruences in the one variable \(r\), then counting how many \(r\in[1,k]\) satisfy them.  
+
+We distinguish three cases according to whether \(A\equiv0\pmod{2w}\) and \(B\equiv0\pmod{2h}\):
+
+1. **Both zero mod**.  If \(A\equiv0\pmod{2w}\) *and* \(B\equiv0\pmod{2h}\), then the two congruences become
+   \[
+     X_i\equiv0\pmod{2w},\quad Y_i\equiv0\pmod{2h},
+   \]
+   independently of \(r\).  Let \(C\) be the number of indices \(i\) in \([1..n]\) satisfying those.  Then *each* of the \(k\) runs visits the origin in exactly those \(C\) steps, for a total \(C\cdot k\).
+
+2. **One zero, one nonzero**.  Suppose w.l.o.g. \(A\equiv0\pmod{2w}\) but \(B\not\equiv0\pmod{2h}\).  Then the \(x\)-congruence forces \(X_i\equiv0\pmod{2w}\).  For those \(i\), one solves the *single* linear congruence
+   \[
+     (r-1)\,B \;\equiv\; -\,Y_i\pmod{2h}
+   \]
+   and counts how many of those solutions \(r\) lie in \([1,k]\).
+
+3. **Neither zero**.  Then each \(i\) yields two linear congruences
+   \[
+     (r-1)A \equiv -X_i\pmod{2w},\quad (r-1)B \equiv -Y_i\pmod{2h}.
+   \]
+   We solve each (when solvable) to get
+   \[
+     r \equiv u_i\pmod{T_x},\quad r\equiv v_i\pmod{T_y},
+   \]
+   with \(T_x=2w/\gcd(A,2w)\), \(T_y=2h/\gcd(B,2h)\).  Then apply the Chinese Remainder Theorem to combine these two congruences into a single
+   \[
+     r\equiv r_i\pmod{\mathrm{lcm}(T_x,T_y)},
+   \]
+   count how many \(r\in[1,k]\) lie in that arithmetic progression, and add that to the answer.
+
+Because \(n\) can be up to \(10^6\) (over all test cases) and \(k\) can be as large as \(n\), we must do \(\mathcal O(n)\) or \(\mathcal O(n\log w)\) work per test.  The above breakdown leads to a single pass over \(i=1\ldots n\), each time doing \(\mathcal O(1)\) arithmetic (plus a small number of \(\gcd\) or \(\mathrm{extgcd}\) calls done once per test).  This runs in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    // extended GCD: returns (g,x,y) so that a*x + b*y = g = gcd(a,b)
+    static long[] extgcd(long a, long b) {
+        if(b==0) return new long[]{a,1,0};
+        long[] r = extgcd(b, a%b);
+        long g = r[0], x = r[2], y = r[1] - (a/b)*r[2];
+        return new long[]{g, x, y};
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine());
+        while(t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+            long w = Long.parseLong(st.nextToken());
+            long h = Long.parseLong(st.nextToken());
+            String s = br.readLine();
+
+            // Mx = 2w, My = 2h
+            long Mx = 2*w, My = 2*h;
+
+            // Build prefix sums X[i], Y[i]
+            int[] X = new int[n], Y = new int[n];
+            long cx=0, cy=0;
+            for(int i=0; i<n; i++){
+                char c = s.charAt(i);
+                if(c=='L') cx--;
+                else if(c=='R') cx++;
+                else if(c=='U') cy++;
+                else cy--;
+                X[i] = (int)cx;
+                Y[i] = (int)cy;
+            }
+            // total displacement of one full script
+            long Araw = cx, Braw = cy;
+
+            // reduce mod Mx, My to decide periodicity
+            long A = ((Araw % Mx) + Mx) % Mx;
+            long B = ((Braw % My) + My) % My;
+
+            // gcds for the linear congruences
+            long dx = extgcd(A, Mx)[0];
+            long dy = extgcd(B, My)[0];
+
+            // We'll need A'=A/dx, Mx'=Mx/dx, and similarly for B
+            long Ax = (dx==0 ? 0 : A/dx), MxP = (dx==0 ? 1 : Mx/dx);
+            long By = (dy==0 ? 0 : B/dy), MyP = (dy==0 ? 1 : My/dy);
+
+            // see if A≡0 mod Mx, B≡0 mod My
+            boolean Azero = (A==0);
+            boolean Bzero = (B==0);
+
+            // Precompute inverses when needed
+            long invA = 0, invB = 0;
+            if(!Azero) {
+                // invert Ax mod MxP
+                long[] e = extgcd(Ax, MxP);
+                invA = ((e[1] % MxP) + MxP) % MxP;
+            }
+            if(!Bzero) {
+                long[] e = extgcd(By, MyP);
+                invB = ((e[1] % MyP) + MyP) % MyP;
+            }
+
+            long answer = 0;
+
+            if(Azero && Bzero) {
+                // both coordinates must individually hit 0 mod Mx, My
+                int cnt = 0;
+                for(int i=0; i<n; i++){
+                    long xm = ((X[i] % Mx)+Mx)%Mx;
+                    long ym = ((Y[i] % My)+My)%My;
+                    if(xm==0 && ym==0) cnt++;
+                }
+                answer = cnt * k;
+            }
+            else if(Azero) {
+                // require Xprefix ≡ 0 mod Mx, and solve the one congruence in r for Y
+                for(int i=0; i<n; i++){
+                    long xm = ((X[i] % Mx)+Mx)%Mx;
+                    if(xm!=0) continue;
+                    long ym = ((Y[i] % My)+My)%My;
+                    if(ym % dy != 0) continue;
+                    // solve (r-1)*B ≡ -Y[i] (mod My)
+                    long Rhs = (My - ym) % My;  // ≡ -ym mod My
+                    Rhs /= dy;                  // divides cleanly
+                    long r0 = (1 + (Rhs * invB) % MyP) % MyP;
+                    if(r0==0) r0 = MyP;
+                    if(r0 <= k) {
+                        answer += 1 + (k - r0)/MyP;
+                    }
+                }
+            }
+            else if(Bzero) {
+                // symmetric
+                for(int i=0; i<n; i++){
+                    long ym = ((Y[i] % My)+My)%My;
+                    if(ym!=0) continue;
+                    long xm = ((X[i] % Mx)+Mx)%Mx;
+                    if(xm % dx != 0) continue;
+                    long Rhs = (Mx - xm) % Mx;
+                    Rhs /= dx;
+                    long r0 = (1 + (Rhs * invA) % MxP) % MxP;
+                    if(r0==0) r0 = MxP;
+                    if(r0 <= k) {
+                        answer += 1 + (k - r0)/MxP;
+                    }
+                }
+            }
+            else {
+                // general case: two congruences → CRT
+                // we'll need lcm(Tx,Ty) and also an inverse to merge x->y
+                long gT = gcd(MxP, MyP);
+                long lcmT = (MxP/gT) * MyP;  // watch overflow fits in 64-bit
+                long k1 = MxP/gT, k2 = MyP/gT;
+                // invert k1 mod k2
+                long invK1 = 0;
+                {
+                    long[] e = extgcd(k1, k2);
+                    invK1 = ((e[1] % k2) + k2) % k2;
+                }
+
+                for(int i=0; i<n; i++){
+                    long xm = ((X[i] % Mx)+Mx)%Mx;
+                    if(xm % dx != 0) continue;
+                    long ym = ((Y[i] % My)+My)%My;
+                    if(ym % dy != 0) continue;
+
+                    // solve (r-1)*A ≡ -xm (mod Mx)  →  r ≡ u (mod MxP)
+                    long Rx = ((Mx - xm)%Mx)/dx;  // cleanly divisible
+                    long ux = (1 + (Rx * invA) % MxP) % MxP;
+                    if(ux==0) ux = MxP;
+
+                    // similarly for y
+                    long Ry = ((My - ym)%My)/dy;
+                    long uy = (1 + (Ry * invB) % MyP) % MyP;
+                    if(uy==0) uy = MyP;
+
+                    // now we have r≡ux (mod MxP), r≡uy (mod MyP)
+                    if((ux - uy) % gT != 0) continue;  // no CRT solution
+
+                    // CRT: r0 = ux + MxP * t,  t ≡ (uy - ux)/gT * inv(k1)  (mod k2)
+                    long diff = (uy - ux) / gT;  // integer
+                    diff %= k2; 
+                    if(diff<0) diff += k2;
+                    long t0 = (diff * invK1) % k2;
+                    long r0 = ux + MxP * t0;
+                    // bring into [1..lcmT]
+                    r0 %= lcmT;
+                    if(r0<=0) r0 += lcmT;
+
+                    if(r0 <= k) {
+                        answer += 1 + (k - r0)/lcmT;
+                    }
+                }
+            }
+
+            System.out.println(answer);
+        }
+    }
+
+    // simple gcd
+    static long gcd(long a, long b) {
+        while(b!=0) {
+            long t = a%b;
+            a=b;  b=t;
+        }
+        return a;
+    }
+}
+```
+
+**Explanation of the Main Steps**
+
+1. **Unfolding the reflections**  
+   We reformulate the “flip‐on‐wall‐hit” rule by instead keeping track of a *raw* walk on the infinite line (summing \(+1, -1\) for \(R/L\) or \(U/D\)), and then folding it back into the segment \([0,w]\) (or \([0,h]\)) by the classic “reflect at multiples of \(2w\)” rule.  One checks that this exactly matches the original wall‐reflection semantics.
+
+2. **Periodic structure**  
+   Over one execution of the script, the raw \(x\)-sum moves by
+   \[
+     A = \sum_{j=1}^n \Delta x_j,
+   \]
+   and similarly \(B = \sum_{j=1}^n \Delta y_j\).  When we repeat the script \(r\) times, the *raw* sum before the \(i\)th instruction of the \(r\)th run is
+   \[
+     (r-1)\,A + X_i,
+   \]
+   where \(X_i\) is the prefix sum up to \(i\).  The actual (folded) position is \(0\) exactly when that raw sum is \(0\) mod \(2w\).  
+
+3. **Counting visits to the origin**  
+   We need
+   \[
+     (r-1)A + X_i\equiv 0\pmod{2w},\quad
+     (r-1)B + Y_i\equiv 0\pmod{2h},
+   \]
+   with \(1\le r\le k\), \(1\le i\le n\).  Each of these is a linear congruence in \(r\).  We handle three cases:
+   - **Both \(A\equiv0\pmod{2w}\) and \(B\equiv0\pmod{2h}\)**: then \(X_i\) must already be \(0\pmod{2w}\) and \(Y_i\) must be \(0\pmod{2h}\), for *every* \(r\).  If there are \(C\) indices \(i\) that satisfy those, the answer is simply \(C\cdot k\).
+   - **One is zero** (say \(A\equiv0\) but \(B\not\equiv0\)): then the \(x\)-condition forces which \(i\)'s are admissible, and for each such \(i\) you solve one congruence in \(r\) and count how many solutions lie in \([1,k]\).
+   - **Neither is zero**: for each \(i\) you get two nontrivial congruences in \(r\), combine them with the Chinese Remainder Theorem (CRT), and then count how many \(r\in[1,k]\) lie in the resulting arithmetic progression.
+
+Each test we do one pass of length \(n\), do \(\gcd\) or extended–GCD a small constant number of times, and so overall runs in \(\mathcal O(n+\log w+\log h)\) per test.  Since \(\sum n\le10^6\), this easily fits within the time and memory limits.

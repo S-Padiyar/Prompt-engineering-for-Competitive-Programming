@@ -1,0 +1,162 @@
+**Analysis**
+
+Let \(s\) be the binary string of length \(n\).  We wish to compute
+
+\[
+\sum_{1 \le \ell \le r \le n}
+\Bigl|\{\,(\,x,y)\mid \ell\le x\le y\le r,\;\#0\text{ in }s_x\ldots s_y = \#1\text{ in }s_x\ldots s_y\}\Bigr|.
+\]
+
+A classic double‐counting trick is to notice that each balanced subarray \([x,y]\) (i.e.\ it has the same number of 0’s and 1’s) will be counted once for every choice of \(\ell\le x\) and \(y\le r\).  Since \(\ell\) can range from \(1\) to \(x\) and \(r\) can range from \(y\) to \(n\), this balanced subarray contributes
+
+\[
+x\;\times\;(n - y + 1)
+\]
+
+to the grand total.  Hence our problem reduces to summing
+\[
+\sum_{\substack{1\le x\le y\le n\\s_x\ldots s_y\text{ balanced}}}
+x\,\bigl(n - y + 1\bigr)\;.
+\]
+We then take all sums modulo \(10^9+7\).
+
+---
+
+**Detecting balanced subarrays via prefix sums.**
+
+Map each character to \(+1\) for `'1'` and \(-1\) for `'0'`.  Let
+\[
+\text{pref}[0]=0,\quad
+\text{pref}[i]=\sum_{k=1}^i (\!+1\!\text{ if }s_k='1',\!-1\!\text{ if }s_k='0').
+\]
+A subarray \(s_x\ldots s_y\) is balanced precisely if
+\[
+\text{pref}[y] - \text{pref}[x-1] = 0
+\quad\Longleftrightarrow\quad
+\text{pref}[y] = \text{pref}[x-1].
+\]
+Hence for each value \(v\) of the prefix sum, collect all positions
+\[
+\{\,i\mid \text{pref}[i]=v\}.
+\]
+Label them
+\[
+0 \le p_0 < p_1 < \dots < p_{m-1}\le n.
+\]
+Each pair \((p_a,p_b)\) with \(a<b\) corresponds to the balanced subarray
+\[
+(x,y)=(p_a+1,p_b),
+\]
+whose contribution is
+\(\,(p_a+1)\times(n - p_b + 1)\).
+
+Hence for each prefix‐sum‐value \(v\) with positions \(p_0,\ldots,p_{m-1}\), we want
+
+\[
+\sum_{0\le a<b<m}(p_a+1)\,(n - p_b + 1).
+\]
+
+We can do this in \(O(m)\) time by a single backward sweep maintaining a running suffix‐sum of the terms \(\bigl(n - p_b +1\bigr)\).  
+
+Summing these contributions over all distinct prefix‐sum values \(v\) yields the final answer for the string \(s\).
+
+Since \(\sum|s|\le 2\cdot10^5\), this \(O(n)\) per test‐case solution is efficient.
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            String s = br.readLine().trim();
+            int n = s.length();
+
+            // Compute prefix sums: +1 for '1', -1 for '0'
+            int[] pref = new int[n+1];
+            pref[0] = 0;
+            for (int i = 0; i < n; i++) {
+                pref[i+1] = pref[i] + (s.charAt(i)=='1' ? +1 : -1);
+            }
+
+            // Group positions by prefix sum value
+            // key = prefix sum, value = list of positions where that sum occurs
+            Map<Integer, ArrayList<Integer>> groups = new HashMap<>();
+            for (int i = 0; i <= n; i++) {
+                groups
+                  .computeIfAbsent(pref[i], k -> new ArrayList<>())
+                  .add(i);
+            }
+
+            // For each group of positions p0 < p1 < ... < p_{m-1},
+            // sum over all a < b of (p[a]+1)*(n - p[b] + 1)
+            long answer = 0L;
+            for (ArrayList<Integer> list : groups.values()) {
+                int m = list.size();
+                if (m < 2) continue;  // no pairs to form
+
+                // We'll do one backward pass keeping a suffix sum of (n - p[b] + 1)
+                long suffixSum = 0;
+                for (int idx = m - 1; idx >= 0; idx--) {
+                    int p = list.get(idx);
+                    if (idx < m - 1) {
+                        // All b > idx have contributed to suffixSum
+                        long leftFactor = (p + 1L) % MOD;
+                        answer = (answer + leftFactor * suffixSum) % MOD;
+                    }
+                    long rightTerm = (n - p + 1L) % MOD;
+                    suffixSum = (suffixSum + rightTerm) % MOD;
+                }
+            }
+
+            out.println(answer);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Prefix‐sum transformation**  
+   We replace `'0' → -1` and `'1' → +1`.  
+   A balanced subarray has equal number of 0’s and 1’s iff its net sum is 0.
+
+2. **Grouping by prefix sums**  
+   A subarray \([x,y]\) is balanced iff  
+   \(\text{pref}[y]-\text{pref}[x-1]=0\),  
+   i.e.\ \(\text{pref}[y]=\text{pref}[x-1]\).  
+   So for each value \(v\) of the prefix‐sum array, we collect all indices \(i\) with \(\text{pref}[i]=v\).
+
+3. **Counting all valid subarrays**  
+   If the positions for sum \(v\) are \(p_0<p_1<\dots<p_{m-1}\),  
+   then each pair \((p_a,p_b)\) with \(a<b\) corresponds to the balanced subarray  
+   from \(x=p_a+1\) to \(y=p_b\).  
+   Its contribution to the grand total is
+   \[
+     x \times (n - y + 1)
+     \;=\;
+     (p_a+1)\times\bigl(n - p_b + 1\bigr).
+   \]
+
+4. **Efficient accumulation**  
+   We rewrite
+   \[
+     \sum_{0\le a<b<m}(p_a+1)\,(n-p_b+1)
+     \;=\;
+     \sum_{a=0}^{m-2}(p_a+1)\;\sum_{b=a+1}^{m-1}(n-p_b+1).
+   \]
+   We maintain a running **suffix‐sum** of \((n - p_b +1)\) as we walk the list backwards in \(O(m)\) time.
+
+Overall the method runs in \(O(n)\) time per test, which is more than fast enough for \(\sum n\le2\cdot10^5\).

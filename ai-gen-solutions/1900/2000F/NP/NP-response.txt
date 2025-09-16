@@ -1,0 +1,176 @@
+**Analysis**
+
+We have \(n\) rectangles, the \(i\)-th of size \(a_i\times b_i\).  We may color individual cells one by one; whenever a full row or a full column of any rectangle becomes completely colored, we earn 1 point.  We wish to earn at least \(k\) points in total, with the minimum number of cell-coloring operations.
+
+Within a single rectangle of width \(A\) and height \(B\), if we decide to fully color \(x\) rows and \(y\) columns, the number of points from that rectangle is
+\[
+  p = x + y,
+\]
+subject to
+\[
+  0 \le x \le B,\quad 0 \le y \le A.
+\]
+The number of cell-coloring operations required is
+\[
+  \underbrace{x\cdot A}_{\text{to color }x\text{ rows}} \;+\;
+  \underbrace{y\cdot B}_{\text{to color }y\text{ columns}}
+  \;-\;
+  \underbrace{x\,y}_{\substack{\text{overlaps of the }x\text{ rows}\\\text{and }y\text{ columns}}},
+\]
+because the \(x\) chosen rows each have \(A\) cells, the \(y\) chosen columns each have \(B\) cells, and the \(x\cdot y\) intersection cells were counted twice but only need to be colored once.
+
+Hence the cost
+\[
+  \text{cost}(x,y) \;=\; A\,x \;+\; B\,y \;-\; x\,y.
+\]
+
+We only care about earning up to \(k\) points per rectangle (anything more than \(k\) is surplus for our global goal).  Define
+\[
+  \mathrm{dp}_i[p] = \min_{\substack{x+y=p\\0\le x\le B_i,\;0\le y\le A_i}}
+     \bigl(A_i\,x + B_i\,y - x\,y\bigr),
+  \quad p=0,1,\dots,k,
+\]
+with \(\mathrm{dp}_i[0]=0\) and \(\mathrm{dp}_i[p]=\infty\) if no feasible \((x,y)\) exist.
+
+That gives, for rectangle \(i\), the minimum number of cell-colorings needed to yield exactly \(p\) points from it (or \(\infty\) if impossible).
+
+Finally we have \(n\) "items" (rectangles), each of which can contribute \(p\) points at cost \(\mathrm{dp}_i[p]\).  We need at least \(k\) points overall, minimizing total cost.  This is a standard knapsack-style DP:
+
+Let \(F[j]\) = the minimum total cost to earn exactly \(j\) points (we will cap all indices at \(k\), treating "≥k" as index \(k\)).  
+
+- Initialize \(F[0]=0\) and \(F[j]=\infty\) for \(j=1,2,\dots,k\).
+- For each rectangle \(i=1\ldots n\):
+  - Compute its \(\mathrm{dp}_i[p]\) for \(p=0\ldots k\).
+  - Build a new array \(G[0\ldots k]\), all initialized to \(\infty\).
+  - For each \(p\) for which \(\mathrm{dp}_i[p]<\infty\),
+    for each current \(j\) with \(F[j]<\infty\):
+      let \(\;t=\min(k,\;j+p)\);
+      then
+        \(G[t]\;=\;\min\bigl(G[t],\,F[j]+\,\mathrm{dp}_i[p]\bigr).\)
+  - Replace \(F\gets G\).
+
+At the end, \(F[k]\) is the minimum cost to obtain *at least* \(k\) points (we folded all larger indices into \(k\)).  If \(F[k]\) remains \(\infty\), the answer is \(-1\).
+
+We also do a quick infeasibility check: the maximum points we can ever get from rectangle \(i\) is \(A_i+B_i\).  So if
+\[
+  \sum_{i=1}^n \min(A_i+B_i,\;k)\;<\;k
+\]
+then even with all rectangles we cannot reach \(k\), and we print \(-1\) immediately.
+
+The complexity per test is roughly
+- \(O(n\cdot k\cdot \max(A_i,B_i))\) to build the per-rectangle \(\mathrm{dp}_i\), and
+- \(O(n\cdot k^2)\) for the knapsack merge
+
+With \(n\le1000\), \(k\le100\), and \(A_i,B_i\le100\), this is easily under the 3 second limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int INF = 1_000_000_000;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+
+            int[] A = new int[n], B = new int[n];
+            long sumCap = 0;
+            for (int i = 0; i < n; i++) {
+                st = new StringTokenizer(br.readLine());
+                A[i] = Integer.parseInt(st.nextToken());
+                B[i] = Integer.parseInt(st.nextToken());
+                // maximum points from rect i is A[i] + B[i], cap at k
+                sumCap += Math.min(k, A[i] + B[i]);
+            }
+
+            // Quick infeasibility check
+            if (sumCap < k) {
+                sb.append(-1).append('\n');
+                continue;
+            }
+
+            // F[j] = min cost to get exactly j points (j=0..k), we will fold ≥k into index k
+            int[] F = new int[k + 1];
+            Arrays.fill(F, INF);
+            F[0] = 0;
+
+            // Process each rectangle
+            for (int i = 0; i < n; i++) {
+                int a = A[i], b = B[i];
+                int cap = Math.min(k, a + b);
+
+                // Build dp_i[0..cap], dp_i[p] = min cost to get p points from this rectangle
+                int[] dp = new int[cap + 1];
+                Arrays.fill(dp, INF);
+                dp[0] = 0;
+                // For each p = x+y, 0 ≤ x ≤ b, 0 ≤ y ≤ a
+                for (int p = 1; p <= cap; p++) {
+                    int lo = Math.max(0, p - a);
+                    int hi = Math.min(p, b);
+                    int best = INF;
+                    for (int x = lo; x <= hi; x++) {
+                        int y = p - x;
+                        // cost = x*a + y*b - x*y
+                        int cost = x * a + y * b - x * y;
+                        if (cost < best) best = cost;
+                    }
+                    dp[p] = best;
+                }
+
+                // Merge into the global DP F -> G
+                int[] G = new int[k + 1];
+                Arrays.fill(G, INF);
+
+                for (int p = 0; p <= cap; p++) {
+                    if (dp[p] == INF) continue;
+                    for (int j = 0; j <= k; j++) {
+                        if (F[j] == INF) continue;
+                        int nj = j + p >= k ? k : j + p;
+                        int cost = F[j] + dp[p];
+                        if (cost < G[nj]) {
+                            G[nj] = cost;
+                        }
+                    }
+                }
+
+                // Move G back into F
+                F = G;
+            }
+
+            int ans = F[k];
+            if (ans >= INF) ans = -1;
+            sb.append(ans).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Per-rectangle DP** (`dp[p]`):  
+   For each rectangle of size \(A\times B\), to earn exactly \(p\) points we choose \(x\) rows and \(y=p-x\) columns, satisfying \(0\le x\le B\) and \(0\le y\le A\).  We compute
+   \[
+     \text{cost}(x,y)=x\cdot A + y\cdot B - x\,y
+   \]
+   and take the minimum over all feasible \((x,y)\).  This gives us `dp[p]`.
+
+2. **Global knapsack** (`F[j]`):  
+   Once we have for rectangle \(i\) its array `dp[0..k]`, we incorporate it into the overall DP.  If previously it cost `F[j]` to earn exactly \(j\) points, then using this rectangle for an additional \(p\) points costs `F[j] + dp[p]` and lands us at \(j+p\).  We clamp \(j+p\ge k\) back down to \(k\), since we only care about “at least \(k\).”
+
+3. **Infeasibility check**:  
+   A rectangle can never yield more than \(A+B\) points.  Summing \(\min(A_i+B_i,k)\) over all rectangles gives the maximum total points possible (capped at \(k\) per rectangle).  If that sum is less than \(k\), we must print \(-1\) immediately.
+
+The overall time is roughly \(O(n\cdot k\cdot\max(A,B))\) for the per-rectangle cost tables plus \(O(n\cdot k^2)\) for the knapsack merging, which easily fits under the given limits.

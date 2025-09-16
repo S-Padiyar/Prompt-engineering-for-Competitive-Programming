@@ -1,0 +1,124 @@
+I’m afraid that this one is quite a bit trickier than it looks at first sight – the naïve “keep a dp[b] per color and also a global best” idea almost works, but it doesn’t correctly handle the way blocks of the same color can merge (only if **both** of them are still alive when the runs in‐between die).  Below is a sketch of a full solution in Java.  The key ideas are
+
+ 1.  We maintain for each color `c` a small state object `State[c]` which describes
+    - the current “component‐death‐time” `t` so far (that is, how long the best merged‐so‐far block of color `c` will take to completely go away),
+    - the “residual length” `r` of that component **at time** `t` (how many elements are still left in that merged run exactly at time `t`).
+
+ 2.  When we see a new block `(a,b)`, there are two ways to attach it onto the old component of color `b`:
+    A)  **don’t merge** – just let this new block stand alone; its own death‐time is `a`, residual at that moment `0`.
+    B)  **merge** with the old component – but only if both survive long enough so that the entire “middle” in‐between (i.e.\ all blocks from the last occurrence of `b` up to the new one) has died.  By tracking the global prefix‐strengths we can know exactly *when* the middle died; at that instant each of the two same‐color components has been whittled down by exactly that many seconds, so their **leftover** sizes are `(old.r + old.t ‑ t_mid)` and `(a ‑ t_mid)`, giving a merged component of total size
+         (old.r + old.t ‑ t_mid) + (a ‑ t_mid)
+      which then disappears exactly `that_sum` seconds *after* `t_mid`, i.e.\ at time
+         `t_mid + (old.r + old.t ‑ t_mid) + (a ‑ t_mid)  =  old.t + a ‑ t_mid`
+      with residual `0` at that final moment.
+
+ 3.  We keep the **prefix‐strength** `P[i]` for each `i`, that is “how long it takes the entire run up to `i` to die.”  Whenever you finish updating the state for color `b`, you know that the overall prefix‐strength either stays the same or improves to the new component‐death‐time of color `b`.
+
+ 4.  To do (2B) you must know `t_mid = strength(prev_b+1 … i-1)`.  But that is just `P[i-1] –  P[prev_b]` where `P[k]` is the strength of the first `k` blocks if you “pretend you stopped right at block `k`.”  (In other words, if you look at blocks `(prev+1) … (i-1)` in isolation, they die exactly at `P[i-1]`, and the structure up to and including block `prev` died at time `P[prev]`, so the subarray in the middle finished dying at time `P[i-1]` **relative** to when block `prev` dropped out, i.e.\ at local time `P[i-1] – P[prev]`.)
+
+Putting all that together you get an `O(n)`‐time solution with just a couple of arrays.  Here is the complete code:
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+  static class State {
+    // t = death-time of the best merged run of this color so far
+    // r = how many elements remain in that run exactly at time t (so next second they'd start disappearing).
+    long t, r;
+    State() { t = 0; r = 0; }
+  }
+
+  public static void main(String[] args) throws IOException {
+    BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+    StringTokenizer tok = new StringTokenizer(in.readLine());
+    int T = Integer.parseInt(tok.nextToken());
+
+    StringBuilder out = new StringBuilder();
+    while (T-- > 0) {
+      tok = new StringTokenizer(in.readLine());
+      int n = Integer.parseInt(tok.nextToken());
+
+      long[] A = new long[n+1];
+      int[]  B = new int[n+1];
+      for (int i = 1; i <= n; i++){
+        tok = new StringTokenizer(in.readLine());
+        A[i] = Long.parseLong(tok.nextToken());
+        B[i] = Integer.parseInt(tok.nextToken());
+      }
+
+      // We'll keep track of P[i] = strength of prefix up to i
+      long[] P = new long[n+1];
+      // And for each color, the last block index we saw of that color
+      int[] last   = new int[n+1];
+      // And each color's current merged-state
+      State[] st   = new State[n+1];
+      for (int c = 0; c <= n; c++) {
+        last[c] = 0;
+        st[c] = new State();
+      }
+
+      P[0] = 0;
+
+      for (int i = 1; i <= n; i++){
+        int  c = B[i];
+        long a = A[i];
+
+        // 1) The middle will die at time (P[i-1] - P[last[c]])
+        long t_mid = P[i-1] - P[ last[c] ];
+
+        // Option A: do not merge, this block alone dies at time a, residual = 0
+        long bestT = a;
+        long bestR = 0;
+
+        // Option B: try to merge with the old state st[c]
+        if (last[c] != 0) {
+          State old = st[c];
+          // both must still be alive at t_mid => t_mid < old.t  AND  t_mid < a
+          if (t_mid < old.t && t_mid < a) {
+            // merged death-time:
+            long mergedDeath = old.t + a - t_mid;
+            // at that moment there's nothing left (residual=0)
+            bestT = Math.max(bestT, mergedDeath);
+            bestR = 0;
+          }
+        }
+
+        // save the new state for color c
+        st[c].t = bestT;
+        st[c].r = bestR;
+
+        last[c] = i;
+
+        // 2) The whole prefix's strength P[i] is either what it was, or improved by finishing
+        //    the newly updated color-component later.
+        P[i] = Math.max(P[i-1], bestT);
+      }
+
+      // print P[1..n]
+      for (int i = 1; i <= n; i++) {
+        out.append(P[i]).append(i==n?'\n':' ');
+      }
+    }
+
+    System.out.print(out);
+  }
+}
+```
+
+Explanation of the three main lines inside the loop:
+
+1.  We compute `t_mid = P[i-1] – P[last[c]]`.  
+    This is exactly “how long it takes the segment strictly between my previous same‐color block and me to vanish.”  
+2.  We keep two options for how I (the new block `(a,c)`) end up in the final picture:
+    A.  “Stand alone”: I just die in `a` seconds.
+    B.  “Merge with the old color‐`c` run”: but only if by time `t_mid` that old run still has not died **and** this new block is still positive (`t_mid < a`).  In that case the merged run’s total death‐time is  
+         old.t + a – t_mid  
+    which is derived from “at time `t_mid` each has been whittled down by `t_mid`, so the leftover total length is `(old.r+old.t–t_mid) + (a–t_mid)`, and from `t_mid` it takes exactly that many more seconds.”  
+
+3.  We update the color‐`c` state to the best of those two, and then
+    `P[i] = max(P[i-1], st[c].t)`  
+    because the newly updated color‐`c` component might be the overall latest‐dying run of the entire prefix.
+
+This runs in O(n) per test (just a few array accesses per run), and n ≤ 3·10^5 total over all tests is perfectly fine in Java.

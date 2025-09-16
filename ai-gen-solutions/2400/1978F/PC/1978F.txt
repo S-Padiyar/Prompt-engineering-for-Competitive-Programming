@@ -1,0 +1,106 @@
+F. Large Graph
+time limit per test4 seconds
+memory limit per test512 megabytes
+Given an array a
+ of length n
+. Let's construct a square matrix b
+ of size n×n
+, in which the i
+-th row contains the array a
+ cyclically shifted to the right by (i−1)
+. For example, for the array a=[3,4,5]
+, the obtained matrix is
+
+b=⎡⎣⎢354435543⎤⎦⎥
+
+Let's construct the following graph:
+
+The graph contains n2
+ vertices, each of which corresponds to one of the elements of the matrix. Let's denote the vertex corresponding to the element bi,j
+ as (i,j)
+.
+We will draw an edge between vertices (i1,j1)
+ and (i2,j2)
+ if |i1−i2|+|j1−j2|≤k
+ and gcd(bi1,j1,bi2,j2)>1
+, where gcd(x,y)
+ denotes the greatest common divisor of integers x
+ and y
+.
+Your task is to calculate the number of connected components†
+ in the obtained graph.
+
+†
+A connected component of a graph is a set of vertices in which any vertex is reachable from any other via edges, and adding any other vertex to the set violates this rule.
+
+Input
+Each test consists of multiple test cases. The first line contains a single integer t
+ (1≤t≤105
+) — the number of test cases. The description of the test cases follows.
+
+The first line of each test case contains two integers n
+ and k
+ (2≤n≤106
+, 2≤k≤2⋅106
+) — the length of the array and the parameter k
+.
+
+The second line of each test case contains n
+ integers a1,a2,…,an
+ (1≤ai≤106
+) — the elements of the array a
+.
+
+It is guaranteed that the sum of n
+ over all test cases does not exceed 106
+.
+
+Output
+For each test case, output a single integer — the number of connected components in the obtained graph.
+
+Example
+InputCopy
+6
+3 3
+3 4 5
+3 3
+3 4 9
+3 2
+3 4 9
+2 2
+2 8
+5 3
+8 27 5 4 3
+4 10
+2 2 2 2
+OutputCopy
+3
+2
+3
+1
+4
+1
+Note
+In the first test case, the matrix b
+ is given in the statement. The first connected component contains the vertices (1,1)
+, (2,2)
+, and (3,3)
+. The second connected component contains the vertices (1,2)
+, (2,3)
+, and (3,1)
+. The third connected component contains the vertices (1,3)
+, (2,1)
+, and (3,2)
+. Thus, the graph has 3
+ connected components.
+
+In the second test case, the following matrix is obtained:
+
+b=⎡⎣⎢394439943⎤⎦⎥
+
+The first connected component contains all vertices corresponding to elements with values 3
+ and 9
+. The second connected component contains all vertices corresponding to elements with the value 4
+.
+
+In the fourth test case, all vertices are in one connected component.

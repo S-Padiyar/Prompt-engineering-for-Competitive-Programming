@@ -1,0 +1,227 @@
+**Analysis**
+
+We have an integer \(n\) (from 1 to 100).  In the *correct* arithmetic world, the answer to the birthday‐apple problem is
+
+\[
+\text{correctAnswer} \;=\; n\cdot a \;-\; b,
+\]
+
+with \(1\le a\le10000\), \(1\le b\le \min(10000,\;a\,n)\).
+
+K1o0n’s *buggy* solution treats \(n\) as a **string** and does the following:
+
+1.  It forms a string \(s\) by concatenating the decimal representation of \(n\) exactly \(a\) times.
+2.  It then “subtracts” \(b\) by simply chopping off the last \(b\) characters of \(s\).  (If \(b\) is greater than or equal to the length of \(s\), it becomes empty.)
+3.  It prints the remaining string (assuming it is nonempty) as a number.
+
+We must find all pairs \((a,b)\) (within the original constraints) for which the *bad* (string‐chop) method produces exactly the same final (nonempty) integer as the true value \(n\,a - b\).
+
+---
+
+**Key observation**
+
+Let \(s\) be the string consisting of \(n\) written \(a\) times in a row.  Its length in digits is
+\[
+L \;=\; a\cdot d,
+\]
+where \(d\) is the number of digits in \(n\).  Removing \(b\) digits from the end leaves
+\[
+t \;=\; L - b
+\]
+digits at the front.  Call the resulting truncated string \(s'\); its integer value is
+
+\[
+A \;=\; \bigl\lfloor s/10^b\bigr\rfloor
+\quad\text{(i.e.\ the first \(t\) digits of \(s\))}.
+\]
+
+For the buggy solution to “accidentally” be correct we need
+\[
+A \;=\; n\,a \;-\; b.
+\]
+But \(b = L - t = a\,d - t\), so
+\[
+n\,a - b \;=\; n\,a - (a\,d - t)
+\;=\; a\,(n-d)\;+\;t.
+\]
+Hence the equation we must solve is
+\[
+A \;=\; a\,(n-d)\;+\;t.
+\]
+Rearrange:
+\[
+A - t \;=\;(n-d)\,a
+\;\Longrightarrow\;
+a \;=\;\frac{A - t}{\,n-d\,}.
+\]
+Once \(t\) is fixed, the left side \(A\) is simply the integer value of the *first* \(t\) digits of the infinite repetition
+\[
+n\,n\,n\,n\,\dots
+\]
+Truncating that infinite repetition to length \(t\) gives a small string (at most a few dozen digits), so we can build it, convert it to an integer \(A\), and check whether \(\bigl(A - t\bigr)\) is a nonnegative multiple of \((n-d)\).  If it is, then
+\[
+a = \frac{A - t}{n-d}
+\]
+is an integer.  We then set
+\[
+b = a\,d - t,
+\]
+and check \(1\le a,b\le10000\) (and \(b\le a\,n\), though in fact \(b\le a\,d\le a\,n\) since \(n\ge d\)).
+
+We also must ensure the result is *nonempty*, so \(t\ge1\).
+
+Finally, there is a degenerate case when \(n-d=0\), i.e.\ \(n=1\).  Then the equation becomes
+\[
+A = t,
+\]
+where \(A\) is the integer whose decimal digits are the first \(t\) digits of “1111…”.  One checks easily that only \(t=1\) makes that work, and then the formula gives \(b=a - 1\).  Hence for \(n=1\) every \(2\le a\le10000\) with \(b=a-1\) works (indeed “111…1” chopped by \(b=a-1\) digits leaves exactly “1” which equals \(1\cdot a - (a-1)=1\)).
+
+Because \(A\) grows roughly like \(10^t\), once \(\,A - t > (n-d)\cdot 10000\) any further \(t\) will force
+\[
+a=\frac{A - t}{\,n-d\,}>10000
+\]
+and we can stop scanning larger \(t\).
+
+We implement exactly this:
+
+1.  Read \(t\) test‐cases.
+2.  For each \(n\):
+    -  If \(n=1\), output all \((a,b)=(2,a-1)\) for \(a=2\ldots10000\).
+    -  Otherwise let \(d=\) number of digits of \(n\).  Precompute `strn = ""+n`.
+    -  Build a string `rep` which is the infinite repetition of `strn` only as far as needed.  For \(t=1,2,3,\dots\) we make sure `rep.length()>=t` by appending another copy of `strn` if necessary; then the prefix of length \(t\) is `rep.substring(0,t)`.
+    -  Convert that prefix to a `BigInteger A`.  Compute `num = A - t` as a `BigInteger`.  If `num` is non‐negative and divisible by `(n-d)`, set
+       \[
+         a = \frac{\text{num}}{n-d},
+         \quad
+         b = a\cdot d - t.
+       \]
+      Check \(1\le a,b\le10000\).  If OK, record the pair.
+    -  Stop the loop once `num > (n-d)*10000` because then \(a\) would exceed 10000 and further \(t\) only makes \(A\) larger.
+3.  Print the count of valid pairs and then each pair.
+
+This runs in \(O(\text{(number of tests)} \times T_{\max}\times\) big‐integer overhead), where \(T_{\max}\) is typically under 10 before we exceed \((n-d)\,10000\).  It easily finishes in time for up to 100 test‐cases.  
+
+---
+
+```java
+import java.io.*;
+import java.math.BigInteger;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+        
+        int T = Integer.parseInt(br.readLine().trim());
+        while (T-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            
+            // Special case n=1
+            if (n == 1) {
+                // For n=1 any a=2..10000 with b=a-1 works
+                int cnt = 10000 - 1;  // a=2..10000 => 9999 pairs
+                out.println(cnt);
+                for (int a = 2; a <= 10000; a++) {
+                    out.println(a + " " + (a - 1));
+                }
+                continue;
+            }
+            
+            // For n>1
+            String strn = Integer.toString(n);
+            int d = strn.length();
+            int denom = n - d;  // must be >0 since n>1 => n >= 2, d <=3, so n-d >0 for n>1.
+            
+            // We'll build up the infinite repetition of strn, but only as far as needed.
+            StringBuilder rep = new StringBuilder();
+            
+            // Precompute the threshold for stopping:
+            BigInteger bigDenom = BigInteger.valueOf(denom);
+            BigInteger limitNum = bigDenom.multiply(BigInteger.valueOf(10000));
+            
+            // To avoid duplicates, we store in a set
+            Set<Long> seen = new HashSet<>();
+            List<int[]> ans = new ArrayList<>();
+            
+            for (int t = 1; ; t++) {
+                // ensure rep.length() >= t by appending strn if necessary
+                while (rep.length() < t) {
+                    rep.append(strn);
+                }
+                // take the first t digits
+                String prefix = rep.substring(0, t);
+                BigInteger A = new BigInteger(prefix);
+                
+                // num = A - t
+                BigInteger num = A.subtract(BigInteger.valueOf(t));
+                if (num.signum() < 0) {
+                    // too small; go on
+                } else {
+                    // see if divisible by denom
+                    BigInteger[] divmod = num.divideAndRemainder(bigDenom);
+                    if (divmod[1].signum() == 0) {
+                        BigInteger aBig = divmod[0];
+                        if (aBig.signum() > 0 && aBig.compareTo(BigInteger.valueOf(10000)) <= 0) {
+                            int a = aBig.intValue();
+                            int b = a*d - t;
+                            if (b >= 1 && b <= 10000 && b <= a*n) {
+                                long code = (((long)a) << 32) | (long)b;
+                                if (!seen.contains(code)) {
+                                    seen.add(code);
+                                    ans.add(new int[]{a, b});
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // if num > denom * 10000 then further t will only increase A => a > 10000
+                if (num.compareTo(limitNum) > 0) {
+                    break;
+                }
+            }
+            
+            // sort by 'a' ascending, then by 'b'
+            ans.sort(Comparator.<int[]>comparingInt(x->x[0]).thenComparingInt(x->x[1]));
+            
+            // output
+            out.println(ans.size());
+            for (int[] p : ans) {
+                out.println(p[0] + " " + p[1]);
+            }
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of the main steps**
+
+1.  **Handling \(n=1\)**  
+    When \(n=1\), every test \((a,b)\) with \(2\le a\le10000\) and \(b=a-1\) works:
+    -  The “string” of \(a\) copies of `"1"` truncated by \(b=a-1\) digits leaves exactly `"1"`.
+    -  The correct value is \(1\cdot a - (a-1)=1\).
+    Hence we output all \(9999\) such pairs.
+
+2.  **General \(n>1\)**  
+    -  Let \(d\) = the digit‐length of \(n\), so the string \(s\) is exactly \(n\) repeated \(a\) times and has length \(L=a\,d\).
+    -  Removing \(b\) digits leaves \(t=L-b\) digits.  Let \(A\) be the integer formed by those first \(t\) digits.
+    -  We require
+       \[
+         A \;=\; n\,a \;-\; b
+         \;=\; a(n - d)\;+\;t,
+       \]
+       so
+       \[
+         a \;=\;\frac{A - t}{\,n-d\,}.
+       \]
+    -  We loop \(t=1,2,3,\dots\), build up as many digits of the infinite repetition of \(n\) as needed, take the first \(t\) as a string, turn it into a `BigInteger A`, and test divisibility by \((n-d)\).  
+    -  Whenever \((A - t)\) is a nonnegative multiple of \((n-d)\), we compute
+      \[
+        a = \frac{A - t}{n-d},\quad b = a\,d - t,
+      \]
+      and check \(1\le a,b\le10000\).  Those that pass are recorded.
+    -  We stop as soon as \(\,(A - t) > (n-d)\times10000\), because that forces \(a>10000\) for all larger \(t\), and no further solutions are possible.
+
+This runs in effectively constant time per test (we only do a handful of `BigInteger` operations before the break), so it easily handles up to 100 distinct \(n\) within the CF limits.

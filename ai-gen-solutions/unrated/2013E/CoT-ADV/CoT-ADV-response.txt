@@ -1,0 +1,189 @@
+**Problem Restatement**
+
+We are given an array of positive integers \(a_1,\dots,a_n\). We may reorder the array arbitrarily, and we want to minimize the sum of its *prefix* GCDs:
+
+\[
+S \;=\;\gcd(a_1)\;+\;\gcd(a_1,a_2)\;+\;\dots+\;\gcd(a_1,a_2,\dots,a_n).
+\]
+
+Show the smallest possible value of \(S\) over all permutations of the array.
+
+---
+
+**Input**
+
+- \(t\) — number of test cases \((1\le t\le 10^4)\).
+- For each test case:
+  - An integer \(n\) \((1\le n\le 10^5)\).
+  - A line of \(n\) integers \(a_1,\dots,a_n\) \((1\le a_i\le 10^5)\).
+
+Across all test cases, \(\sum n\le10^5\) and \(\sum \max(a_i)\le10^5\).
+
+**Output**
+
+For each test case, print the minimum possible value of
+\[
+\sum_{i=1}^n \gcd(a_1,a_2,\dots,a_i)
+\]
+over all permutations of the array.
+
+---
+
+**Key Observations**
+
+1. **Final GCD is fixed.**  
+   The GCD of all \(n\) numbers, which we call \(G=\gcd(a_1,\dots,a_n)\), does *not* depend on the order. In any ordering the last term in our sum is \(\gcd(a_1,\dots,a_n)=G\).
+
+2. **Greedy strategy to drop the prefix GCD as fast as possible.**  
+   - Let \(g_1 = a_{\pi(1)}\) be our first picked element, so the first term in the sum is \(g_1\).  We clearly want \(g_1\) as small as possible, so we pick the *minimum* element of the array first.
+   - Having selected a prefix GCD \(g_{k-1}\), when we add the \(k\)th element \(a\), the new prefix GCD is \(\gcd(g_{k-1},a)\), which can only stay the same or decrease.  To minimize the sum of these prefix GCDs, at each step \(k\) we pick an unused element \(a\) that makes the new GCD
+     \[
+       g_k \;=\;\gcd\bigl(g_{k-1},\,a\bigr)
+     \]
+     as small as possible among all remaining elements.
+
+3. **Once we reach the overall GCD \(G\)**, further prefix GCDs will all be \(G\).  If it takes us \(m\) picks to get down to \(G\), we pay
+   \[
+     g_1 + g_2 + \dots + g_m
+     \;+\;(n-m)\cdot G.
+   \]
+
+4. **Complexity**  
+   - We do at most one full scan of the array each time the prefix GCD *strictly* decreases.  The prefix GCD starts at \(\min(a_i)\) and can only drop through the distinct divisors of \(\min(a_i)\).  A number up to \(10^5\) has at most 6–7 distinct prime factors, so it can change value only a small constant number of times before hitting \(G\).  
+   - Between drops the GCD remains the same; once it hits \(G\), we stop the greedy process and bulk-add the remaining \((n-m)\times G\).  
+   - Total time per test case is \(O(n\cdot \omega(\min(a_i)))\), where \(\omega(x)\) is the number of distinct prime factors of \(x\).  Over all test cases \(\sum n\le10^5\), so this is easily fast enough.
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    // Fast gcd
+    static int gcd(int a, int b) {
+        while (b != 0) {
+            int t = a % b;
+            a = b;
+            b = t;
+        }
+        return a;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(in.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            // Read n
+            int n = Integer.parseInt(in.readLine().trim());
+            int[] a = new int[n];
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // Compute G = gcd of all elements
+            int totalGcd = a[0];
+            for (int i = 1; i < n; i++) {
+                totalGcd = gcd(totalGcd, a[i]);
+            }
+
+            // If only one element, answer is a[0].
+            if (n == 1) {
+                sb.append(a[0]).append('\n');
+                continue;
+            }
+
+            // Find index of the minimum element => best a1
+            int minIdx = 0;
+            for (int i = 1; i < n; i++) {
+                if (a[i] < a[minIdx]) {
+                    minIdx = i;
+                }
+            }
+
+            // Greedy pick:
+            boolean[] used = new boolean[n];
+            int currentG = a[minIdx];
+            used[minIdx] = true;
+            long answer = currentG;  // sum starts with g1 = min element
+            int usedCount = 1;
+
+            // While we haven't used all and the prefix GCD can still drop
+            while (usedCount < n && currentG > totalGcd) {
+                int bestNextG = Integer.MAX_VALUE;
+                int bestIdx = -1;
+                // Scan all unused elements to see which one yields the smallest gcd
+                for (int i = 0; i < n; i++) {
+                    if (!used[i]) {
+                        int g = gcd(currentG, a[i]);
+                        if (g < bestNextG) {
+                            bestNextG = g;
+                            bestIdx = i;
+                        }
+                    }
+                }
+                // Use that element
+                used[bestIdx] = true;
+                currentG = bestNextG;
+                answer += currentG;
+                usedCount++;
+            }
+
+            // If we still have unused elements, each adds totalGcd to the sum
+            if (usedCount < n) {
+                answer += (long)(n - usedCount) * totalGcd;
+            }
+
+            sb.append(answer).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+---
+
+**Walk-through on a Sample**
+
+Let’s take the sample test case  
+```
+n = 5
+a = [6, 42, 12, 52, 20]
+```  
+1. Compute `totalGcd = gcd(6,42,12,52,20) = 2`.  
+2. Find minimum element: `6`.  
+   - Start with `currentG = 6`, `answer = 6`, mark 6 used.  
+3. While `currentG > totalGcd` (6 > 2):
+   - Among `{42,12,52,20}`, compute gcd(6, ·):
+     - gcd(6,42)=6
+     - gcd(6,12)=6
+     - gcd(6,52)=2
+     - gcd(6,20)=2  
+     The minimum is 2 (achieved by 52 or 20).  Pick one (say 52).  
+   - Now `currentG=2`, `answer=6+2=8`, usedCount=2.
+4. Now `currentG == totalGcd (=2)`, so we stop the greedy phase.  
+   - We have used 2 elements out of 5, so 3 remain, each contributes `2`.  
+   - Add `3*2 = 6`.  
+   - Final `answer = 8+6 = 14`.  
+
+Matches the sample output.
+
+---
+
+**Complexity Analysis**
+
+- Let \(n\) be the array size.  We do:
+  1. \(O(n)\) to compute the total GCD.
+  2. \(O(n)\) to find the minimum element.
+  3. In the greedy phase, each time the prefix GCD strictly decreases (at most \(\omega(\min(a_i))\) times, where \(\omega\) = number of distinct prime divisors, at most about 6 for numbers up to \(10^5\)), we do an \(O(n)\) scan.  
+  4. After we reach the overall GCD, we do an \(O(1)\) bulk addition for the remaining elements.
+
+Hence the per-test complexity is \(O\bigl(n \times \omega(\min(a_i))\bigr)\).  Summed over all test cases \(\sum n\le10^5\), this runs in well under the 2-second limit on Codeforces for Java.

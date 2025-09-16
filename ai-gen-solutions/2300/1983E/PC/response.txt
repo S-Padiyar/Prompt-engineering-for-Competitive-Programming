@@ -1,0 +1,181 @@
+**Analysis**
+
+We have \(n\) balls, of which the first \(k\) are *special* and the remaining \(m=n-k\) are *normal*.  Each ball \(i\) carries a (given) value \(v_i\).  Alice and Bob take turns drawing balls (until none remain), starting with Alice, with the rule that whenever a *special* ball is drawn the same player goes again, but whenever a *normal* ball is drawn the turn switches.
+
+We wish to compute
+\[
+   E[\text{Alice's score}]
+   \;=\;
+   \sum_{i=1}^n v_i \cdot \Pr(\text{Alice draws ball }i),
+\]
+and similarly Bob's expected score.  Linearity of expectation lets us split the sum over *special* and *normal* balls; moreover by symmetry all specials behave identically (and all normals likewise).  Thus if
+
+  * \(\Sigma_s = \sum_{i=1}^k v_i\)
+  * \(\Sigma_n = \sum_{i=k+1}^n v_i\)
+
+and if 
+\[
+   p_s \;=\;\Pr(\text{Alice draws any given special}),\qquad
+   p_n \;=\;\Pr(\text{Alice draws any given normal}),
+\]
+then
+\[
+   E_A \;=\;\Sigma_s\,p_s \;+\;\Sigma_n\,p_n.
+\]
+Since Bob gets the remainder,
+\[
+   E_B \;=\;(\Sigma_s+\Sigma_n)-E_A.
+\]
+
+---
+
+### Counting how many specials/normals Alice draws in expectation
+
+One can show by a *runs*-argument that
+
+ 1. Let \(m=n-k\).  The *normal* balls split the drawing‐permutation into \(m+1\) “bins” of consecutive specials, of which Alice will own the bins numbered \(0,2,4,\dots\).  Equivalently Alice draws exactly
+ \[
+    \Bigl\lceil \tfrac m2\Bigr\rceil
+ \]
+ normals (no randomness there), so
+ \[
+    E[\#\text{normals by Alice}]
+        \;=\;\Bigl\lceil \tfrac m2\Bigr\rceil.
+ \]
+
+ 2. The total \(k\) specials are placed uniformly at random into those \(m+1\) bins, and exactly the “even”‐numbered bins go to Alice (bins \(0,2,4,\dots\)).  There are
+ \[
+     \Bigl\lfloor \tfrac m2\Bigr\rfloor+1
+     \quad
+     (\text{the bins }0,2,\dots)
+ \]
+ of them, out of the \(m+1\) total bins.  Hence in expectation Alice gets
+ \[
+    E[\#\text{specials by Alice}]
+      =k\;\times\;\frac{\lfloor \tfrac m2\rfloor+1}{m+1}.
+ \]
+
+Hence
+\[
+   p_n \;=\;\frac{E[\#\text{normals by Alice}]}{m}
+           \;=\;\frac{\lceil m/2\rceil}{m},
+   \quad
+   p_s \;=\;\frac{E[\#\text{specials by Alice}]}{k}
+           \;=\;\frac{\lfloor m/2\rfloor+1}{m+1}.
+\]
+
+Finally
+\[
+   E_A
+   =\Sigma_s\;\frac{\lfloor m/2\rfloor+1}{m+1}
+   \;+\;
+   \Sigma_n\;\frac{\lceil m/2\rceil}{m}.
+\]
+If \(m=0\) (i.e.\ all balls are special) then trivially Alice draws them all and Bob 0.
+
+Since we must give the answer
+\(\;E_A\pmod{10^9+7}\)
+in the form of a fraction \(P/Q\) reduced modulo, we precompute all modular inverses up to \(N=4\cdot10^5+5\), then do
+```
+   term_s = Σ_s * (floor(m/2)+1) % MOD * inv[m+1] % MOD
+   term_n = Σ_n * ceil(m/2)       % MOD * inv[m]   % MOD   (if m>0)
+   E_A    = (term_s + term_n) % MOD
+   E_B    = (Σ_s+Σ_n - E_A + MOD) % MOD
+```
+
+This runs in \(O(n)\) total over all testcases (summing \(n\le5\cdot10^5\)), which is easily under the 2 s limit.
+
+---
+
+```java
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.IOException;
+import java.util.StringTokenizer;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int T = Integer.parseInt(in.readLine());
+        
+        // Precompute inverses up to ~500000
+        int MAX = 500_000 + 5;
+        long[] inv = new long[MAX];
+        inv[1] = 1;
+        for (int i = 2; i < MAX; i++) {
+            // inv[i] = MOD - (MOD/i)*inv[MOD%i] % MOD
+            inv[i] = MOD - ( MOD / i ) * inv[ MOD % i ] % MOD;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (int _case = 0; _case < T; _case++) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+            int m = n - k;  // number of normals
+
+            long sumS = 0, sumN = 0;
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < k; i++) {
+                sumS = (sumS + Long.parseLong(st.nextToken())) % MOD;
+            }
+            for (int i = k; i < n; i++) {
+                sumN = (sumN + Long.parseLong(st.nextToken())) % MOD;
+            }
+
+            long alice;
+            if (m == 0) {
+                // all are special => Alice picks all
+                alice = sumS;
+            } else {
+                // p_s = (floor(m/2)+1)/(m+1)
+                long A = (m / 2) + 1;      // floor(m/2)+1
+                long Bs = m + 1;          // denominator m+1
+                long termS = sumS * A % MOD * inv[(int)Bs] % MOD;
+
+                // p_n = ceil(m/2)/m
+                long C = (m + 1) / 2;      // ceil(m/2)
+                long termN = sumN * C % MOD * inv[m] % MOD;
+
+                alice = (termS + termN) % MOD;
+            }
+
+            long total = (sumS + sumN) % MOD;
+            long bob   = (total - alice + MOD) % MOD;
+
+            sb.append(alice).append(' ').append(bob).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of key points**
+
+1.  **Linearity of expectation + symmetry.**  
+    Because each special‐ball is *equally likely* to go into any of the \((m+1)\) “special‐bins” in the permutation, and Alice owns exactly those bins numbered \(0,2,4,\dots\), she gets in expectation
+    \[
+       k\cdot\frac{\lfloor m/2\rfloor+1}{m+1}
+       \quad
+       (\text{specials}),
+       \quad
+       \bigl\lceil\tfrac m2\bigr\rceil
+       \quad
+       (\text{normals}).
+    \]
+    Normal balls are equally likely among themselves, so the expected *sum* of normals she draws is
+    \(\sumN\cdot\frac{\lceil m/2\rceil}{m}.\)
+
+2.  **Modular inverses.**  
+    We must output the rational expectation \(E_A\) in the form \(P/Q\pmod{10^9+7}\).  We precompute \(\mathrm{inv}[i]\equiv i^{-1}\bmod10^9+7\) by the standard linear-time sieve:
+    \[
+       \mathrm{inv}[1]=1,\qquad
+       \mathrm{inv}[i] =   10^9+7 \;-\;\bigl\lfloor\frac{10^9+7}{i}\bigr\rfloor
+                           \times \mathrm{inv}[\,10^9+7 \bmod i\,]
+                           \;\bmod\;(10^9+7).
+    \]
+    Then each division by \(m\) or \(m+1\) becomes a multiply by the precomputed inverse.
+
+This runs in \(O\bigl(\sum n\bigr)\le5\cdot10^5\) overall, and answers each test in \(O(n)\).

@@ -1,0 +1,198 @@
+**Problem Restatement**
+
+We have an array of \(n\) integers \(a_1,\dots,a_n\) and a positive integer \(k\).  We are allowed two things:
+
+1. **Shuffle** the array arbitrarily once at the very beginning.
+2. Perform any number of **operations** of the form  
+   \[
+     a_i \;\longleftarrow\; a_i + k,\quad 1\le i\le n.
+   \]
+
+After all operations, we call the resulting array \(b\) *beautiful* if it is a palindrome, i.e. \(b_i = b_{n-i+1}\) for all \(i\).  We must find the minimum total number of single-\(+k\) increments needed to make the array beautiful, or decide it is impossible.
+
+---
+
+**Key Observations**
+
+1. **Residue Constraint.**  Adding \(k\) does not change an element’s value modulo \(k\).  Thus if two elements end up equal in the palindrome, they must **start** with the same residue \(\bmod\,k\).
+
+2. **Pairing via Shuffle.**  Because we can shuffle once before any operations, we effectively get to pair up the elements arbitrarily (except possibly one lone middle element if \(n\) is odd).  Each pair \((x,y)\) must have the same residue mod \(k\), and then we will pay the cost to “level” them to the same final value by repeatedly adding \(k\) to the smaller one until it reaches the larger.  The cost for a pair \((x,y)\) with \(x\le y\) and \(x\equiv y\pmod{k}\) is
+   \[
+     \frac{y - x}{k}
+   \]
+   increments.
+
+3. **Grouping by Residue.**  We group all elements by \(r = a_i \bmod k\).  Inside each residue-class group, we must pair all elements up (except possibly one if \(n\) is odd).  
+
+   - If \(n\) is even, **every** group must have even size, otherwise we cannot make a perfect pairing, so the answer is \(-1\).
+   - If \(n\) is odd, **exactly one** residue group may have odd size (that group contributes the middle palindrome element), and all other groups must be even-sized.  If the count of odd-sized groups is not exactly 1, the answer is \(-1\).
+
+4. **Minimizing Pairwise Costs in One Group.**  
+   - If a residue-group has even size, the minimum total cost of pairing (under cost \(|y-x|\)) is obtained simply by sorting the group and pairing neighbors: \((v_0,v_1), (v_2,v_3),\dots\).  
+   - If a residue-group has odd size (and is the unique odd group when \(n\) is odd), we must leave exactly one element unpaired (it will become the center of the palindrome).  Among all choices of which single element to leave out, we want the minimum total pairing cost for the rest.  This is a classic one-dimensional “minimum weight almost-perfect matching” problem, solvable in linear time by a small DP:
+     Let the sorted values be \(v_0\le v_1\le \dots\le v_{m-1}\).  Define two DP arrays
+     \[
+       \begin{aligned}
+         \mathrm{dp0}[i] &\;=\;\text{min cost to perfectly pair up all of }v_0,\dots,v_i\,,\quad(\text{so }i+1\text{ must be even}),\\
+         \mathrm{dp1}[i] &\;=\;\text{min cost to pair up exactly one of }v_0,\dots,v_i\text{ as the leftover (so }i+1\text{ is odd).}
+       \end{aligned}
+     \]
+     Transitions (for \(i\ge1\)):
+     - **Pair** \((v_{i-1},v_i)\):  
+       \(\displaystyle\mathrm{cost} = \frac{v_i - v_{i-1}}{k}.\)  
+       Then
+       \[
+         \mathrm{dp0}[i] = \mathrm{dp0}[i-2] + \text{cost},\quad
+         \mathrm{dp1}[i] = \mathrm{dp1}[i-2] + \text{cost}.
+       \]
+       (We adopt the convention \(\mathrm{dp0}[-1]=0\), \(\mathrm{dp1}[-1]=\infty\).)
+     - **Leave \(v_i\) unmatched** (becomes the middle):  
+       \[
+         \mathrm{dp1}[i] = \min\bigl(\mathrm{dp1}[i],\;\mathrm{dp0}[i-1]\bigr).
+       \]
+     At the end, if the group size \(m\) is even we take \(\mathrm{dp0}[m-1]\); if \(m\) is odd we take \(\mathrm{dp1}[m-1]\).
+
+Summing these minimal costs over all residue groups gives the global minimum number of \(+k\) operations.  
+
+---
+
+**Complexity**
+
+- Grouping by residue: \(O(n)\).
+- Sorting each group: total \(O(n\log n)\).
+- Summing pairing costs (greedy or DP): total \(O(n)\).
+- Overall, \(O(n\log n)\) per test, with \(\sum n\le 2\cdot 10^5\), fits in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+        int T = Integer.parseInt(br.readLine().trim());
+        final long INF = Long.MAX_VALUE / 4;
+
+        for (int tc = 0; tc < T; tc++) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+            int[] a = new int[n];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // Group elements by residue mod k
+            HashMap<Integer, ArrayList<Integer>> groups = new HashMap<>();
+            for (int x : a) {
+                int r = x % k;
+                groups.computeIfAbsent(r, __ -> new ArrayList<>()).add(x);
+            }
+
+            // Count how many groups have odd size
+            int oddCount = 0;
+            for (ArrayList<Integer> g : groups.values()) {
+                if ((g.size() & 1) == 1) {
+                    oddCount++;
+                }
+            }
+            // Feasibility check
+            boolean ok;
+            if (n % 2 == 0) {
+                ok = (oddCount == 0);
+            } else {
+                ok = (oddCount == 1);
+            }
+            if (!ok) {
+                out.println(-1);
+                continue;
+            }
+
+            long totalCost = 0;
+
+            // Process each residue-group
+            for (ArrayList<Integer> g : groups.values()) {
+                int m = g.size();
+                Collections.sort(g);
+                // Even-sized group -> pair adjacent
+                if ((m & 1) == 0) {
+                    for (int i = 1; i < m; i += 2) {
+                        long diff = g.get(i) - g.get(i - 1);
+                        totalCost += diff / k;
+                    }
+                } else {
+                    // Odd-sized: do the DP to leave exactly one unmatched
+                    long[] dp0 = new long[m];
+                    long[] dp1 = new long[m];
+                    // Base cases
+                    dp0[0] = INF;    // can't perfectly pair just one element
+                    dp1[0] = 0;      // leave the first as the unmatched
+
+                    for (int i = 1; i < m; i++) {
+                        long diffOps = (g.get(i) - g.get(i - 1)) / k;
+                        // dp0[i]
+                        long best0 = INF;
+                        if (i >= 2) {
+                            best0 = dp0[i - 2];
+                        } else {
+                            // i==1 => pairing v0,v1 on empty prefix => cost = dp0[-1] + diffOps
+                            best0 = 0;
+                        }
+                        dp0[i] = best0 + diffOps;
+
+                        // dp1[i]
+                        long best1 = INF;
+                        // Option 1: pair (i-1,i), one unmatched was already used in prefix
+                        if (i >= 2) {
+                            best1 = dp1[i - 2] + diffOps;
+                        }
+                        // Option 2: leave v[i] itself as the unmatched (use up the one)
+                        best1 = Math.min(best1, dp0[i - 1]);
+                        dp1[i] = best1;
+                    }
+                    // final cost = dp1[m-1]
+                    totalCost += dp1[m - 1];
+                }
+            }
+
+            out.println(totalCost);
+        }
+
+        out.flush();
+    }
+}
+```
+
+---
+
+**Explanation of Key Steps**
+
+1. **Residue‐grouping.**  
+   We use a `HashMap<Integer,ArrayList<Integer>>` to collect all elements sharing the same \(a_i \bmod k\).
+
+2. **Feasibility.**  
+   - If \(n\) is even, all groups must be even‐sized.  
+   - If \(n\) is odd, exactly one group is allowed to be odd‐sized (this one supplies the center of the palindrome).
+
+3. **Pairing even‐sized groups.**  
+   Sorting and then pairing each consecutive pair \((v_{2j},v_{2j+1})\) is well‐known to minimize the sum of \(|v_{2j+1}-v_{2j}|\).
+
+4. **Pairing odd‐sized group.**  
+   We must leave exactly one element unmatched.  A small DP (`dp0`, `dp1`) computes in \(O(m)\) the minimum total cost under that constraint.  
+
+5. **Summing up.**  
+   We add each group’s minimal cost, outputting the grand total.
+
+---
+
+**Complexity Analysis**
+
+- Let \(n\) be the size of the array for one test.
+- Grouping by residue: \(O(n)\).
+- Sorting each residue‐class: total \(\sum O(m_i\log m_i) \le O(n\log n)\).
+- Summing costs via simple loops or the \(O(m)\) DP per odd group: \(O(n)\).
+- Hence overall \(O(n\log n)\) per test, with \(\sum n \le 2\cdot10^5\), which easily runs within 2 s.

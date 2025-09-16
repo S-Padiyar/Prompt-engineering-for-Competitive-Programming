@@ -1,0 +1,12 @@
+[
+  {
+    "timestamp": "2025-07-24T05:50:35.080054",
+    "role": "user",
+    "content": "Please provide only one block of Java code containing the complete solution, ready for submission (no extra explanation)."
+  },
+  {
+    "timestamp": "2025-07-24T05:51:21.943915",
+    "role": "assistant",
+    "content": "```java\nimport java.io.*;\nimport java.util.*;\n\npublic class Main {\n    public static void main(String[] args) throws IOException {\n        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));\n        PrintWriter out = new PrintWriter(System.out);\n        int t = Integer.parseInt(in.readLine().trim());\n        while (t-- > 0) {\n            String[] nk = in.readLine().split(\" \");\n            int n = Integer.parseInt(nk[0]), k = Integer.parseInt(nk[1]);\n            String s = in.readLine().trim();\n            char[] T0 = new char[n], T1 = new char[n];\n            for (int i = 0; i < n; i++) {\n                int b = (i / k) % 2;\n                T0[i] = (b == 0 ? '0' : '1');\n                T1[i] = (b == 0 ? '1' : '0');\n            }\n            int ans = -1;\n            for (int x = 0; x < 2 && ans < 0; x++) {\n                char[] T = (x == 0 ? T0 : T1);\n                char[] revT = new char[n];\n                for (int i = 0; i < n; i++) revT[i] = T[n - 1 - i];\n                int lcp = 0;\n                while (lcp < n && s.charAt(lcp) == revT[lcp]) lcp++;\n                char[] V = new char[2 * n + 1];\n                for (int i = 0; i < n; i++) V[i] = T[i];\n                V[n] = '#';\n                for (int i = 0; i < n; i++) V[n + 1 + i] = s.charAt(i);\n                int[] Z = buildZ(V);\n                for (int p = 1; p <= n; p++) {\n                    if (p > lcp) break;\n                    if (p == n || Z[n + 1 + p] >= n - p) {\n                        ans = p;\n                        break;\n                    }\n                }\n            }\n            out.println(ans);\n        }\n        out.flush();\n    }\n\n    static int[] buildZ(char[] s) {\n        int n = s.length;\n        int[] Z = new int[n];\n        int l = 0, r = 0;\n        for (int i = 1; i < n; i++) {\n            if (i <= r) Z[i] = Math.min(r - i + 1, Z[i - l]);\n            while (i + Z[i] < n && s[Z[i]] == s[i + Z[i]]) Z[i]++;\n            if (i + Z[i] - 1 > r) {\n                l = i;\n                r = i + Z[i] - 1;\n            }\n        }\n        return Z;\n    }\n}\n```"
+  }
+]

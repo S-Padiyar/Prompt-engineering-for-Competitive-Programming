@@ -1,0 +1,223 @@
+**Analysis**
+
+We have \(n\) points labelled \(1\ldots n\) on a line and \(m\) “connect‐the‐dots” operations.  In the \(i\)-th operation we are given three integers
+\[
+a_i,\; d_i,\; k_i,
+\]
+and we connect by arcs *each* pair of the arithmetic‐progression of points
+\[
+a_i,\; a_i+d_i,\; a_i+2d_i,\;\dots,\;a_i+k_i\,d_i.
+\]
+After doing *all* \(m\) operations, we must report the number of connected components of the resulting undirected graph.
+
+A direct way to connect a clique of \(L\) vertices is to union each consecutive pair in the clique; that is, to perform \(\bigl(L-1\bigr)\) union‐operations in a DSU (Disjoint‐Set Union) data structure which would already guarantee the whole set is in one connected component.  However, \(L\) can be as large as \(O(n)\) in a single operation and there can be up to \(m=O(n)\) operations, so a naive “union every consecutive pair in each AP” can become \(O(n^2)\) in the worst case.
+
+The key observation is that each operation for fixed \((d,a,k)\) actually lives inside one residue‐class modulo \(d\).  Indeed, all points in
+\[
+a,\,a+d,\,a+2d,\,\dots,a+k\,d
+\]
+are congruent to \(a\pmod d\).  If we take all integers \(1\ldots n\) that are \(\equiv r\pmod d\), they form a small “chain” (a one‐dimensional path) whose vertices are
+\[
+\{\,r,\;r+d,\;r+2d,\dots\}
+\]
+up to the largest that does not exceed \(n\).  What the operation does is to connect *all* of those AP‐points into a clique.  But in a path graph, the edges that suffice to make the whole subinterval connected are just *the edges between consecutive points in that subinterval*.  
+
+Hence if our AP runs from index
+\[
+p_0=\tfrac{a-r}{d},\quad p_1=\tfrac{a-r}{d}+1,\dots,\;p_k=\tfrac{a-r}{d}+k
+\]
+inside that residue‐class chain, we only need to union
+\[
+\bigl(\,r+p_i\,d\,,\,r+p_{i+1}d\bigr)
+\quad(0\le i<k)
+\]
+to link the entire block.
+
+What remains is to do *range‐union* of all such consecutive‐edge unions *without* explicitly walking each of the \(k\) steps per operation.  Since \(d\le10\), there are at most
+\[
+\sum_{d=1}^{10} d \;=\;55
+\]
+distinct residue‐chains to worry about.  If in one chain of length \(L\) we have several intervals \([p_i,p_i+k_i]\) to connect consecutively, we simply mark those intervals in a difference array of length \(L\).  After we have processed *all* operations in that chain, we sweep once from left to right, form the prefix‐sum, and wherever that prefix‐sum is strictly positive we know there is at least one operation demanding the edge between positions \(j\) and \(j+1\).  We do exactly one DSU‐union for that edge.  Summing over all chains and all tests this is linear (up to the factor \(\sum_{d=1}^{10}(n/d)\le n\cdot H_{10}\)), which is \(O(n)\) for each test.
+
+Finally, we use a classic DSU over the \(n\) points.  After we have added (via the difference‐array sweep) all the necessary “consecutive‐position” unions, the DSU partitions \(\{1,\dots,n\}\) into its connected components.  We simply count how many DSU‐roots remain.
+
+Overall time per test is \(O(n+m)\), and since \(\sum n,\sum m\le2\cdot10^5\) globally, this easily runs in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class DSU {
+        int[] p, sz;
+        DSU(int n) {
+            p = new int[n+1];
+            sz = new int[n+1];
+            for(int i = 1; i <= n; i++){
+                p[i] = i;
+                sz[i] = 1;
+            }
+        }
+        int find(int x) {
+            return p[x] == x ? x : (p[x] = find(p[x]));
+        }
+        void unite(int a, int b) {
+            a = find(a);
+            b = find(b);
+            if (a == b) return;
+            // union by size
+            if (sz[a] < sz[b]) {
+                p[a] = b;
+                sz[b] += sz[a];
+            } else {
+                p[b] = a;
+                sz[a] += sz[b];
+            }
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+
+            // Prepare DSU
+            DSU dsu = new DSU(n);
+
+            // We'll only need d up to min(10, n).
+            int maxD = Math.min(10, n);
+
+            // diff[d][r] will be the difference-array for residue-class r mod d.
+            // We first allocate each chain's array according to its length.
+            int[][][] diff = new int[maxD+1][][];
+            int[][] chainLen = new int[maxD+1][ ];
+            for(int d = 1; d <= maxD; d++){
+                diff[d] = new int[d][ ];
+                chainLen[d] = new int[d];
+                for(int r = 0; r < d; r++){
+                    // The smallest number >=1 which is congruent to r mod d:
+                    //   if r==0, that number is d; else it is r.
+                    int base = (r==0 ? d : r);
+                    if (base > n) {
+                        chainLen[d][r] = 0;
+                        diff[d][r] = new int[0];
+                    } else {
+                        int len = (n - base) / d + 1;
+                        chainLen[d][r] = len;
+                        diff[d][r] = new int[len];
+                        // initially all zero
+                    }
+                }
+            }
+
+            // Read operations, populate difference arrays
+            for(int i = 0; i < m; i++){
+                st = new StringTokenizer(br.readLine());
+                int a = Integer.parseInt(st.nextToken());
+                int d = Integer.parseInt(st.nextToken());
+                int k = Integer.parseInt(st.nextToken());
+
+                if (d > maxD) {
+                    // d>n or >10 cannot connect anything meaningful
+                    continue;
+                }
+
+                int r = a % d;
+                int base = (r == 0 ? d : r);
+                int startIdx = (a - base) / d;
+                int endIdx = startIdx + k; // inclusive for vertex indices
+
+                // We only want to connect consecutive pairs in [startIdx .. endIdx].
+                // The edges are between positions j and j+1 for j in [startIdx..endIdx-1].
+                // So we mark diff[startIdx] +=1, diff[endIdx] -=1.
+                // Later prefix-sum>0 at position j means there is an edge (j, j+1).
+                diff[d][r][startIdx]++;
+                if (endIdx < chainLen[d][r]) {
+                    diff[d][r][endIdx]--;
+                }
+            }
+
+            // Now sweep each chain, build prefix sums, and perform DSU-union on covered edges
+            for(int d = 1; d <= maxD; d++){
+                for(int r = 0; r < d; r++){
+                    int len = chainLen[d][r];
+                    if (len <= 1) continue;  // no edges in a chain of length 0 or 1
+                    int cur = 0;
+                    int base = (r == 0 ? d : r);
+                    for(int j = 0; j < len - 1; j++){
+                        cur += diff[d][r][j];
+                        if (cur > 0) {
+                            int u = base + j*d;
+                            int v = u + d;
+                            dsu.unite(u, v);
+                        }
+                    }
+                }
+            }
+
+            // Finally count how many distinct DSU-roots among 1..n
+            int comps = 0;
+            for(int i = 1; i <= n; i++){
+                if (dsu.find(i) == i) comps++;
+            }
+            sb.append(comps).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Disjoint‐Set Union (DSU).**  
+   We keep an array `parent[]` and `size[]`.  `find(x)` finds the representative of \(x\), and `unite(a,b)` merges the two sets if they are different.
+
+2. **Residue‐Chains.**  
+   For each \(d\in[1,\min(10,n)]\) and residue \(r=0,\dots,d-1\), the nodes congruent to \(r\pmod d\) form a *chain* in ascending order:
+   \[
+     base,\; base+d,\; base+2d,\;\dots
+   \]
+   where \(base=(r==0\ ?\ d : r)\).  Its length is \(L=\lfloor (n-base)/d\rfloor+1\).
+
+3. **Range Marking via a Difference Array.**  
+   An operation
+   \[
+     a,\;d,\;k
+   \]
+   picks exactly the chain for residue \(r=a\%d\) and connects the block of \(k+1\) consecutive vertices in that chain:
+   \[
+     p_0 = \tfrac{a-base}{d},\quad
+     p_1=p_0+1,\dots,\;p_k=p_0+k.
+   \]
+   To connect them all, it suffices to union each consecutive pair
+   \(\,(p_j,p_{j+1})\).  We do *not* loop \(k\) times per operation: we only note that positions \(p_j\) for \(j\in[p_0,p_0+k-1]\) must have their “edge” to \(p_j+1\).  
+   
+   We maintain an integer array `diff[]` of length \(L\).  For an interval \([p_0,p_0+k]\) we do
+     diff[p₀]++  
+     diff[p₀+k]--  
+   Later a single prefix‐sum pass tells us exactly which positions carry an edge (where the prefix‐sum is >0).
+
+4. **Applying the Edges.**  
+   After prefix‐summing, wherever the sum at index \(j\) is positive, we know there must be an edge between the chain nodes \(j\) and \(j+1\).  We translate those into an actual DSU‐`unite(u,v)` where  
+   \[
+     u = base + j\,d,\quad
+     v = u + d.
+   \]
+
+5. **Counting Components.**  
+   In the end each integer \(1\le i \le n\) belongs to exactly one DSU set.  We simply count how many \(i\) are their own parent (i.e.\ roots).  That is the number of connected components.
+
+Because \(d\le10\), the total length of *all* chains is only
+\[
+   \sum_{d=1}^{10}\sum_{r=0}^{d-1}\bigl\lfloor\tfrac{n - base}{d}\bigr\rfloor+1
+   \;=\;O(n\sum_{d=1}^{10}\tfrac1d)\;=\;O(n),
+\]
+and each operation becomes \(O(1)\) to mark the difference arrays, plus one linear sweep per chain.  This yields an overall \(O((n+m)\cdot\alpha(n))\) solution (where \(\alpha\) is the inverse‐Ackermann function buried in DSU), which is perfectly fast for \(n,m\le2\cdot10^5\).

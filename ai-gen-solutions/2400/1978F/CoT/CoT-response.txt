@@ -1,0 +1,240 @@
+**Analysis**
+
+We have an \(n\times n\) circulant‐shift matrix  
+\[
+b_{i,j} \;=\; a_{(j-i\bmod n)+1},
+\]  
+and we place a vertex at each \((i,j)\).  Two vertices \((i_1,j_1)\) and \((i_2,j_2)\) are joined by an edge iff
+
+1. \(\lvert i_1-i_2\rvert + \lvert j_1-j_2\rvert\le k\),  and  
+2. \(\gcd\bigl(b_{i_1,j_1},\,b_{i_2,j_2}\bigr)>1\).  
+
+We must count the number of connected components in this huge \(n^2\)‐vertex graph, for up to \(10^5\) test cases and \(\sum n\le10^6\).  Clearly we cannot build the graph explicitly.  We exploit the special circulant structure:
+
+-  Each **diagonal** \(u\) (where \(j-i\equiv u\pmod n\)) carries the constant value \(a[u]\).  
+-  Within one diagonal, if \(a[u]=1\) then \(\gcd(1,1)=1\) so **no** two cells on that diagonal ever connect; all \(n\) of its cells are isolated singletons.  
+-  If \(a[u]>1\), those \(n\) cells on diagonal \(u\) do connect “along” the diagonal in two contiguous runs (unless \(k\ge n\), in which case the wrap‐around step also joins them into a single loop).  Hence on diagonal \(u\) with \(a[u]>1\) we have
+     - \(2\) “segments” (two linear runs) if \(k<n\) and \(u\neq0\),
+     - \(1\) segment if \(k\ge n\) **or** \(u=0\).  
+
+That tells us how many connected pieces each *single* diagonal would contribute if it never talks to any other diagonal.
+
+But diagonals *do* talk to each other whenever (a) they share a prime factor, and (b) their diagonal‐indices \(u,v\) differ by at most \(k\) *cyclically* (so that there is at least one pair of cells \((i,j)\) in diagonal \(u\) and \((i',j')\) in diagonal \(v\) at manhattan‐distance \(\le k\)).
+
+It turns out one can show that *all* those inter‐diagonal contacts merge the entire group of involved diagonals into a single component, except when a diagonal stands completely alone (no other diagonal with which it shares a prime factor at cyclic‐distance \(\le k\)).  
+
+Hence the recipe:
+
+1.  **Special case** each diagonal \(u\) with \(a[u]=1\): it contributes \(n\) singleton components (none of those cells ever connect to anything).  
+2.  For the remaining diagonals (those with \(a[u]>1\)) build a small “meta‐graph” on the set of indices \(u\).  
+    -  We place an (undirected) edge between \(u\) and \(v\) iff 
+       1. \(\gcd(a[u],a[v])>1\), and  
+       2. their cyclic index‐distance \(\min(|u-v|,\,n-|u-v|)\le k\).  
+    -  We compute connected components in that meta‐graph (of size at most \(n\)).  
+3.  If a meta‐component has size \(>1\), all its diagonals (and all their sub‐segments) merge into *one* big component in the big grid.  
+4.  If a meta‐component is a singleton \(\{u\}\), then it contributes exactly the number of segments we would have had *just* from diagonal \(u\) alone, namely  
+   \[
+     \text{segments}(u)\;=\;
+       \begin{cases}
+         n, &a[u]=1,\\
+         1, &a[u]>1\text{ and either }u=0\text{ or }k\ge n,\\
+         2, &a[u]>1\text{ and }u\ne0\text{ and }k<n.
+       \end{cases}
+   \]
+5.  Sum everything.
+
+To implement step (2) efficiently, we:
+
+- Precompute a sieve of smallest‐prime‐factor (SPF) up to \(10^6\).  
+- For each test case, for each diagonal \(u\) with \(a[u]>1\) we factor \(a[u]\) by repeated SPF‐division, extracting its *distinct* prime factors.  We keep for each prime \(p\) a list of all diagonals that carry a multiple of \(p\).  
+- Then **for each prime** \(p\), we have a sorted list of diagonals `pos[]`.  We union‐join all *consecutive* pairs in that list whose linear index‐difference \(\le k\), plus if the wrap‐around distance `(pos[0] + n – pos[m-1]) ≤ k` we also join those two.  By transitivity that connects *every* pair of diagonals whose cyclic index distance \(\le k\).  
+- After processing all primes, we run a DSU‐(disjoint set) to get meta‐components.  
+
+Each test runs in about \(O(n\log n)\) total (the factorization via SPF is \(O(\log a_i)\), summing to \(O(n\log A)\), plus the DSU unions which are linear in the total prime‐lists size).  This easily handles \(\sum n\le10^6\) within a 512 MB and 4 s limit in Java.
+
+Below is a clean Java implementation.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    // MAXA = maximum a[i] ≤ 1e6
+    static final int MAXA = 1000000;
+    static int[] spf = new int[MAXA+1];  // smallest prime factor
+
+    // Precompute SPF sieve once
+    static {
+        for (int i = 2; i <= MAXA; i++) {
+            if (spf[i] == 0) {
+                // i is prime
+                for (int j = i; j <= MAXA; j += i) {
+                    if (spf[j] == 0) {
+                        spf[j] = i;
+                    }
+                }
+            }
+        }
+    }
+
+    // DSU (Union-Find) for diagonals 0..n-1
+    static int[] parent, rnk;
+    static int[] compSize, repr; 
+
+    static int find(int x) {
+        if (parent[x] != x) {
+            parent[x] = find(parent[x]);
+        }
+        return parent[x];
+    }
+
+    static void union(int a, int b) {
+        a = find(a);
+        b = find(b);
+        if (a == b) return;
+        if (rnk[a] < rnk[b]) {
+            parent[a] = b;
+        } else if (rnk[b] < rnk[a]) {
+            parent[b] = a;
+        } else {
+            parent[b] = a;
+            rnk[a]++;
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int t = Integer.parseInt(st.nextToken());
+
+        // We will use a HashMap<prime, List<diagonalIndices>>
+        // and clear it each test.
+        HashMap<Integer, List<Integer>> primeMap = new HashMap<>();
+
+        // DSU arrays sized to max possible n = 1e6
+        parent = new int[1000005];
+        rnk    = new int[1000005];
+        compSize = new int[1000005];
+        repr      = new int[1000005];
+
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long k = Long.parseLong(st.nextToken());  
+
+            st = new StringTokenizer(br.readLine());
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // 1) Count how many singletons come from a[u]==1
+            long answer = 0;
+            ArrayList<Integer> nonOneUs = new ArrayList<>();
+            for (int u = 0; u < n; u++) {
+                if (a[u] == 1) {
+                    // All n cells on diagonal u are isolated
+                    answer += n;
+                } else {
+                    // We'll put u into DSU and into primeMap
+                    nonOneUs.add(u);
+                }
+            }
+
+            // Initialize DSU for those diagonals
+            for (int u: nonOneUs) {
+                parent[u] = u;
+                rnk[u] = 0;
+            }
+
+            // Build primeMap: for each diagonal u with a[u]>1, factor out distinct primes
+            primeMap.clear();
+            for (int u: nonOneUs) {
+                int x = a[u];
+                while (x > 1) {
+                    int p = spf[x];
+                    List<Integer> lst = primeMap.get(p);
+                    if (lst == null) {
+                        lst = new ArrayList<>();
+                        primeMap.put(p, lst);
+                    }
+                    lst.add(u);
+                    // divide out all copies of p
+                    while (x % p == 0) {
+                        x /= p;
+                    }
+                }
+            }
+
+            // For each prime, link those diagonals whose cyclic-distance ≤ k
+            for (Map.Entry<Integer, List<Integer>> ent : primeMap.entrySet()) {
+                List<Integer> pos = ent.getValue();
+                Collections.sort(pos);          // sort by diagonal index
+                int m = pos.size();
+                if (m <= 1) continue;
+                // link consecutive if direct distance ≤ k
+                for (int i = 0; i+1 < m; i++) {
+                    long d = (long)pos.get(i+1) - pos.get(i);
+                    if (d <= k) {
+                        union(pos.get(i), pos.get(i+1));
+                    }
+                }
+                // link wrap-around if (pos[0] + n - pos[m-1]) ≤ k
+                long wrap = (long)pos.get(0) + n - pos.get(m-1);
+                if (wrap <= k) {
+                    union(pos.get(0), pos.get(m-1));
+                }
+            }
+
+            // Count meta-components via DSU
+            ArrayList<Integer> roots = new ArrayList<>();
+            for (int u: nonOneUs) {
+                int r = find(u);
+                if (compSize[r] == 0) {
+                    roots.add(r);
+                    repr[r] = u;   // remember one member
+                }
+                compSize[r]++;
+            }
+
+            // Now for each DSU-root:
+            for (int r: roots) {
+                int sz = compSize[r];
+                if (sz > 1) {
+                    // all diagonals in this meta-component fuse to ONE component
+                    answer += 1;
+                } else {
+                    // singleton diagonal {u}
+                    int u = repr[r];
+                    // number of segments on diagonal u
+                    if ( (u == 0) || (k >= n) ) {
+                        answer += 1;
+                    } else {
+                        answer += 2;
+                    }
+                }
+            }
+
+            // cleanup compSize for next test
+            for (int r: roots) {
+                compSize[r] = 0;
+            }
+
+            // Done with this test
+            System.out.println(answer);
+        }
+
+        br.close();
+    }
+}
+```
+
+**Explanation of key steps**
+
+1. **Smallest-prime‐factor sieve** up to \(10^6\) lets us factor each \(a_i\) in \(O(\log a_i)\).  
+2. We split out all indices \(u\) for which \(a[u]=1\) (these contribute \(n\) isolated cells each).  
+3. All remaining diagonals \(u\) are nodes in a small DSU of size ≤ \(n\).  We store for each prime \(p\) the list of diagonals that carry \(p\).  
+4. Within each prime‐list, two diagonals whose cyclic index‐gap ≤ \(k\) obtain an edge.  A single pass over the sorted list (plus one wrap‐check) suffices to link *all* such pairs by transitivity.  
+5. After union‐joining by all primes, each DSU‐component of size ≥ 2 collapses to a single connected component in the big grid.  Any singleton DSU‐component \(\{u\}\) contributes either 1 or 2 “segments” depending on whether \(k\ge n\) (which merges the diagonal into a cycle) or \(u=0\).  
+
+Overall we run in \(O\bigl(\sum_i \log a_i + n\bigr)\) per test, perfectly adequate for \(\sum n\le10^6\).

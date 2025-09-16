@@ -1,0 +1,129 @@
+**Problem Restatement**
+
+We need to construct, for each given length \(n\), a sequence \(a_1,a_2,\dots,a_n\) of integers between \(1\) and \(3\times 10^5\) such that:
+
+1. All adjacent products \(a_i\cdot a_{i+1}\) \((1\le i\le n-1)\) are pairwise distinct.
+2. We use the minimum possible number of distinct values in the entire sequence.
+
+Output any valid sequence for each test.
+
+---
+
+**Key Observations**
+
+1.  If our sequence uses exactly \(k\) distinct values (labeled \(1,2,\dots,k\)), then there are
+   \[
+     \underbrace{k}_{\text{loops }(i,i)} + \underbrace{\binom{k}{2}}_{\text{unordered pairs }(i<j)} 
+     \;=\;\frac{k(k+1)}{2}
+   \]
+   possible *unordered* pairs \(\{i,j\}\).  Since the product \(i\cdot j\) does not care about order, each unordered pair yields one possible product.
+2.  We need \(n-1\) distinct adjacent products, i.e.\ \(n-1\) distinct unordered pairs in our sequence of adjacent steps.  Hence we must choose \(k\) so that
+   \[
+     \frac{k(k+1)}{2}\;\ge\;n-1.
+   \]
+   Call \(m = n-1\).
+3.  It turns out that if \(\tfrac{k(k+1)}{2}=m\) *and* \(k\) is even, the underlying graph with loops has *all* vertices of odd degree, so there is no single trail that uses *all* edges exactly once.  But we *can* afford to use *more* edges than needed; that is, we can safely bump \(k\) by one in that bad even-\(k\) case so that we have strictly more than \(m\) edges available (and then a trail of length \(m\) always exists).
+4.  Once \(k\) is chosen, we build a walk of length \(n\) (i.e.\ \(n-1\) edges) in the complete graph on \(\{1,\dots,k\}\) *with loops*, taking care never to repeat an edge.  This ensures each adjacent unordered pair is new, hence the products are distinct.
+5.  A simple *greedy* suffices: start at node 1, and at each step, from the current node `cur` pick the smallest neighbor `nxt` (including a loop if unused) for which the edge \(\{cur,nxt\}\) has not yet been used.  Mark it used and move to `nxt`.  One can show that as long as we have \(\tfrac{k(k+1)}{2}>m\) or the Euler-trail parity condition is met, this greedy never gets stuck.
+
+The total distinct integers used is exactly \(k\), which by construction is the smallest possible (with the slight bump in the even-\(k\), full-edge case).
+
+---
+
+**Complexities**
+
+- Computing \(k\) from \(m=n-1\) is \(O(1)\) via a small integer correction around \(\sqrt{1+8m}\).
+- Building the sequence of length \(n\) takes \(O(n + k^2)\) in the worst case (we keep pointers per node and a boolean matrix of size \(k\times k\) to mark used edges).  Since \(k\approx O(\sqrt{n})\), this is \(O(n)\) overall.
+- Summed over all test cases, \(\sum n\le 10^6\), so it runs comfortably in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(System.out));
+        int t = Integer.parseInt(br.readLine().trim());
+        
+        // We will reuse a single 'used' matrix up to max k ~ 1415
+        final int MAXK = 1500;
+        boolean[][] used = new boolean[MAXK+1][MAXK+1];
+        int[] ptr = new int[MAXK+1];  // for each node, next candidate neighbor
+        
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            int m = n - 1;  // we need m distinct adjacent pairs
+            
+            // 1) find smallest k so that k*(k+1)/2 >= m
+            //    then if equality holds and k is even, bump k by 1
+            int k = (int)Math.floor((Math.sqrt(1 + 8L*m) - 1)/2);
+            while ((long)k*(k+1)/2 < m) k++;
+            long totalEdges = (long)k*(k+1)/2;
+            if (totalEdges == m && k % 2 == 0) {
+                // avoid the parity trap where no Euler trail covers exactly all edges
+                k++;
+                totalEdges = (long)k*(k+1)/2;
+            }
+            
+            // 2) clear 'used' for nodes 1..k and reset pointers
+            for (int i = 1; i <= k; i++) {
+                ptr[i] = 1;
+                Arrays.fill(used[i], 1, k+1, false);
+            }
+            
+            // 3) build the walk/sequence
+            int[] a = new int[n];
+            a[0] = 1;        // start at node 1
+            int cur = 1;
+            
+            for (int i = 1; i < n; i++) {
+                // advance ptr[cur] until we find an unused edge {cur, ptr[cur]}
+                while (ptr[cur] <= k && used[cur][ptr[cur]]) {
+                    ptr[cur]++;
+                }
+                // ptr[cur] must be <= k because we arranged totalEdges > (n-1) or parity is OK
+                int nxt = ptr[cur];
+                // mark undirected edge used
+                used[cur][nxt] = true;
+                used[nxt][cur] = true;
+                a[i] = nxt;
+                cur = nxt;
+            }
+            
+            // 4) output the sequence
+            for (int i = 0; i < n; i++) {
+                bw.write(a[i] + (i+1<n ? " " : "\n"));
+            }
+        }
+        
+        bw.flush();
+    }
+}
+```
+
+---
+
+**Explanation of Core Steps**
+
+1. **Choosing \(k\):**  
+   We need at least \(n-1\) distinct unordered pairs.  A pool of \(k\) values yields \(\tfrac{k(k+1)}{2}\) pairs (including loops).  Solve
+   \[
+     \frac{k(k+1)}{2} \;\ge\; n-1
+   \]
+   by the quadratic formula and a small integer adjustment.  If equality holds and \(k\) is even, we bump \(k\) by one to avoid the situation in which every vertex has odd degree: that graph would *not* admit a single trail covering all edges exactly once, making a greedy selection potentially get stuck.  By bumping we ensure \(\tfrac{k(k+1)}{2} > n-1\), so we have "slack" and never exhaust all edges around our current vertex prematurely.
+
+2. **Greedy walk construction:**  
+   - We maintain a boolean matrix `used[i][j]` to know if the unordered pair \(\{i,j\}\) was already taken as an adjacent step.  
+   - For each node `i` we keep a pointer `ptr[i]` initially 1, meaning the next neighbor candidate is 1.  
+   - Starting from `cur = 1`, at each new position we scan `ptr[cur]` forward until we find an index `nxt` with `used[cur][nxt] == false`.  We then mark `used[cur][nxt] = used[nxt][cur] = true` and move `cur = nxt`.  
+   - This guarantees we never repeat an unordered pair, hence all products are distinct.
+
+3. **Complexity analysis:**  
+   - Determining \(k\) is \(O(1)\).  
+   - We reset a \(k\times k\) boolean matrix in \(O(k^2)\).  Since \(k\approx O(\sqrt{n})\), that is \(O(n)\) in total across all test cases (sum of \(n\le 10^6\)).  
+   - Building the walk of length \(n\) is \(O(n + k^2)\) in the worst case.  Overall linear in the total input size.
+
+This design uses the minimum number \(k\) of distinct values, satisfying the problem requirement.

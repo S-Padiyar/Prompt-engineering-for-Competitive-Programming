@@ -1,0 +1,197 @@
+**Problem Restatement**
+
+We want to count how many integers \(n\) in the interval
+\[
+10^l \;\le\; n \;<\; 10^r
+\]
+satisfy
+\[
+D(k\cdot n)\;=\;k\;\cdot D(n),
+\]
+where \(D(x)\) is the sum of the decimal digits of \(x\).  We must answer for up to \(t\) test‐cases, each with its own \((l,r,k)\), and output each count modulo \(10^9+7\).
+
+**Key Observation**
+
+When you multiply a number \(n\) by \(k\) in base‐10, carries can occur digit‐by‐digit.  It is a known digit‐sum identity that
+\[
+D(k\cdot n) \;=\; k\,D(n)\;-\;9\times(\text{total carries during the multiplication}).
+\]
+Hence the equality
+\[
+D(k\cdot n)\;=\;k\,D(n)
+\]
+holds **if and only if** there are **no carries** in the digit‐wise multiplication.  Carry into a digit occurs if
+\[
+k\cdot d_i + \bigl(\text{carry from the previous less‐significant digit}\bigr)\;\ge\;10.
+\]
+To have _no carries at all_, one must ensure
+\[
+k\cdot d_i < 10
+\]
+for **every** digit \(d_i\) of \(n\).  Thus
+
+   1.  **Maximum digit** of \(n\) must satisfy  
+       \(\max_i d_i \le \big\lfloor 9/k\big\rfloor\).  
+   2.  Let\[m = \lfloor 9/k\rfloor.\]  
+       Then every decimal digit of \(n\) must lie in  
+       \(\{0,1,2,\dots,m\}\), and the leading digit must be nonzero (for \(n\ge 10^l\)).
+
+**Counting**
+
+- If \(m=0\), then every digit must be 0, so the only number is \(0\).  But \(n\ge10^l\ge1\) (because \(l\ge0\) and \(10^0=1\)), so there are **zero** valid \(n\).
+- If \(m\ge1\), then any valid \(n\) of length \(d\) (digits) is chosen by
+  - Leading digit: \(1,2,\dots,m\)  \(\Rightarrow m\) choices
+  - Each of the remaining \(d-1\) digits: \(0,1,2,\dots,m\)  \(\Rightarrow (m+1)^{d-1}\) choices
+  - Total for length \(d\): \(m\cdot (m+1)^{d-1}\).
+
+We need \(n\) in the range \(10^l \le n < 10^r\).  Those are exactly the integers whose decimal‐digit‐length \(d\) runs from
+\[
+d_{\min} 
+   = \begin{cases}
+      1, & l=0,\\
+      l+1, & l\ge1,
+     \end{cases}
+\quad
+d_{\max}=r.
+\]
+Let 
+\[
+d_1 = d_{\min},\quad d_2=d_{\max}.
+\]
+Then the total count is
+\[
+\sum_{d=d_1}^{d_2} m\,(m+1)^{\,d-1}.
+\]
+Factor out \(m\):
+\[
+m\;\sum_{d=d_1}^{d_2} (m+1)^{d-1}
+= m\;\sum_{i=d_1-1}^{d_2-1} (m+1)^i.
+\]
+This is a geometric progression.  For a geometric series
+\(\sum_{i=u}^{v} x^i = \frac{x^{v+1}-x^u}{x-1}\), we get
+\[
+\sum_{i=d_1-1}^{d_2-1} (m+1)^i
+= \frac{(m+1)^{d_2} - (m+1)^{\,d_1-1}}{(m+1)-1}
+= \frac{(m+1)^{d_2} - (m+1)^{\,d_1-1}}{m}.
+\]
+Multiplying back by \(m\) cancels the denominator, and we obtain the concise formula
+\[
+\boxed{
+  \text{Answer} \;=\;
+   (m+1)^{d_2}
+  - (m+1)^{\,d_1-1}
+  \;\bmod\;10^9+7,
+}
+\]
+where \(m = \lfloor 9/k\rfloor\).  If \(m=0\), the answer is 0.
+
+---
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+    
+    // Fast exponentiation modulo MOD
+    static long modPow(long base, long exp) {
+        long result = 1;
+        base %= MOD;
+        while (exp > 0) {
+            if ((exp & 1) == 1) {
+                result = (result * base) % MOD;
+            }
+            base = (base * base) % MOD;
+            exp >>= 1;
+        }
+        return result;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            long l = Long.parseLong(st.nextToken());
+            long r = Long.parseLong(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+
+            // Compute m = floor(9 / k)
+            long m = 9 / k;
+            if (m == 0) {
+                // No nonzero digits allowed => no valid n >= 1
+                sb.append(0).append('\n');
+                continue;
+            }
+
+            // Digit-length range:
+            // if l==0, min length = 1, so d1 = 1 => d1-1 = 0
+            // if l>0, min length = l+1, so d1-1 = l
+            long d1minus1 = (l == 0 ? 0 : l);
+            long d2 = r;
+
+            long base = m + 1;  // we raise this to powers
+
+            // Compute (m+1)^{d2} and (m+1)^{d1minus1}
+            long term2 = modPow(base, d2);
+            long term1 = modPow(base, d1minus1);
+
+            // Answer is term2 - term1  (mod MOD)
+            long ans = term2 - term1;
+            if (ans < 0) ans += MOD;
+            sb.append(ans).append('\n');
+        }
+
+        // Output all answers
+        System.out.print(sb.toString());
+    }
+}
+```
+
+**Explanation of Key Parts**
+
+1. **No Carries Condition**  
+   We derived that the digit‐sum equality \(D(k n)=kD(n)\) holds **iff** no digit‐wise carry happens during the multiplication.  This forces every digit \(d_i\) of \(n\) to satisfy \(k\,d_i<10\).  Hence
+   \[
+     d_i \in \{0,1,\dots,\lfloor 9/k\rfloor\}.
+   \]
+
+2. **Counting by Length**  
+   - The numbers \(n\) with exactly \(d\) digits and nonzero leading digit must have leading digit in \(\{1,\dots,m\}\) (with \(m=\lfloor9/k\rfloor\)), and each of the \(d-1\) remaining digits in \(\{0,\dots,m\}\).  
+   - This gives \(m\,(m+1)^{d-1}\) such numbers of length \(d\).
+
+3. **Summing over the Length Range**  
+   We need \(n\) in \([10^l,\,10^r)\).  The valid digit‐lengths \(d\) are
+   \[
+     d = d_{\min}, d_{\min}+1, \dots, d_{\max},
+   \]
+   where \(d_{\max}=r\) and
+   \[
+   d_{\min} = \begin{cases}
+     1 & \text{if }l=0,\\
+     l+1 & \text{if }l\ge1.
+   \end{cases}
+   \]
+   Summing the geometric series yields the closed form
+   \[
+   \sum_{d=d_{\min}}^{d_{\max}} m\,(m+1)^{d-1}
+   \;=\;
+   (m+1)^{d_{\max}} - (m+1)^{d_{\min}-1}
+   \pmod{10^9+7}.
+   \]
+
+4. **Modulo Exponentiation**  
+   Since \(r\) and \(l\) can be as large as \(10^9\), we perform fast modular exponentiation in \(O(\log r)\) time per test case.  With up to \(10^4\) test cases, this is still comfortably within time limits.
+
+**Complexity Analysis**
+
+- For each test case we:
+  - Compute \(m = \lfloor 9/k\rfloor\) in \(O(1)\).
+  - Compute two modular exponentiations with exponents up to \(10^9\).  Each exponentiation takes \(O(\log r)\) multiplications, i.e.\ up to ~30–32 multiplications in modulus \(10^9+7\).
+- Total time is \(O\bigl(t\,\log r\bigr)\), with \(t\le10^4\), comfortably under the 2-second limit.
+- Space is \(O(t)\) for the output buffer plus negligible auxiliaries.

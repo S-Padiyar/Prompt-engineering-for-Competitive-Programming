@@ -1,0 +1,159 @@
+B. Iris and the Tree
+time limit per test3 seconds
+memory limit per test256 megabytes
+Given a rooted tree with the root at vertex 1
+. For any vertex i
+ (1<i≤n
+) in the tree, there is an edge connecting vertices i
+ and pi
+ (1≤pi<i
+), with a weight equal to ti
+.
+
+Iris does not know the values of ti
+, but she knows that ∑i=2nti=w
+ and each of the ti
+ is a non-negative integer.
+
+The vertices of the tree are numbered in a special way: the numbers of the vertices in each subtree are consecutive integers. In other words, the vertices of the tree are numbered in the order of a depth-first search.
+
+The tree in this picture satisfies the condition. For example, in the subtree of vertex 2
+, the vertex numbers are 2,3,4,5
+, which are consecutive integers.
+The tree in this picture does not satisfy the condition, as in the subtree of vertex 2
+, the vertex numbers 2
+ and 4
+ are not consecutive integers.
+We define dist(u,v)
+ as the length of the simple path between vertices u
+ and v
+ in the tree.
+
+Next, there will be n−1
+ events:
+
+Iris is given integers x
+ and y
+, indicating that tx=y
+.
+After each event, Iris wants to know the maximum possible value of dist(i,imodn+1)
+ independently for each i
+ (1≤i≤n
+). She only needs to know the sum of these n
+ values. Please help Iris quickly get the answers.
+
+Note that when calculating the maximum possible values of dist(i,imodn+1)
+ and dist(j,jmodn+1)
+ for i≠j
+, the unknown edge weights may be different.
+
+Input
+Each test consists of multiple test cases. The first line contains a single integer t
+ (1≤t≤104
+) — the number of test cases. The description of the test cases follows.
+
+The first line of each test case contains two integers n
+ and w
+ (2≤n≤2⋅105
+, 0≤w≤1012
+) — the number of vertices in the tree and the sum of the edge weights.
+
+The second line of each test case contains n−1
+ integers p2,p3,…,pn
+ (1≤pi<i
+) — the description of the edges of the tree.
+
+Then follow n−1
+ lines indicating the events. Each line contains two integers x
+ and y
+ (2≤x≤n
+, 0≤y≤w
+), indicating that tx=y
+.
+
+It is guaranteed that all x
+ in the events are distinct. It is also guaranteed that the sum of all y
+ equals w
+.
+
+It is guaranteed that the sum of n
+ over all test cases does not exceed 2⋅105
+.
+
+Output
+For each test case, output one line containing n−1
+ integers, each representing the answer after each event.
+
+Example
+InputCopy
+4
+2 1000000000000
+1
+2 1000000000000
+4 9
+1 1 1
+2 2
+4 4
+3 3
+6 100
+1 2 3 2 1
+6 17
+3 32
+2 4
+4 26
+5 21
+10 511
+1 2 2 4 2 1 1 8 8
+3 2
+6 16
+10 256
+9 128
+2 1
+5 8
+8 64
+4 4
+7 32
+OutputCopy
+2000000000000
+25 18 18
+449 302 247 200 200
+4585 4473 2681 1567 1454 1322 1094 1022 1022
+Note
+In the first test case, dist(1,2)=dist(2,1)=t2=w=1012
+, so dist(1,2)+dist(2,1)=2⋅1012
+.
+
+In the second test case, the tree after Iris found out all tx
+ is shown below:
+
+
+dist(1,2)=t2
+, dist(2,3)=t2+t3
+, dist(3,4)=t3+t4
+, dist(4,1)=t4
+. After the first event, she found out that t2=2
+, so dist(1,2)=2
+. At the same time:
+
+dist(2,3)
+ is maximized if t3=7
+, t4=0
+. Then dist(2,3)=9
+.
+dist(3,4)
+ and dist(4,1)
+ are maximized if t3=0
+, t4=7
+. Then dist(3,4)=dist(4,1)=7
+.
+Thus, the answer is 2+9+7+7=25
+.
+
+After the second event, she found out that t4=4
+, then t3=w−t2−t4=4
+. dist(1,2)=2
+, dist(2,3)=2+3=5
+, dist(3,4)=3+4=7
+, dist(4,1)=4
+. Thus, the answer is 2+5+7+4=18
+.

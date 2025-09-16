@@ -1,0 +1,169 @@
+**Analysis**
+
+We have an array of \(n\) positive integers \(a_1,a_2,\dots,a_n\), and a threshold \(x\).  For any subarray \([l,r]\), we simulate
+
+```
+g ← 0
+for i = l to r:
+    g ← g + a[i]
+    if g> x:
+        g ← 0
+```
+
+and at the end we want \(g\neq0\).  We must count the number of subarrays \([l,r]\) whose final \(g\) is non‐zero.
+
+A key observation is that whenever at position \(i\) the running sum since the last reset exceeds \(x\), we reset to zero _at_ \(i\).  Thus for a fixed start \(l\), the “bad” subarrays \([l,r]\) are exactly those \(r\) at which a reset occurs when we eat \(a_r\).  In other words, if we let
+
+-  \(S(i,j)=\sum_{k=i}^j\,a_k\),
+-  for each \(i\) we define 
+   
+   \[
+     \text{nxt}[i]
+     =\min\{\,j\ge i: S(i,j)>x\}, 
+     \quad\text{or }n+1\text{ if no such }j\le n,
+   \]
+
+then starting at \(l\), the first reset happens at \(r_1=\text{nxt}[l]\) (if \(\le n\)), then we continue fresh from \(r_1+1\), the next reset is at \(r_2=\text{nxt}[r_1+1]\), and so on.  Each such reset position \((l,r_k)\) is a subarray whose final \(g\) is zero.  Hence the total number of _bad_ subarrays is
+
+\[
+  \sum_{l=1}^n
+    \Bigl(\text{number of resets when scanning from }l\Bigr).
+\]
+
+If we define a small DP
+\[
+  \mathrm{dp}[i]
+  =
+  \begin{cases}
+    0,&\text{if }\text{nxt}[i]>n,\\
+    1+\mathrm{dp}\bigl(\text{nxt}[i]+1\bigr),&\text{otherwise},
+  \end{cases}
+\]
+then \(\mathrm{dp}[i]\) counts how many resets we will see if we start scanning at \(i\).  Therefore
+
+\[
+  \text{totalBad}
+  = \sum_{i=1}^n \mathrm{dp}[i].
+\]
+
+Since the total number of subarrays is \(\tfrac{n(n+1)}2\), the answer (number of subarrays with final \(g\neq0\)) is
+
+\[
+  \binom{n+1}2 \;-\;\sum_{i=1}^n \mathrm{dp}[i].
+\]
+
+All that remains is to compute \(\text{nxt}[i]\) efficiently.  Note that
+
+\[
+  S(i,j)=P[j]-P[i-1],
+  \quad
+  P[k]=\sum_{r=1}^k a[r],
+\]
+and we want the smallest \(j\ge i\) with 
+\[
+  P[j]-P[i-1]>x
+  \;\Longleftrightarrow\;
+  P[j]>x+P[i-1].
+\]
+Since \(P\) is strictly increasing (all \(a_i>0\)), we can do a single two‐pointer pass in \(O(n)\) to build \(\text{nxt}[i]\) for \(i=1\ldots n\).  Then we fill the dp table in \(O(n)\) and sum up.
+
+Because \(\sum n\le2\cdot10^5\) over all testcases, the overall complexity \(O(n)\) per test is more than fast enough.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        // Fast input
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter   pw = new PrintWriter(new OutputStreamWriter(System.out));
+        
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long x = Long.parseLong(st.nextToken());
+            
+            long[] a = new long[n+1];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+            
+            // Build prefix sums P
+            long[] P = new long[n+1];
+            P[0] = 0;
+            for (int i = 1; i <= n; i++) {
+                P[i] = P[i-1] + a[i];
+            }
+            
+            // nxt[i] = the first j>=i with P[j] > P[i-1] + x, or n+1 if none
+            int[] nxt = new int[n+2];
+            int r = 1;
+            for (int i = 1; i <= n; i++) {
+                if (r < i) r = i;
+                long limit = P[i-1] + x;
+                while (r <= n && P[r] <= limit) {
+                    r++;
+                }
+                nxt[i] = (r <= n ? r : n+1);
+            }
+            
+            // dp[i] = number of resets if we start scanning from i
+            long[] dp = new long[n+3];
+            for (int i = n; i >= 1; i--) {
+                if (nxt[i] > n) {
+                    dp[i] = 0;
+                } else {
+                    // one reset at nxt[i], then continue from nxt[i]+1
+                    dp[i] = 1 + dp[nxt[i] + 1];
+                }
+            }
+            
+            // totalBad = sum dp[i]
+            long totalBad = 0;
+            for (int i = 1; i <= n; i++) {
+                totalBad += dp[i];
+            }
+            
+            // total subarrays = n*(n+1)/2
+            long totalSub = (long)n * (n + 1) / 2;
+            long answer = totalSub - totalBad;
+            
+            pw.println(answer);
+        }
+        
+        pw.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Prefix sums**  
+   We form `P[i] = a[1] + a[2] + ... + a[i]`.  Then the sum of any subarray `a[i..j]` is `P[j] - P[i-1]`.
+
+2. **Finding the first reset position**  
+   If we start a “block” at `i`, we reset as soon as the running sum exceeds `x`.  Equivalently, we look for the smallest `j ≥ i` with  
+   \[
+     P[j] - P[i-1] > x
+     \quad\Longleftrightarrow\quad
+     P[j] > P[i-1] + x.
+   \]
+   Because the prefix sums `P[]` are strictly increasing (all `a[i] > 0`), we can keep a single pointer `r` that only moves forward, finding for each `i` the minimal such `j`.  If no `j ≤ n` satisfies the condition, we set `nxt[i] = n+1`.
+
+3. **Counting resets with DP**  
+   Once we have `nxt[i]`, we define
+   ```
+     dp[i] = 0           if nxt[i] > n
+           = 1 + dp[nxt[i]+1]  otherwise
+   ```
+   This says: if you start eating at `i`, you will first reset at `nxt[i]` (if it’s within the array), and then continue eating fresh from `nxt[i]+1`, counting recursively.  Summing `dp[1] + dp[2] + ... + dp[n]` gives us the total number of subarrays `(l,r)` for which the final `g` _is_ zero (the “bad” subarrays).
+
+4. **Final result**  
+   The total number of subarrays is `n*(n+1)/2`.  Subtract the number of bad subarrays to get the number whose final `g` is nonzero.
+
+This runs in \(O(n)\) per test case (two‐pointer pass + a single DP pass), which is perfectly efficient for \(n\) up to \(2\times10^5\).

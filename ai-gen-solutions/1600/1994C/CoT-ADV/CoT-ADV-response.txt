@@ -1,0 +1,128 @@
+First, let me restate the problem in my own words:
+
+We have an array a[1..n] of positive integers, and a threshold x.  Yaroslav picks any subarray [l..r] (1≤l≤r≤n).  He starts with a running toxicity g=0 and eats mushrooms at positions l, l+1, …, r in order.  Each time he eats a mushroom of toxicity k, he does:
+
+  1.  g ← g + k  
+  2.  if g > x then g ← 0  (a “reset”)  
+
+After finishing the subarray, we look at the final g.  We want to count how many subarrays have final g ≠ 0.
+
+A key observation is that the only way for the final g to be zero is that the last mushroom eaten at position r caused a reset.  Equivalently, when about to eat a[r], g_old + a[r] > x.  In that case he sets g=0 at that last step.  If g_old + a[r] ≤ x, then the final g = g_old + a[r] > 0.
+
+We want to count subarrays [l..r] such that the eating‐process “overflow” happens exactly at r.  It turns out one can show that, for each fixed start l, the reset‐positions form a strictly increasing chain of indices s₁ < s₂ < … < sₖ (each sᵢ is where g would overflow whenever the process reaches sᵢ).  Then all and only subarrays [l..r] with r equal to one of those sᵢ end with a reset at the last step.
+
+We can build this chain of overflow‐positions efficiently by a “next‐overflow” array:
+
+  •  nxt[i] = the smallest j ≥ i such that sum(a[i..j]) > x.  If no such j exists, we set nxt[i] = n+1.
+
+Then if you start eating at i, your first overflow is at j = nxt[i].  After that overflow at j, you reset g=0 and effectively start a new segment at j+1, whose first overflow is at nxt[j+1], and so on.  Thus, from a “virtual node” s = l−1 we follow directed edges
+
+    s → nxt[s+1] → nxt[nxt[s+1]+1] → ⋯
+
+Each time you land on a node ≤ n, that position is exactly one of the r’s for which [l..r] ends with a reset.  Once you jump to n+1, you’re beyond the array and the chain stops.
+
+Because nxt[i] ≥ i for all i, these edges go strictly forward—no cycles—and we can in linear time compute how many steps (within 1..n) each start s makes before falling off.  Summing that count over all starts l = 1..n gives the total number of subarrays that end in a reset at r (i.e. final g = 0).  Subtracting from total subarrays n(n+1)/2 gives the number with final g ≠ 0.
+
+Here is a clean Java implementation using that idea.  We do:
+
+1. Two‐pointer sweep to compute nxt[1..n].
+2. Build an array f[0..n], where f[i] = nxt[i+1], and treat f[n] = n+1.
+3. DP from right to left to compute depth[i] = number of steps we can take along f–chain from i that land in [1..n].
+4. Sum depth[0..n−1] to get the count of zero‐final‐g subarrays, subtract from n(n+1)/2, and print.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder out = new StringBuilder();
+        int t = Integer.parseInt(in.readLine().trim());
+        
+        // We'll reuse arrays up to the maximum n across all test cases.
+        int maxN = 200_000;
+        long[] a = new long[maxN + 5];
+        int[] nxt = new int[maxN + 5];
+        int[] f   = new int[maxN + 5];
+        long[] depth = new long[maxN + 5];
+        
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long x = Long.parseLong(st.nextToken());
+            st = new StringTokenizer(in.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+            
+            // 1) Build nxt[i]: first index j >= i such that sum(a[i..j]) > x.
+            int r = 1;
+            long sum = 0;
+            for (int l = 1; l <= n; l++) {
+                // Extend r while we can eat without overflow
+                while (r <= n && sum + a[r] <= x) {
+                    sum += a[r];
+                    r++;
+                }
+                // Now either r>n or sum + a[r] > x => r is our overflow point
+                nxt[l] = r;  // r in [l..n+1]
+                
+                // Slide window start forward
+                if (r > l) {
+                    // we had included a[l] in sum
+                    sum -= a[l];
+                } else {
+                    // r == l => window is empty, force r to l+1
+                    r = l + 1;
+                }
+            }
+            
+            // 2) Build f[i] = nxt[i+1], and set f[n] = n+1
+            for (int i = 0; i < n; i++) {
+                f[i] = nxt[i + 1];
+            }
+            f[n] = n + 1;
+            
+            // 3) DP from right to left to count how many steps land inside [1..n]
+            //    depth[i] = 0 if f[i] > n, else 1 + depth[f[i]].
+            depth[n] = 0;
+            for (int i = n - 1; i >= 0; i--) {
+                if (f[i] > n) {
+                    depth[i] = 0;
+                } else {
+                    depth[i] = 1 + depth[f[i]];
+                }
+            }
+            
+            // 4) Sum depth[0..n-1]: that is the number of subarrays whose final g = 0
+            long zeroCount = 0;
+            for (int i = 0; i < n; i++) {
+                zeroCount += depth[i];
+            }
+            
+            // Total subarrays = n*(n+1)/2
+            long total = (long)n * (n + 1) / 2;
+            long answer = total - zeroCount;
+            out.append(answer).append('\n');
+        }
+        
+        System.out.print(out);
+    }
+}
+```
+
+Explanation of the main steps:
+
+- We use a classic two‐pointer structure on \[l..r−1\] to keep the sum ≤ x and find the first `r` that would overflow if included.  We record that in `nxt[l] = r`.
+- We then create a small “functional graph” on nodes 0..n pointing to `f[i] = nxt[i+1]`.  Each edge goes strictly forward (f[i] ≥ i+1), so there are no cycles and each path ends at n+1.
+- If you start at node s = l−1, then the set of overflow‐positions for subarrays starting at l are exactly the nodes you visit (except the initial s), so the number of zero‐g subarrays with that fixed l is just the length of the forward chain from s in the graph before falling off beyond n.  We store that in `depth[s]`.
+- Summing `depth[0..n−1]` gives the total count of subarrays whose last mushroom causes an overflow (final g = 0).  Subtracting from the total number of subarrays gives the count with final g ≠ 0.
+
+Time Complexity:  
+– Building `nxt[]` with two pointers: O(n)  
+– Building `f[]` and doing a single backward DP for `depth[]`: O(n)  
+– Summations: O(n)  
+Total per test case: O(n).  Over all test cases, the sum of n is up to 2⋅10⁵, so this runs easily in under 2s.
+
+Space Complexity: O(n) for the arrays.

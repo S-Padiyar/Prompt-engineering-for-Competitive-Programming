@@ -1,0 +1,224 @@
+**Analysis**
+
+We are given \(n\) distinct integers
+\[
+a_1,a_2,\dots,a_n\;(\ge2),
+\]
+and we want to find an integer \(x\ge2\) such that for every \(i\), starting from \(x\) we can reach \(a_i\) by repeatedly doing
+
+  – pick a divisor \(d\ge2\) of the current value \(v\),
+  – replace \(v\) by \(v+d\),
+
+possibly zero times.  We call such an \(x\) a “common generator” of all the \(a_i\).
+
+A direct approach of trying all \(x\) and doing a forward BFS up to each \(a_i\) would be too slow in the worst case.  The key observations are:
+
+ 1.  If \(x\) can generate \(y\), then in the *reverse* direction \(y\) can step to \(y-d\) for every divisor \(d\ge2\) of \(y\), provided \(y-d\ge2\).  Thus for a fixed \(y\), its *backward*-reachable set (“predecessors”) are
+    \[
+      \{\,y-d \mid d\mid y,\ d\ge2,\ y-d\ge2\}.
+    \]
+    Call that set \(\mathrm{Pre}(y)\).  Iterating that gives all \(x\) that can generate \(y\).
+
+ 2.  If we pick the minimum of the \(a_i\), call it \(L\), then any common generator \(x\) must lie in \(\mathrm{Pre}^*(L)\), the full backward‐reachable set of \(L\).  (Otherwise \(x\) could not reach \(L\).)
+
+Hence the plan:
+
+ 1.  Precompute for every integer up to \(4\times10^5\) its list of divisors \(\ge2\).  This is \(O(N\log N)\) once.
+
+ 2.  For each test case:
+    - Read \(n\) and the array \(\{a_i\}\).
+    - Let \(L=\min_i a_i\) and \(M=\max_i a_i\).
+    - Do a backward‐BFS from \(L\) (using the precomputed divisors) to collect
+      \[
+        \mathrm{cand}=\{\,x\ge2\mid x\text{ can reach }L\}.
+      \]
+    - Sort \(\mathrm{cand}\) in descending order.  We try the largest candidates first because a larger \(x\) typically has fewer forward‐reachables, so we either fail quickly or succeed.
+    - For each candidate \(x\in\mathrm{cand}\):
+      * Do a forward BFS from \(x\), only ever pushing \(v+d\le M\) for divisors \(d\ge2\) of \(v\).
+      * Keep a hash/count of how many of the \(a_i\) we have visited.  If we manage to visit all \(n\) of them, we output that \(x\) and stop.
+    - If none of the candidates works, print \(-1\).
+
+Each test case spends
+  - \(O(|\mathrm{cand}|\times\) (cost of one forward BFS)\() \).
+In practice \(|\mathrm{cand}|\) is small enough (the backward BFS from \(L\) does not explode), and the forward BFS for a wrong candidate usually fails quickly.
+
+Overall complexity is about
+
+  – \(O(N\log N)\) to precompute divisors for \(N=4\cdot10^5\),
+  – plus \(\sum_{\text{tests}} (\text{back‐BFS}+\sum_{\text{cands}} \text{forward‐BFS})\),
+
+which runs comfortably in 2 s for the given limits.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXA = 400_000;
+    // divisors[v] will hold all d >= 2 that divide v
+    static ArrayList<Integer>[] divisors = new ArrayList[MAXA+1];
+
+    public static void main(String[] args) throws IOException {
+        // 1) Precompute divisors >= 2 for every number up to MAXA
+        for (int i = 0; i <= MAXA; i++) {
+            divisors[i] = new ArrayList<>();
+        }
+        for (int d = 2; d <= MAXA; d++) {
+            for (int m = d; m <= MAXA; m += d) {
+                divisors[m].add(d);
+            }
+        }
+
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+        int t = Integer.parseInt(br.readLine().trim());
+
+        // scratch arrays we will reuse
+        boolean[] visPre = new boolean[MAXA+1];
+        boolean[] visF   = new boolean[MAXA+1];
+        boolean[] isTarget = new boolean[MAXA+1];
+        boolean[] counted  = new boolean[MAXA+1];
+
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int[] a = new int[n];
+            int L = MAXA, M = 2;
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+                if (a[i] < L) L = a[i];
+                if (a[i] > M) M = a[i];
+                isTarget[a[i]] = true;  // mark which are our ai
+            }
+
+            // 2) Backward-BFS from L to build the candidate set
+            Queue<Integer> q = new ArrayDeque<>();
+            ArrayList<Integer> preList = new ArrayList<>();
+            q.add(L);
+            visPre[L] = true;
+            preList.add(L);
+
+            while (!q.isEmpty()) {
+                int y = q.poll();
+                for (int d : divisors[y]) {
+                    int xCand = y - d;
+                    if (xCand >= 2 && !visPre[xCand]) {
+                        visPre[xCand] = true;
+                        preList.add(xCand);
+                        q.add(xCand);
+                    }
+                }
+            }
+
+            // We have a backward-reachable set of L in preList
+            // Clear visPre for the next test reuse
+            for (int v : preList) {
+                visPre[v] = false;
+            }
+
+            // Sort candidates descending so that large x get tried first
+            Collections.sort(preList, Collections.reverseOrder());
+
+            int answer = -1;
+
+            // We will need to quickly check how many of the a[i] we visit
+            // in the forward BFS, so we use counted[] and reset it after each attempt
+            ArrayList<Integer> countedList = new ArrayList<>();
+
+            outer:
+            for (int x : preList) {
+                // Forward BFS from x, we only push v+d <= M
+                Queue<Integer> qf = new ArrayDeque<>();
+                ArrayList<Integer> visList = new ArrayList<>();
+                qf.add(x);
+                visF[x] = true;
+                visList.add(x);
+
+                int found = 0;
+
+                if (isTarget[x]) {
+                    counted[x] = true;
+                    countedList.add(x);
+                    found++;
+                }
+
+                while (!qf.isEmpty() && found < n) {
+                    int u = qf.poll();
+                    for (int d : divisors[u]) {
+                        int v = u + d;
+                        if (v <= M && !visF[v]) {
+                            visF[v] = true;
+                            visList.add(v);
+                            if (isTarget[v] && !counted[v]) {
+                                counted[v] = true;
+                                countedList.add(v);
+                                found++;
+                                if (found == n) {
+                                    answer = x;
+                                    break;
+                                }
+                            }
+                            qf.add(v);
+                        }
+                    }
+                    if (answer != -1) break;
+                }
+
+                // clear visF
+                for (int v2 : visList) {
+                    visF[v2] = false;
+                }
+                // clear counted
+                for (int v2 : countedList) {
+                    counted[v2] = false;
+                }
+                countedList.clear();
+
+                if (answer != -1) {
+                    break outer;
+                }
+            }
+
+            out.println(answer);
+
+            // clear isTarget for next test
+            for (int v : a) {
+                isTarget[v] = false;
+            }
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Precomputation of divisors**  
+   We build `divisors[v]` = list of all integers `d ≥ 2` that divide `v`, for every `v ≤ 400 000`.  
+   This costs
+   \[
+     \sum_{d=2}^{N}\frac{N}{d} \;=\; O(N\log N),
+   \]
+   which is fine once for all test cases.
+
+2. **Backward BFS from the minimum \(L\)**  
+   Any common generator \(x\) *must* be able to generate \(L\).  By reversing the step
+   \[
+     v\;\xrightarrow{\,+d\,}\;v+d,
+   \]
+   we see from a node \(y\) one can move to \(y-d\) for any divisor \(d\ge2\) of \(y\), provided \(y-d\ge2\).  
+   A BFS from \(L\) downwards therefore finds exactly the set of all \(x\ge2\) that can generate \(L\).  We call that our candidate list.
+
+3. **Trying candidates in descending order**  
+   For each candidate \(x\) in decreasing order, we do one forward BFS (and stop as soon as we see *all* the \(a_i\) or exhaust possible values up to \(\max a_i\)).  
+   - We keep a boolean array `isTarget[v]` marking which `v` are in the input \(\{a_i\}\).  
+   - During the BFS we also maintain `counted[v]` to avoid double‐counting the same \ensuremath{a_i} if we revisit it by two paths.  
+   - As soon as we discover all \(n\) targets, we print this \(x\) and break out.
+
+4. **Failure**  
+   If no candidate succeeds, we print `-1`.
+
+Because the backward‐BFS from \(L\) usually does not produce an enormous candidate set, and the forward‐BFS for wrong candidates typically fails early, this runs efficiently for \(n\) up to \(10^5\) and values up to \(4\cdot10^5\).

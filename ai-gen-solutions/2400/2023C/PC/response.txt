@@ -1,0 +1,292 @@
+**Analysis**
+
+We have two strongly‐connected directed graphs \(G_1\) and \(G_2\), each on \(n\) vertices, and we are told that every directed cycle in either graph has length divisible by \(k\).  We label the vertices of each graph as “incoming” (label 0) or “outgoing” (label 1).  We wish to add exactly \(n\) new directed edges *between* the two graphs, so that
+
+1.  Each new edge goes from one graph into the *other*.
+2.  Every outgoing vertex (in both graphs combined) has *exactly one* new edge leaving it.
+3.  Every incoming vertex has *exactly one* new edge entering it.
+4.  In the resulting union of \(G_1\), \(G_2\), and the new edges, *every* directed cycle still has length divisible by \(k\).
+
+Because each outgoing must send exactly one edge, and each incoming must receive exactly one edge, there must be exactly as many outgoing vertices as incoming vertices in total.  Call
+\[
+   A_{\rm out}\;=\;\sum_{i=1}^n a_i,\quad
+   B_{\rm out}\;=\;\sum_{i=1}^n b_i.
+\]
+Since each graph has \(n\) vertices,
+\[
+  \#\text{incoming total}=(n - A_{\rm out}) + (n - B_{\rm out})
+                       = 2n - (A_{\rm out}+B_{\rm out}).
+\]
+We must have
+\[
+  A_{\rm out} + B_{\rm out} \;=\;\#\text{incoming total}\;=\;n,
+\]
+otherwise (by counting) we cannot match every outgoing to a distinct incoming.  
+
+It is also clear that if \(\,A_{\rm out}=0\) (so all \(n\) outgoings are in \(G_2\)) *or* \(B_{\rm out}=0\) (all are in \(G_1\)), then all new edges go in only one direction between the graphs, and one never returns to the original graph, so no new “mixed” cycle can form.  In that case the cycle‐mod‐\(k\) property remains undisturbed automatically, so the answer is simply **YES** as long as \(A_{\rm out}+B_{\rm out}=n\).
+
+When both \(A_{\rm out}>0\) and \(B_{\rm out}>0\), new cycles *can* run from \(G_1\) to \(G_2\) and back.  A standard “cycle‐modulus” argument (using potentials) shows that the requirement “every cycle has length \(\equiv0\pmod k\)” is equivalent to being able to assign each vertex \(v\) of \(G_1\) an integer potential
+\[
+     p[v]\pmod k
+\]
+so that on each edge \((u\to v)\) of \(G_1\) we have
+\[
+   p[v]\;\equiv\;p[u]\;+\;1\;\pmod k,
+\]
+and similarly each vertex \(w\) of \(G_2\) gets
+\[
+   q[w]\pmod k\quad
+   \text{with}\quad
+   q[v]\equiv q[u]+1\pmod k
+\]
+on every edge \((u\to v)\) of \(G_2\).  (One shows easily that strong connectivity plus “all cycles have length divisible by \(k\)” forces exactly this kind of “mod‐\(k\) –potential.”)
+
+Once those potentials \(p\) and \(q\) are in hand, one checks that *every* mixed cycle (one that crosses from \(G_1\) to \(G_2\) and back) will have length \(\equiv0\pmod k\) *if and only if* the new edges can be split into two matchings
+
+- from the outgoing vertices of \(G_1\) to the incoming vertices of \(G_2\), and  
+- from the outgoing vertices of \(G_2\) to the incoming vertices of \(G_1\),
+
+so that in the first matching
+\[
+   p[u]\;-\;q[v]\;\equiv\;{\rm constant}\pmod k
+   \quad
+   (u\in G_1,\;v\in G_2),
+\]
+and in the second matching
+\[
+   q[u]\;-\;p[v]\;\equiv\;{\rm another\;constant}\pmod k,
+\]
+and those two constants differ by exactly \(2\pmod k\).  Because each matching is a bijection between two equal‐size sets of vertices, a simple *counting‐by‐residue* check shows that this is possible if and only if the residue‐histogram of the first set is a *cyclic shift* of that of the second set.  
+
+Hence the algorithm is:
+
+1.  Read \(n,k\), the labels \(a_i\) for \(G_1\) and \(b_i\) for \(G_2\).  
+2.  Check the **necessary** condition
+   \[
+     \sum_i a_i \;+\;\sum_i b_i \;=\;n.
+   \]
+   If it fails, answer **NO** immediately.
+3.  If \(\sum a_i=0\) or \(\sum b_i=0\), answer **YES** (all new edges go only one way).
+4.  Build adjacency lists for \(G_1\) and \(G_2\).  Compute the “potentials”  
+   \[
+     p[\,\cdot\,]\pmod k
+     \quad(\hbox{for \(G_1\)})
+     \quad\text{and}\quad
+     q[\,\cdot\,]\pmod k
+     \quad(\hbox{for \(G_2\)})
+   \]
+   by a simple depth‐first search that labels each unvisited node so that on a tree‐edge \((u\to v)\) we put  
+   \(p[v]\:=\;(p[u]+1)\bmod k\).  
+5.  Count how many outgoing‐in‐\(G_1\) have each residue \(r\) of \(p\), and how many incoming‐in‐\(G_2\) have each residue of \(q\); record them in two vectors of length \(k\).  Call these two histograms  
+   \(\text{out1}[0\,..\,k-1]\) and \(\text{in2}[0\,..\,k-1]\).  
+   Likewise form \(\text{out2}\) and \(\text{in1}\) for the other cross‐matching.
+6.  We must check whether \(\text{out1}\) is a *cyclic shift* of \(\text{in2}\), and simultaneously \(\text{out2}\) is the *same shift plus two* of \(\text{in1}\).  We do that in \(O(k)\) by string‐matching (the usual “find a pattern in a doubled text” trick, via the Z‐algorithm or KMP).
+7.  If such a shift exists, print **YES**, otherwise **NO**.
+
+The total complexity is \(O(n+m+k)\) per test (where \(m\) is the number of edges), and since \(\sum n\le2\cdot10^5\), \(\sum(m_1+m_2)\le5\cdot10^5\), the solution easily fits in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static int n, k;
+    static ArrayList<Integer>[] g1, g2;
+    static int[] a, b, p, q;
+    static int[] out1, in1, out2, in2;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int T = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        while (T-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            n = Integer.parseInt(st.nextToken());
+            k = Integer.parseInt(st.nextToken());
+
+            // read a_i for G1
+            a = new int[n];
+            st = new StringTokenizer(br.readLine());
+            int sumA = 0;
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+                sumA += a[i];
+            }
+
+            // read G1 edges
+            g1 = new ArrayList[n];
+            for (int i = 0; i < n; i++) g1[i] = new ArrayList<>();
+            int m1 = Integer.parseInt(br.readLine().trim());
+            for (int i = 0; i < m1; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken()) - 1;
+                int v = Integer.parseInt(st.nextToken()) - 1;
+                g1[u].add(v);
+            }
+
+            // read b_i for G2
+            b = new int[n];
+            st = new StringTokenizer(br.readLine());
+            int sumB = 0;
+            for (int i = 0; i < n; i++) {
+                b[i] = Integer.parseInt(st.nextToken());
+                sumB += b[i];
+            }
+
+            // read G2 edges
+            g2 = new ArrayList[n];
+            for (int i = 0; i < n; i++) g2[i] = new ArrayList<>();
+            int m2 = Integer.parseInt(br.readLine().trim());
+            for (int i = 0; i < m2; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken()) - 1;
+                int v = Integer.parseInt(st.nextToken()) - 1;
+                g2[u].add(v);
+            }
+
+            // QUICK checks
+            if (sumA + sumB != n) {
+                // cannot even match counts
+                sb.append("NO\n");
+                continue;
+            }
+            if (sumA == 0 || sumB == 0) {
+                // all edges in one direction => no mixed cycles => always OK
+                sb.append("YES\n");
+                continue;
+            }
+
+            // Build potentials p[] on G1 and q[] on G2
+            p = new int[n];
+            Arrays.fill(p, -1);
+            p[0] = 0;
+            dfsBuild(0, g1, p);
+
+            q = new int[n];
+            Arrays.fill(q, -1);
+            q[0] = 0;
+            dfsBuild(0, g2, q);
+
+            // Build the residue‐histograms
+            out1 = new int[k];  // G1‐out residues
+            in1  = new int[k];  // G1‐in  residues
+            out2 = new int[k];  // G2‐out residues
+            in2  = new int[k];  // G2‐in  residues
+            for (int i = 0; i < n; i++) {
+                if (a[i] == 1) out1[p[i]]++;
+                else            in1[p[i]]++;
+                if (b[i] == 1) out2[q[i]]++;
+                else            in2[q[i]]++;
+            }
+
+            // We must check if out1 is some cyclic shift s of in2,
+            // AND      out2 is the *same* shift+2 of in1.
+            // We do two Z‐algorithm searches:
+            //   find all s so that out1 == rotateLeft(in2,s),
+            //   find all t so that out2 == rotateLeft(in1,t).
+            // Then ask: is there s with (s-2 mod k) among those t's ?
+
+            boolean[] canS = findShifts(in2, out1);
+            boolean[] canT = findShifts(in1, out2);
+
+            boolean ok = false;
+            for (int s = 0; s < k; s++) {
+                if (!canS[s]) continue;
+                int t = (s - 2) % k;
+                if (t < 0) t += k;
+                if (canT[t]) { ok = true; break; }
+            }
+            sb.append(ok ? "YES\n" : "NO\n");
+        }
+        System.out.print(sb);
+    }
+
+    // Build the mod‐k “depth” arrays by a DFS labeling.
+    static void dfsBuild(int root, ArrayList<Integer>[] g, int[] depth) {
+        // depth[root] = 0 already
+        int[] stack = new int[g.length];
+        int top = 0;
+        stack[top++] = root;
+        while (top > 0) {
+            int u = stack[--top];
+            int du = depth[u];
+            for (int v : g[u]) {
+                if (depth[v] < 0) {
+                    depth[v] = (du + 1) % k;
+                    stack[top++] = v;
+                }
+            }
+        }
+    }
+
+    // returns a boolean array shiftOk[0..k-1], where shiftOk[s]=true
+    // iff rotating `text` left by s positions gives exactly `pattern`.
+    static boolean[] findShifts(int[] text, int[] pattern) {
+        // We build the array A = pattern + [-1] + text+text, run Z-algo,
+        // then for every i in the text+text portion with Z[i]>=k,
+        // we record the shift s=i-(1+pattern.length).
+        int K = pattern.length;
+        int total = K + 1 + 2*K;
+        int[] A = new int[total];
+        for (int i = 0; i < K; i++) A[i] = pattern[i];
+        A[K] = -1; // separator
+        for (int i = 0; i < 2*K; i++) {
+            A[K+1 + i] = text[i % K];
+        }
+
+        int[] Z = new int[total];
+        // standard Z‐function
+        int L = 0, R = 0;
+        for (int i = 1; i < total; i++) {
+            if (i <= R) Z[i] = Math.min(R - i + 1, Z[i - L]);
+            while (i + Z[i] < total && A[Z[i]] == A[i + Z[i]]) {
+                Z[i]++;
+            }
+            if (i + Z[i] - 1 > R) {
+                L = i; R = i + Z[i] - 1;
+            }
+        }
+
+        boolean[] shiftOk = new boolean[K];
+        int start = K + 1;        // start of the doubled‐text region in A
+        int end   = K + 1 + 2*K;  // exclusive end
+        for (int i = start; i < end; i++) {
+            if (Z[i] >= K) {
+                int s = i - start;   // s in [0..2K-K] = [0..K]
+                if (s < K) shiftOk[s] = true;
+            }
+        }
+        return shiftOk;
+    }
+}
+```
+
+**Explanation of the Main Steps**
+
+1. **Count‐Matching Check.**  
+   We must have exactly as many outgoing vertices as incoming vertices in total, i.e.\ \(\sum a_i+\sum b_i=n\).  Otherwise output **NO**.
+
+2. **Trivial “All‐One‐Way” Cases.**  
+   If \(\sum a_i=0\) or \(\sum b_i=0\), then all new edges go in a single direction between the two graphs.  No new “mixed” cycle can form, so the original graphs’ “cycle‐length divisible by \(k\)” property suffices.  Output **YES**.
+
+3. **Compute “Potentials” \(p\), \(q\).**  
+   Because each graph is strongly connected and every cycle length is divisible by \(k\), one can label nodes by an integer mod \(k\) so that on *every* edge \(u\to v\) one has \(p[v]\equiv p[u]+1\pmod k\).  We build such a labeling by a simple DFS (or BFS) tree: start \(p[\text{root}]=0\), and whenever you first visit an unvisited node \(v\) along a tree‐edge from \(u\), set \(p[v]=(p[u]+1)\bmod k\).  Strong connectivity + “all cycles ≡ 0 mod \(k\)” guarantees consistency.
+
+4. **Residue Histograms.**  
+   We split the cross‐matching into two parts:
+   - Edges from the outgoing vertices of \(G_1\) into the incoming vertices of \(G_2\).  
+   - Edges from the outgoing vertices of \(G_2\) into the incoming vertices of \(G_1\).  
+   In each part we need a *perfect* matching, and *additionally* all chosen edges must carry the *same* potential‐difference modulo \(k\).  This forces a condition that
+   \[
+     \bigl\{p[u] \pmod k : u\in G_1,\;u\text{ outgoing}\bigr\}
+     \quad\hbox{must be a single cyclic‐shift of}\quad
+     \bigl\{q[v] \pmod k : v\in G_2,\;v\text{ incoming}\bigr\},
+   \]
+   and likewise for the other direction, except that the shift must differ by exactly \(2\pmod k\).  
+
+5. **String‐Matching / Z‐Algorithm.**  
+   Testing “is array \(X\) a cyclic shift of array \(Y\)?” can be done in \(O(k)\) by the usual trick of searching for \(X\) as a substring of \(YY\).  We do that twice (once for each direction), record which shifts work, and then see if there is a single shift \(s\) that works for the first direction, while \(s-2\pmod k\) works for the second.  If so, **YES**, otherwise **NO**.
+
+Overall this runs in \(O(n+m+k)\) per test, easily within the 3‐second limit for the given bounds.

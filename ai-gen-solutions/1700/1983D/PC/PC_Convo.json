@@ -1,0 +1,12 @@
+[
+  {
+    "timestamp": "2025-07-24T05:49:22.769461",
+    "role": "user",
+    "content": "Please provide a single, self-contained Java code file (one block of code) that reads the input as specified and outputs YES or NO for each test case, without any extra commentary."
+  },
+  {
+    "timestamp": "2025-07-24T05:50:33.124154",
+    "role": "assistant",
+    "content": "```java\nimport java.io.*;\nimport java.util.*;\n\npublic class Main {\n    public static void main(String[] args) throws IOException {\n        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));\n        PrintWriter pw = new PrintWriter(System.out);\n        int t = Integer.parseInt(br.readLine().trim());\n        while (t-- > 0) {\n            int n = Integer.parseInt(br.readLine().trim());\n            int[] a = new int[n], b = new int[n];\n            StringTokenizer st = new StringTokenizer(br.readLine());\n            for (int i = 0; i < n; i++) a[i] = Integer.parseInt(st.nextToken());\n            st = new StringTokenizer(br.readLine());\n            for (int i = 0; i < n; i++) b[i] = Integer.parseInt(st.nextToken());\n            HashMap<Integer,Integer> posB = new HashMap<>();\n            for (int i = 0; i < n; i++) posB.put(b[i], i);\n            boolean ok = true;\n            for (int x : a) if (!posB.containsKey(x)) { ok = false; break; }\n            if (!ok) {\n                pw.println(\"NO\");\n                continue;\n            }\n            int[] R = new int[n];\n            for (int i = 0; i < n; i++) R[i] = posB.get(a[i]);\n            boolean[] seen = new boolean[n];\n            int evenCycles = 0;\n            for (int i = 0; i < n; i++) if (!seen[i]) {\n                int len = 0, cur = i;\n                while (!seen[cur]) {\n                    seen[cur] = true;\n                    cur = R[cur];\n                    len++;\n                }\n                if (len % 2 == 0) evenCycles++;\n            }\n            pw.println((evenCycles % 2 == 1) ? \"NO\" : \"YES\");\n        }\n        pw.flush();\n    }\n}\n```"
+  }
+]

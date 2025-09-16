@@ -1,0 +1,166 @@
+**Analysis**
+
+Let us restate the problem in simpler terms.  We have an array \(a[1\ldots n]\).  A subarray \(a[\ell..r]\) is called *brilliant* if, when you form the set of its *distinct* elements
+\[
+S=\{\,a_i : \ell\le i\le r\},
+\]
+you can repeatedly apply the operation
+
+  “pick two *different* elements \(x\neq y\) in the set such that \(\tfrac{x+y}{2}\) is an integer and not already in the set, and insert \(\tfrac{x+y}{2}\) into the set”
+
+and eventually end up with *every* integer between \(\min S\) and \(\max S\).
+
+Surprisingly this bounded‐time closure property can be shown to be *equivalent* to the very simple condition
+
+> *There exist two distinct elements \(x,y\in S\) whose difference \(|x-y|\) is a (positive) power of two.*
+
+In particular one shows:
+
+  1.  If you have *any* pair \(x,y\) with \(|x-y|=2^k\), then you can quickly fill in the entire interval \([\min S,\max S]\).
+  2.  Conversely if *no* two elements differ by a (positive) power of two, the closure never fills in all the gaps.
+
+Hence a subarray is *brilliant* if and only if among its *distinct* values there is at least one pair whose difference is exactly \(2^k\) for some \(k\ge0\).
+
+We must count how many subarrays \(\ell\le r\) satisfy that condition.  Equivalently, let us count the complementary quantity: the number of subarrays that have *no* pair of elements whose difference is a power of two.  Call such subarrays “bad.”  Then
+
+\[
+\#\{\text{brilliant subarrays}\}
+\;=\;
+\frac{n(n+1)}2\;-\;\#\{\text{bad subarrays}\}.
+\]
+
+It is now straightforward to count *bad* subarrays by the usual two‐pointer (sliding‐window) trick, once we observe:
+
+> If a subarray \([L\ldots R]\) has **no** two distinct elements differing by a power of two, then any *subarray* of it (by removing elements from either end) also has no such pair.
+
+Hence the property “bad = no power‐of‐two difference” is monotone under shrinking the window at the left or right.  In particular one can fix the *right* endpoint \(R\) and expand the window until it first acquires a “good” pair, then that window (and all supersets) are no longer bad.  One counts exactly how many windows ending at \(R\) remain bad, and sum over \(R\).
+
+Concretely we do:
+
+1.  Initialize two pointers \(L=1\) and \(R=0\).  Maintain a hash‐map (or array) `freq[x]` = how many times \(x\) occurs *distinctly* in the current window, and an integer `pairCount = 0` = the number of *unordered* pairs \(\{x,y\}\) in the window that happen to differ by a power of two.  
+
+2.  We will move \(R\) from 1 up to \(n\).  When we add \(a[R]\):
+
+    - If `freq[a[R]]>0` we only increment `freq[a[R]]`, no new *distinct* value, so no change to `pairCount`.
+    - Otherwise `freq[a[R]]` was zero, so we are *inserting* the new value \(v=a[R]\).  
+      We check for each \(k=0,1,\dots,30\) whether \((v \pm 2^k)\) is already present in the window.  Every time we see one, we do `pairCount++`.  
+      Finally we set `freq[v]=1`.
+
+3.  Now as soon as `pairCount>0`, that means the window \([L..R]\) *is* brilliant (it has at least one power‐of‐two difference).  We want to restore it to “bad” by *shrinking* from the left.  So we repeatedly remove \(a[L]\) (decrement its `freq` and, if it becomes 0, for each \(k\) check \((a[L]\pm2^k)\) again to do `pairCount--`) then increment \(L\), until `pairCount` falls back to zero.
+
+4.  At that point \([L..R]\) is again *bad* and *maximal* with right‐end \(R\).  Therefore *all* subarrays that end at \(R\) and start anywhere in \([L..R]\) (i.e.\ starting index \(\ell\) with \(L\le \ell\le R\)) are bad.  There are \((R-L+1)\) of them.  Add that to our running total of bad subarrays.
+
+5.  In the end, \(\displaystyle \bigl(\tfrac{n(n+1)}2\bigr)\;-\;\bigl(\#\text{bad}\bigr)\) is the answer.
+
+Each \(R\) step takes \(O(1)\) *distinct* insertions/removals (even though we do a \(\pm2^k\) loop for \(k=0..30\), that is just 31 checks, i.e.\ \(O(1)\)).  Since \(n\le 4\times10^5\) over all test cases, this runs in \(O(n\cdot 31)=O(n)\) per test, easily fast enough.
+
+Below is a full Java implementation.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int T = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        while (T-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            int[] a = new int[n];
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+            sb.append(countBrilliant(a)).append('\n');
+        }
+        System.out.print(sb);
+    }
+
+    static long countBrilliant(int[] a) {
+        int n = a.length;
+
+        // freq map of distinct values in current window
+        HashMap<Integer,Integer> freq = new HashMap<>();
+        long badCount = 0;     // number of subarrays with NO power-of-two difference
+        int pairCount = 0;     // number of unordered pairs in window whose diff = 2^k
+
+        // sliding window [L..R], we will move R from 0..n-1
+        int L = 0;
+
+        for (int R = 0; R < n; R++) {
+            // --- ADD a[R] into the window ---
+            int x = a[R];
+            int oldFreq = freq.getOrDefault(x, 0);
+            if (oldFreq == 0) {
+                // we are inserting x freshly, check all 2^k neighbors
+                for (int k = 0; k < 31; k++) {
+                    int d = 1 << k;
+                    // check x-d
+                    Integer f1 = freq.get(x - d);
+                    if (f1 != null && f1 > 0) pairCount++;
+                    // check x+d
+                    Integer f2 = freq.get(x + d);
+                    if (f2 != null && f2 > 0) pairCount++;
+                }
+            }
+            freq.put(x, oldFreq + 1);
+
+            // --- SHRINK from left until the window has NO good pair ---
+            // as soon as pairCount>0, we have at least one power-of-two difference => brilliant
+            // we must remove from left until pairCount==0 again
+            while (pairCount > 0) {
+                int y = a[L];
+                int fy = freq.get(y);
+                // decrement freq
+                if (fy == 1) {
+                    // we are removing y entirely => subtract out all pairs it formed
+                    for (int k = 0; k < 31; k++) {
+                        int d = 1 << k;
+                        Integer f1 = freq.get(y - d);
+                        if (f1 != null && f1 > 0) pairCount--;
+                        Integer f2 = freq.get(y + d);
+                        if (f2 != null && f2 > 0) pairCount--;
+                    }
+                    freq.remove(y);
+                } else {
+                    freq.put(y, fy - 1);
+                }
+                L++;
+            }
+
+            // now [L..R] is maximal window ending at R with NO power-of-two pair
+            // any subarray ending at R that starts anywhere in [L..R] is also bad
+            badCount += (R - L + 1);
+        }
+
+        // total subarrays = n*(n+1)/2
+        long total = (long)n * (n + 1) / 2;
+        // brilliant = total - bad
+        return total - badCount;
+    }
+}
+```
+
+**Explanation of the main steps**
+
+1.  We maintain a *multiset* (via `freq` map) of the *distinct* values in our current sliding window \([L..R]\).
+
+2.  We also maintain `pairCount`, the total *number* of unordered pairs \(\{u,v\}\) in the window for which \(|u-v|\) is exactly a power of two.  
+
+3.  When we **add** a brand‐new value \(x\), we look up `freq[x±2^k]` (for \(0\le k\le30\)); each time it is positive we do `pairCount++`.  Existing duplicates of \(x\) do not form *new* distinct pairs so they do not change `pairCount`.
+
+4.  As soon as `pairCount>0` it means the current window \([L..R]\) *is* brilliant, so it cannot remain in our “bad” count.  Hence we **shrink** from the left until `pairCount` goes back to 0.  Removing an element \(y\) similarly checks all `freq[y±2^k]` to decrement `pairCount` for each lost pair.
+
+5.  After that contraction, \([L..R]\) is once again “bad” (no power‐of‐two difference).  Moreover **every** subarray ending at \(R\) whose left end \(\ell\) satisfies \(L\le \ell \le R\) is also bad (removing elements from the left cannot create a new power‐of‐two difference).  Thus there are \((R - L + 1)\) bad subarrays ending at \(R\); we add that to `badCount`.
+
+6.  Finally we do
+\[
+\#(\text{brilliant})
+\;=\;
+\underbrace{\frac{n(n+1)}2}_{\text{all subarrays}}
+\;-\;
+\underbrace{\text{badCount}}_{\substack{\text{those with no}\\\text{power‐of‐two pair}}}\,. 
+\]
+
+This runs in \(O(n)\) time per test (the inner ±\(2^k\) loops have constant length 31), and is well within all limits.

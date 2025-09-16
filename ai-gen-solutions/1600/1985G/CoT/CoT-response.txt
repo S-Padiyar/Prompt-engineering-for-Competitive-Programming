@@ -1,0 +1,182 @@
+**Analysis**
+
+We want to count, for given nonnegative integers \(l<r\) and positive integer \(k\), the number of integers
+\[
+10^l \;\le\; n \;<\; 10^r
+\]
+for which
+\[
+D(k\cdot n)\;=\;k\;D(n),
+\]
+where \(D(x)\) is the sum of the (decimal) digits of \(x\).
+
+A well‐known fact about digit sums is that carries in addition (and thus in multiplication, which is repeated addition of shifted partial products) always decrease the digit‐sum by a multiple of 9.  In particular
+\[
+D(k\,n)\;\le\;k\,D(n),
+\]
+and equality holds exactly if and only if there are *no carries* in the standard decimal multiplication of \(n\) by \(k\).
+
+---
+
+**Characterizing “no‐carry” multiplications**
+
+When you multiply a single digit \(d\in\{0,\dots,9\}\) by \(k\), you form
+\[
+t = k\cdot d + \text{(carry from previous digit)}.
+\]
+For *no* carries to ever occur, one needs
+\[
+k\cdot d + \text{(previous carry)} < 10
+\quad\text{for every digit }d
+\]
+and in particular the carry into each digit must be zero.  Since the very first (least significant) carry is zero, we need
+\[
+k\cdot d \;<\; 10
+\quad\Longrightarrow\quad
+d \;\le\;\Big\lfloor\frac{9}{k}\Big\rfloor.
+\]
+Thus **all** digits of \(n\) must lie in the set
+\[
+\{0,1,2,\dots,m\},
+\quad
+m=\big\lfloor 9/k\big\rfloor.
+\]
+Moreover the most‐significant digit must be nonzero (so that \(n\) actually has the declared length).  Hence, if \(n\) has exactly \(L\) digits, then
+
+– there are \(m\) choices \(\{1,\dots,m\}\) for the first digit,  
+– there are \((m+1)\) choices \(\{0,\dots,m\}\) for each of the remaining \(L-1\) digits.
+
+Hence the number of valid \(L\)-digit \(n\) is
+
+\[
+f(L) \;=\; m\,\bigl(m+1\bigr)^{L-1}.
+\]
+
+We want all \(n\) with
+\[
+10^l \le n < 10^r
+\]
+so the length of \(n\) runs from 
+\[
+L_{\min} = l+1
+\quad\text{to}\quad
+L_{\max} = r.
+\]
+Thus the total is
+\[
+\sum_{L=L_{\min}}^{L_{\max}} m\,\bigl(m+1\bigr)^{L-1}.
+\]
+If \(m=0\) (which happens whenever \(k\ge 10\)), that sum is \(0\).  Otherwise we have a geometric progression:
+
+\[
+\sum_{L=L_{\min}}^{r} m\,T^{L-1}
+\quad\text{where}\quad
+T=m+1,
+\]
+so
+\[
+\sum_{L=L_{\min}}^{r} m\,T^{L-1}
+\;=\;
+m\;\sum_{i=L_{\min}-1}^{r-1} T^i
+\;=\;
+m\,\frac{T^{\,L_{\min}-1}\bigl(T^{\,r-L_{\min}+1}-1\bigr)}{T-1}.
+\]
+But \(T-1=m\), so the factor \(m/(T-1)\) cancels to \(1\) whenever \(m>0\).  Thus for \(m>0\),
+
+\[
+\sum_{L=L_{\min}}^{r} m\,T^{L-1}
+\;=\;
+T^{\,L_{\min}-1}\,\Bigl(T^{\,r-L_{\min}+1}-1\Bigr).
+\]
+
+Taking everything \(\bmod 10^9+7\), we can:
+
+1.  Compute \(m=\lfloor 9/k\rfloor\).  
+2.  If \(m=0\), answer \(0\).  
+3.  Else set \(T=m+1\), \(a=L_{\min}-1 = l\), \(N = r - L_{\min}+1 = r-l\), and compute
+   \[
+     \texttt{powA} = T^a\bmod M,\quad
+     \texttt{powN} = T^N\bmod M,
+   \]
+   then the answer is
+   \[
+     (\texttt{powA}\times(\texttt{powN}-1))\bmod M,
+   \]
+   taking care to keep it nonnegative mod \(M\).  
+
+Each power can be done in \(O(\log r)\) time, so even for up to \(10^4\) test cases this is very fast.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+
+    // fast exponentiation a^e mod
+    static long modPow(long a, long e) {
+        long res = 1 % MOD;
+        a %= MOD;
+        while (e > 0) {
+            if ((e & 1) == 1) {
+                res = (res * a) % MOD;
+            }
+            a = (a * a) % MOD;
+            e >>>= 1;
+        }
+        return res;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            long l = Long.parseLong(st.nextToken());
+            long r = Long.parseLong(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+
+            // m = floor(9/k). If m == 0, no nonzero digit is allowed -> 0 solutions.
+            long m = 9 / k;
+            if (m == 0) {
+                out.println(0);
+                continue;
+            }
+            long T = m + 1;            // base of the geometric progression
+            long a = l;                // exponent for T^(l)
+            long N = r - l;            // number of terms is r - l
+
+            // powA = T^a mod, powN = T^N mod
+            long powA = modPow(T, a);
+            long powN = modPow(T, N);
+
+            // result = powA * (powN - 1) mod
+            long ans = powN - 1;
+            if (ans < 0) ans += MOD;
+            ans = (powA * ans) % MOD;
+
+            out.println(ans);
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. Compute \(m = \lfloor 9/k\rfloor\).  If \(m=0\), then \(k\ge10\) forces every non‐zero digit \(d\) to satisfy \(k\cdot d<10\), which only \(d=0\) does—but the most‐significant digit cannot be 0.  Hence no solutions.
+
+2. Otherwise digits of \(n\) must lie in \(\{0,1,\dots,m\}\), with the leading digit in \(\{1,\dots,m\}\).  
+   - For length \(L\), there are \(m\) choices for the first digit and \((m+1)\) for each of the remaining \(L-1\).  
+   - So \(\displaystyle f(L)=m\,(m+1)^{\,L-1}.\)
+
+3. Our range \(10^l \le n<10^r\) forces \(n\) to have length \(L\) from \(l+1\) up to \(r\).  Summing \(f(L)\) from \(L=l+1\) to \(L=r\) gives a geometric series which collapses (since \((m+1)-1=m\)) to
+   \[
+     (m+1)^{\,l}\;\bigl((m+1)^{\,r-l}-1\bigr)\;\bmod\;(10^9+7).
+   \]
+
+4. We compute both powers by fast binary exponentiation in \(O(\log (r))\) time per test, which is efficient for \(r\) up to \(10^9\) and up to \(10^4\) test cases.

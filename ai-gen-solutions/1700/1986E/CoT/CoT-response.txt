@@ -1,0 +1,160 @@
+**Analysis**
+
+We have an array a of length n and a positive integer k.  We are allowed to
+
+1.  Permute (shuffle) the array arbitrarily before doing anything.
+2.  Perform any number of operations of the form 
+       “pick an index i and do a_i ← a_i + k.”
+
+After all operations, we want the array to be a palindrome, i.e.  
+bᵢ = b_{n−i+1} for 1 ≤ i ≤ n.
+
+Observe first that after shuffling, what really matters is how we pair the elements into the "left" half and the "right" half.  Every element in position i (in the left half) will become paired with the element in position n−i+1 (in the right half).  If n is odd, one element (the “middle” one) stands alone; it automatically satisfies bₘ = bₘ, so it never forces any operation.
+
+Within a pair of values (x,y), we need to make x and y equal by adding k repeatedly—but only increasing is allowed.  Thus
+
+-  If (x−y) is not a multiple of k, we can never make them equal.
+-  If (x−y) is a multiple of k, say x<y and y−x=m·k, the cheapest way is to add k exactly m times to the smaller one.  That costs m operations, and afterwards both are y.
+
+Hence two elements can only pair if they lie in the same residue class (mod k).  Moreover, the cost to pair x and y (with x≤y) is (y−x)/k.
+
+Thus the plan is:
+
+1.  **Group by residue**.  Put each a_i into a bucket indexed by r=i_mod_k = a_i mod k.
+2.  **Check feasibility of counts**.  
+    -  Each bucket must be paired internally.  If its size is even, that bucket contributes all of its elements to pairs.  
+    -  If its size is odd, one element in that bucket must be the “center” of the palindrome (only possible if n is odd), and the rest must pair up.
+    -  Hence the total number of buckets with odd size must be exactly n mod 2.  Otherwise answer = −1.
+3.  **Within each bucket**, we have a sorted list v₁≤v₂≤…≤v_m of size m.
+    -  If m is even, the best way to pair them so as to minimize \sum (v_{2j+1}−v_{2j})/k is simply the adjacent pairing  
+         (v₁,v₂), (v₃,v₄), …, (v_{m−1},v_m).
+    -  If m is odd, we must leave exactly one element out (to serve as the center); we must choose which one to leave so that the sum of the pairing-costs of the remaining m−1 elements is minimized.  
+      This can be done in O(m) time by a small DP:
+      
+      Let dp_pref[i] = minimal cost to pair up v₁…v_i if i is even (∞ if i is odd), by adjacent pairing.  
+      Recurrence:  
+        dp_pref[0] = 0  
+        for i=1…m:  
+          if i is odd, dp_pref[i] = ∞;  
+          else dp_pref[i] = dp_pref[i−2] + (v_i−v_{i−1})/k.  
+      
+      Similarly define a suffix‐DP dp_suf[i] = minimal cost to pair up v_i…v_m if (m−i+1) is even (∞ otherwise).  
+      Then if we skip element t (1≤t≤m), total cost = dp_pref[t−1] + dp_suf[t+1].  We take the minimum over all t.
+4.  **Sum** the costs of all buckets.  That is the answer.
+
+Overall time is O(n log n) for sorting plus O(n) for the DP/pairs.  We need to watch out for 64-bit sums.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(br.readLine().trim());
+        final long INF = Long.MAX_VALUE / 4;
+
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+            
+            st = new StringTokenizer(br.readLine());
+            // Group by residue mod k
+            HashMap<Long, ArrayList<Long>> map = new HashMap<>();
+            for (int i = 0; i < n; i++) {
+                long a = Long.parseLong(st.nextToken());
+                long r = a % k;
+                map.computeIfAbsent(r, x -> new ArrayList<>()).add(a);
+            }
+
+            // Count how many buckets have odd size
+            int oddCount = 0;
+            for (ArrayList<Long> v : map.values()) {
+                if ((v.size() & 1) == 1) {
+                    oddCount++;
+                }
+            }
+            // Must match n%2
+            if (oddCount != (n & 1)) {
+                out.println(-1);
+                continue;
+            }
+
+            long answer = 0;
+            boolean impossible = false;
+
+            // Process each residue‐bucket independently
+            for (ArrayList<Long> v : map.values()) {
+                Collections.sort(v);
+                int m = v.size();
+                // If even, pair adjacently
+                if ((m & 1) == 0) {
+                    for (int i = 0; i < m; i += 2) {
+                        // cost = (v[i+1] - v[i]) / k
+                        answer += (v.get(i+1) - v.get(i)) / k;
+                    }
+                } else {
+                    // m odd: do the DP to decide which single element to leave out
+                    // 1) prefix DP
+                    long[] dpPref = new long[m+1];
+                    dpPref[0] = 0;
+                    for (int i = 1; i <= m; i++) {
+                        if ((i & 1) == 1) {
+                            dpPref[i] = INF;  // can't pair an odd count
+                        } else {
+                            long cost = (v.get(i-1) - v.get(i-2)) / k;
+                            dpPref[i] = dpPref[i-2] + cost;
+                        }
+                    }
+                    // 2) suffix DP
+                    // dpSuf[i] = minimal cost to pair v[i..m] if that segment length is even
+                    long[] dpSuf = new long[m+2];
+                    dpSuf[m+1] = 0;
+                    for (int i = m; i >= 1; i--) {
+                        int len = (m - i + 1);
+                        if ((len & 1) == 1) {
+                            dpSuf[i] = INF;
+                        } else {
+                            long cost = (v.get(i) - v.get(i-1)) / k;
+                            dpSuf[i] = dpSuf[i+2] + cost;
+                        }
+                    }
+                    // 3) try skipping each t in [1..m]
+                    long best = INF;
+                    for (int tIndex = 1; tIndex <= m; tIndex++) {
+                        long c1 = dpPref[tIndex-1];
+                        long c2 = dpSuf[tIndex+1];
+                        if (c1 < INF && c2 < INF) {
+                            best = Math.min(best, c1 + c2);
+                        }
+                    }
+                    if (best >= INF) {
+                        impossible = true;
+                        break;
+                    }
+                    answer += best;
+                }
+            }
+
+            out.println(impossible ? -1 : answer);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of the key steps**
+
+1. We shuffle arbitrarily, so we only care about how to *pair* up the multiset of values.
+2. An operation `aᵢ ← aᵢ + k` can only increase a value; two values x,y can become equal iff x≡y (mod k), and then the cost is |x−y|/k (all ops applied to the smaller one).
+3. Hence we group by residue mod k.  Within each residue‐class we must pair internally.  If the class size is even, everybody is paired; if odd, one element is left as the center (only one class may be odd, exactly when n is odd).
+4. Pairing to minimize \sum|x−y| subject to pairing all but (at most) one element is classic:
+   - If even size, the best is sorting and pairing *adjacent* elements.
+   - If odd size, we run a small O(m) DP to decide *which* single element to leave unpaired, and again pair the rest adjacently.
+5. We sum the costs over all residue‐classes; that is the minimal total number of +k‐operations needed.

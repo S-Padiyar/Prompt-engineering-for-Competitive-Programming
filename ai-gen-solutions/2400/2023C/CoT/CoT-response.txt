@@ -1,0 +1,296 @@
+**Analysis**
+
+We have two strongly‐connected directed graphs \(G_1,G_2\), each on \(n\) vertices, such that **every** directed cycle in each graph has length divisible by \(k\).  We must add exactly \(n\) new directed edges, each going from one graph to the other, so that:
+
+1.  Each "outgoing" vertex has exactly one of the new edges leaving it.
+2.  Each "incoming" vertex has exactly one of the new edges entering it.
+3.  In the combined graph (the two old graphs plus the \(n\) new edges), **every** directed cycle must still have length divisible by \(k\).
+
+Let
+\[
+   O_1 = \{\,\text{outgoing vertices of }G_1\}, 
+   \quad I_1 = \{\,\text{incoming vertices of }G_1\},
+\]
+and similarly \(O_2,I_2\) for \(G_2\).  Since we must add exactly one outgoing‐edge from each outgoing‐vertex and exactly one incoming‐edge into each incoming‐vertex, a counting check shows
+
+\[
+   |O_1| + |O_2| \;=\; n
+   \quad\Longleftrightarrow\quad
+   \sum a_i + \sum b_i = n.
+\]
+
+If that fails, the answer is immediately NO.  Moreover, one can show that:
+
+-  If \(k=1\) or \(k=2\), **any** such perfect matching of outgoing→incoming across the two graphs is automatically safe (because in those cases any newly formed cycle will still have length divisible by \(k\)).  Hence for \(k\le2\), once the count check passes, the answer is YES.
+
+-  For \(k\ge3\), one must enforce a subtle global condition: if you ever form a 2-cross‐edge cycle
+   \[
+     u\;\xrightarrow{\;\text{new}\;}\;p\;\longrightarrow^*\;v\;\xrightarrow{\;\text{new}\;}\;t\;\longrightarrow^*\;u
+   \]
+   with one new edge \(u\to p\) in \(G_1\to G_2\) and one new edge \(v\to t\) in \(G_2\to G_1\), the total length of that cycle is \(2\) plus lengths of the two internal paths.  Since each internal path is already a multiple of \(k\), we get the cycle‐length \(\equiv 2\pmod{k}\), which is forbidden unless \(2\equiv 0\pmod{k}\).  And for \(k\ge3\), \(2\not\equiv0\pmod{k}\).  
+
+  It turns out that this "no bad 2-cross-edge cycle" requirement forces **all** of the new edges in \(G_1\to G_2\) to respect the same "shift" of the internal \(k\)–periods of \(G_1\) vs.\ \(G_2\), and similarly all of the new edges in \(G_2\to G_1\) must respect another single shift.  One can make this precise as follows:
+
+  1.  Since each graph is strongly connected and every cycle‐length is a multiple of \(k\), it carries a well-defined “residue label” in \(\{0,1,\dots,k-1\}\).  Namely, pick an arbitrary root (say vertex \(1\)) and do a BFS (or DFS) along **directed** edges, assigning
+     \[
+       \ell(v)\;\equiv\;\ell(u)+1\pmod{k}
+       \quad\text{for each edge }u\to v.
+     \]
+     Consistency follows from the fact that every directed cycle has length \(\equiv0\pmod{k}\).  Call the two labelings \(\ell_1(\cdot)\) on \(G_1\) and \(\ell_2(\cdot)\) on \(G_2\).
+
+  2.  Let
+     \[
+       H_{1,\rm out}[r] = \bigl|\{u\in O_1:\ell_1(u)=r\}\bigr|,
+       \quad
+       H_{2,\rm in}[r]  = \bigl|\{p\in I_2:\ell_2(p)=r\}\bigr|.
+     \]
+     Any matching of the outgoing vertices of \(G_1\) onto incoming vertices of \(G_2\) that preserves residue by a fixed shift \(C\) must satisfy
+     \[
+       H_{1,\rm out}[r]\;=\;H_{2,\rm in}[(r+C)\bmod k]\,,
+       \quad
+       r=0,1,\dots,k-1.
+     \]
+     Likewise, the matching from \(O_2\) to \(I_1\) must satisfy a single shift condition (which one checks to be \(C+2\pmod{k}\)) on the corresponding histograms of labels.
+
+  3.  Thus for \(k\ge3\) the problem reduces to **two** cyclic histogram-matching problems:
+     -  Find all shifts \(C\) so that
+        \(\;H_{1,\rm out}[r] = H_{2,\rm in}[(r+C)\bmod k]\) for all \(r\).
+     -  Find all shifts \(C\) so that
+        \(\;H_{1,\rm in}[r]  = H_{2,\rm out}[(r+C+2)\bmod k]\) for all \(r\).
+
+     If there is a common shift \(C\) satisfying both, the answer is YES; otherwise NO.
+
+  Both cyclic‐shift histogram checks can be done in \(O(k)\) time by rolling‐array or a 1D KMP on integer arrays of length \(k\).  Since \(\sum n\le2\cdot10^5\) and \(\sum(m_1+m_2)\le5\cdot10^5\), a single pass of BFS/DFS for each graph plus two KMP’s per test case runs in overall \(O(N+M)\), which is easily under the 3 s limit.
+
+----
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 200000;
+    static List<Integer>[] adj1 = new ArrayList[MAXN+1];
+    static List<Integer>[] adj2 = new ArrayList[MAXN+1];
+    static int[] label1 = new int[MAXN+1];
+    static int[] label2 = new int[MAXN+1];
+    static boolean[] vis    = new boolean[MAXN+1];
+    static int[] queue      = new int[MAXN+1];
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder out = new StringBuilder();
+        for (int i = 1; i <= MAXN; i++) {
+            adj1[i] = new ArrayList<>();
+            adj2[i] = new ArrayList<>();
+        }
+
+        int T = Integer.parseInt(br.readLine().trim());
+        while (T-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+
+            // read types for G1
+            st = new StringTokenizer(br.readLine());
+            int[] a = new int[n+1];
+            int o1 = 0;
+            for (int i = 1; i <= n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+                if (a[i] == 1) o1++;
+            }
+
+            // read edges of G1
+            int m1 = Integer.parseInt(br.readLine().trim());
+            for (int i = 1; i <= n; i++) adj1[i].clear();
+            for (int i = 0; i < m1; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                adj1[u].add(v);
+            }
+
+            // read types for G2
+            st = new StringTokenizer(br.readLine());
+            int[] b = new int[n+1];
+            int o2 = 0;
+            for (int i = 1; i <= n; i++) {
+                b[i] = Integer.parseInt(st.nextToken());
+                if (b[i] == 1) o2++;
+            }
+
+            // read edges of G2
+            int m2 = Integer.parseInt(br.readLine().trim());
+            for (int i = 1; i <= n; i++) adj2[i].clear();
+            for (int i = 0; i < m2; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                adj2[u].add(v);
+            }
+
+            // Quick feasibility by counts
+            if (o1 + o2 != n) {
+                out.append("NO\n");
+                continue;
+            }
+            // For k=1 or k=2, any matching is safe once counts match
+            if (k <= 2) {
+                out.append("YES\n");
+                continue;
+            }
+
+            // 1) Build the residue-labeling for G1 and G2
+            bfsLabel(1, n, k, adj1, label1);
+            bfsLabel(1, n, k, adj2, label2);
+
+            // 2) Build histograms
+            int[] H1out = new int[k], H1in = new int[k];
+            int[] H2out = new int[k], H2in = new int[k];
+
+            for (int i = 1; i <= n; i++) {
+                int r1 = label1[i];
+                if (a[i] == 1) H1out[r1]++; else H1in[r1]++;
+                int r2 = label2[i];
+                if (b[i] == 1) H2out[r2]++; else H2in[r2]++;
+            }
+
+            // 3) We need a shift C so that
+            //    H1out[r] == H2in[(r+C)%k]  for all r,
+            //    H1in [r] == H2out[(r+C+2)%k]  for all r.
+            // Do these two cyclic-match checks by KMP.
+
+            // (a) Find all C so that  H1out matches H2in shifted by C
+            List<Integer> shifts1 = findCyclicMatches(H1out, H2in, k);
+
+            // (b) For the second, define H1in2[r] = H1in[(r-2)%k],
+            //     and match that against H2out shifted by C.
+            int[] H1in2 = new int[k];
+            for (int r = 0; r < k; r++) {
+                int rr = (r - 2) % k;
+                if (rr < 0) rr += k;
+                H1in2[r] = H1in[rr];
+            }
+            List<Integer> shifts2 = findCyclicMatches(H1in2, H2out, k);
+
+            // check if there's a shift in common
+            boolean ok = false;
+            // put smaller list into a hash set for O(1) lookup
+            Set<Integer> set2 = new HashSet<>(shifts2);
+            for (int C : shifts1) {
+                if (set2.contains(C)) {
+                    ok = true;
+                    break;
+                }
+            }
+            out.append(ok ? "YES\n" : "NO\n");
+        }
+
+        System.out.print(out);
+    }
+
+    /** BFS on directed graph to assign labels mod k so that
+        every edge u->v has label[v] = (label[u]+1)%k. */
+    static void bfsLabel(int start, int n, int k, List<Integer>[] adj, int[] label) {
+        Arrays.fill(vis, 0, n+1, false);
+        int head = 0, tail = 0;
+        queue[tail++] = start;
+        vis[start] = true;
+        label[start] = 0;
+        while (head < tail) {
+            int u = queue[head++];
+            int lu = label[u];
+            for (int v : adj[u]) {
+                if (!vis[v]) {
+                    vis[v] = true;
+                    label[v] = (lu + 1) % k;
+                    queue[tail++] = v;
+                }
+            }
+        }
+        // graph is strongly connected, so all n vertices get visited
+    }
+
+    /**
+     * We look for ALL shifts C in [0..k-1] so that
+     *   P[r] == T[(r+C)%k] for all r=0..k-1,
+     * i.e. the array P matches the array T cyclically shifted by C.
+     * We do it by making a text of length 2k : T|T, and then KMP
+     * to find all occurrences of P in that text, restricted to start<k.
+     */
+    static List<Integer> findCyclicMatches(int[] P, int[] T, int k) {
+        // build text TT = T, then T again
+        int[] TT = new int[2*k];
+        for (int i = 0; i < k; i++) {
+            TT[i]     = T[i];
+            TT[i + k] = T[i];
+        }
+
+        // build KMP failure for P
+        int[] fail = new int[k];
+        for (int i = 1, j = 0; i < k; i++) {
+            while (j > 0 && P[i] != P[j]) j = fail[j - 1];
+            if (P[i] == P[j]) j++;
+            fail[i] = j;
+        }
+
+        // search P in TT
+        List<Integer> res = new ArrayList<>();
+        for (int i = 0, j = 0; i < 2*k; i++) {
+            while (j > 0 && TT[i] != P[j]) j = fail[j - 1];
+            if (TT[i] == P[j]) j++;
+            if (j == k) {
+                int start = i - k + 1; // potential shift
+                if (start < k) {
+                    res.add(start);
+                }
+                j = fail[j - 1];
+            }
+        }
+        return res;
+    }
+}
+```
+
+**Explanation of Key Steps**  
+
+1. **Count Check**  
+   We must have exactly one new edge out of each outgoing vertex and one new edge into each incoming vertex.  Counting shows  
+   \(\;|O_1| + |O_2|\;=\;n\;\Longleftrightarrow\;\sum a_i + \sum b_i = n.\)  
+   If this fails, we print **NO** immediately.
+
+2. **Trivial case \(k\le2\)**  
+   When \(k=1\) or \(k=2\), *any* perfect matching of outgoing→incoming across the two graphs preserves the property that every cycle length is a multiple of \(k\).  Hence once the count‐check passes, the answer is **YES**.
+
+3. **Labeling the graphs mod \(k\)**  
+   Since each graph is strongly connected and all directed cycles have length \(\equiv0\pmod{k}\), one can do a BFS from an arbitrary root in each graph and assign each vertex \(v\) a label \(\ell(v)\in\{0,1,\dots,k-1\}\) so that every directed edge \(u\to v\) satisfies
+   \[
+     \ell(v)\;=\;(\ell(u)+1)\bmod k.
+   \]
+   The BFS is guaranteed consistent because any cycle in the graph has length \(\equiv0\pmod{k}\).
+
+4. **Histogram‐shift conditions**  
+   Call
+   \[
+     H_{1,\rm out}[r]\;=\#\{\,u\in O_1:\ell_1(u)=r\},\quad
+     H_{2,\rm in}[r]\;=\#\{\,p\in I_2:\ell_2(p)=r\},
+   \]
+   and similarly \(H_{1,\rm in},H_{2,\rm out}\).  A simple cycle‐length check shows that **all** new edges \(u\to p\) from \(G_1\to G_2\) must carry the **same** shift
+   \(\ell_2(p)\equiv\ell_1(u)+C\pmod{k}\).  Equating histograms gives
+   \[
+     H_{1,\rm out}[r] \;=\; H_{2,\rm in}[(r+C)\bmod k],
+     \quad r=0,1,\dots,k-1.
+   \]
+   A similar argument forces the edges \(G_2\to G_1\) all to use the same shift \(C+2\).  Hence we need a single \(C\) that simultaneously satisfies
+   \[
+     H_{1,\rm out}[r] = H_{2,\rm in}[(r+C)\bmod k],
+     \quad
+     H_{1,\rm in}[r]  = H_{2,\rm out}[(r+C+2)\bmod k].
+   \]
+
+5. **Cyclic‐shift matching by KMP**  
+   Each condition is a "histogram of length \(k\) must match another histogram cyclically shifted by \(C\)".  One does that in \(O(k)\) by concatenating the target histogram to itself (forming a length \(2k\) array) and running KMP to find all starting positions \(<k\) that match the pattern histogram.  Then we intersect the two sets of possible shifts.  If there is at least one shift common to both histogram‐matches, the answer is **YES**, else **NO**.
+
+The entire solution runs in \(O(n+m+ k)\) per test, summing to under the given limits.

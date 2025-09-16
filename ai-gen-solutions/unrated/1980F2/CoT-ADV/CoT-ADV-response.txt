@@ -1,0 +1,341 @@
+**Problem Restatement**
+
+We have an \(n\times m\) grid (\(2\le n,m\le10^9\)), and \(k\) “fountains” placed in distinct cells (none at \((n,1)\)).  Alice will draw a monotone (only‐down or only‐right) path from some free cell on the top or left border to some free cell on the right or bottom border.  This path belongs to Alice, and it cuts the grid into two parts.  Alice’s part is the side containing \((n,1)\), and Bob’s part is the side containing \((1,m)\).  Bob insists that **all** fountains lie in his part (so the path must lie strictly “below” or “to the right” of every fountain).  However Bob is willing to “give” exactly one fountain to Alice, removing that fountain’s constraint.  
+
+We need two things:
+
+1.  \(\alpha\) = the maximum number of cells Alice can claim **if Bob does *not* give up any fountain** (i.e.\ Alice must keep every fountain in Bob’s region).
+2.  For each fountain \(i\), if Bob gives *that* fountain to Alice (so it imposes no constraint), how many more cells can Alice claim?  Formally, let \(\alpha_i\) be the new maximum if fountain \(i\) is removed from Bob’s list; print \(\alpha_i-\alpha\).
+
+We must do this for up to \(t\le10^4\) test‐cases, total \(\sum k\le2\cdot10^5\).  Since \(n,m\) can be up to \(10^9\), we cannot build an \(n\times m\) array.  We must treat \(n,m\) and the fountains sparsely.
+
+---
+
+**Key Observations and Algorithm**
+
+1.  **Two possible path‐start choices.**  Alice may start on the *left* border or on the *top* border, whichever gives her a larger region.  We compute (a) the best size if she *must* start on the left side, and (b) the best size if she *must* start on the top side.  Then
+   \[
+     \alpha \;=\; \max\bigl(A_{\rm left},\;A_{\rm top}\bigr).
+   \]
+
+2.  **Reduction to “prefix‐max” on one axis.**  
+   -  Suppose Alice *starts* on the left border at \((r_0,1)\).  As she moves right or down, define for *each* column \(c\) the row \(f(c)\) at which her path first enters that column.  Because she only moves right or down, \(f(c)\) is a *non-decreasing* function of \(c\).  
+   -  To keep a fountain at \((r,c)\) in Bob’s region, the path must lie *strictly below* that fountain cell, i.e.\ \(f(c)>r\).  Equivalently  
+     \[
+       f(c)\;\ge\;r+1.
+     \]
+   -  The number of Alice‐owned cells in column \(c\) is simply \(\bigl(n-f(c)+1\bigr)\).  Summing over all \(c\) from \(1\) to \(m\),
+     \[
+       A_{\rm left} \;=\; \sum_{c=1}^m\bigl(n-f(c)+1\bigr)
+                    \;=\;
+                    m\,(n+1)\;-\;\sum_{c=1}^m f(c).
+     \]
+   -  Thus to *maximize* Alice’s region (i.e.\ maximize \(m(n+1)-\sum f(c)\)) is *equivalent* to *minimizing* \(\sum f(c)\), subject to  
+     1. \(f(c)\) non‐decreasing in \(c\),  
+     2. \(f(c)\ge1\),  
+     3. For every fountain in column \(c\) at row \(r\), \(f(c)\ge r+1\).  
+
+   -  A *greedy* solution exists: define  
+     \[
+       \ell(c)\;=\;\max\{\,r+1:\text{there is a fountain at }(r,c)\}\quad\text{(or 1 if no fountain in column \(c\)).}
+     \]
+     Then the prefix‐max‐construction
+     \[
+       f(1)=\ell(1),\qquad
+       f(c)=\max\bigl(f(c-1),\,\ell(c)\bigr)
+       \quad(c\ge2)
+     \]
+     clearly gives the *smallest* valid \(f\) and thus the largest \(A_{\rm left}\).  
+
+3.  **Sparse compression and weights.**  
+   Since \(m\) can be up to \(10^9\), we *only* care about columns that carry a fountain constraint.  Let the *distinct* constrained columns be
+   \[
+     C_1<C_2<\dots<C_K,\quad K\le k.
+   \]
+   For columns *between* \(C_j\) and \(C_{j+1}\) in which no fountain sits, \(\ell(c)=1\), so in that entire gap \(f(c)\) remains at its previous value.  We compress the sum
+   \[
+     \sum_{c=1}^m f(c)
+     \;\;=\;\;
+     \sum_{j=0}^{K}\;\bigl(\hbox{width}_j\;\times\;F_j\bigr),
+   \]
+   where
+   - segment \(j=0\) covers columns \(1\) through \(C_1-1\), has “weight” \(w_0=C_1-1\), and the prefix‐max value \(F_0=1\);
+   - for \(1\le j<K\), segment \(j\) covers columns \(C_j\le c<C_{j+1}\), has weight \(w_j=C_{j+1}-C_j\), and prefix‐max \(F_j=\max(\ell(C_1),\dots,\ell(C_j))\);
+   - segment \(K\) covers \(C_K\le c\le m\), weight \(w_K=m - C_K +1\), and prefix‐max \(F_K\) similarly.
+
+   Summing \(F_j\,w_j\) over \(j=0..K\) gives \(\sum_{c=1}^m f(c)\).  Then 
+   \[
+     A_{\rm left} \;=\; m\,(n+1)\;-\;\sum_{j=0}^K\bigl(F_j\,w_j\bigr).
+   \]
+
+4.  **If one fountain is “given” to Alice.**  Removing that fountain from Bob’s list can *lower* exactly one column‐constraint \(\ell(C_j)\) (if that fountain was the *topmost* in its column).  The new column bound \(\ell'\) either stays the same or becomes the “second‐highest” fountain row +1, or else 1 if it was alone.  One can show that this change only affects the *prefix‐max* on a single contiguous block of segments; and we can update the sum by finding how many columns that block covers, and multiplying by the drop in prefix‐max.
+
+   To implement “find how far we must propagate” we keep a segment tree over the array of current \(\ell\)-values, so that for a given column‐index \(j\) and new bound \(\ell'(C_j)\), we can binary‐search (via the segment tree) for the *first* index \(p>j\) with \(\ell(C_p)>\ell'(C_j)\).  Then only segments \(j..(p-1)\) have their \(F\)-value lowered from the old prefix‐max to the new one, and we can adjust our total in \(O(\log K)\) time.
+
+5.  **Symmetrically for “start‐on‐top.”**  We do exactly the same process grouping by *rows* instead of columns, and get another candidate region size \(A_{\rm top}\).  Finally
+   \[
+     \alpha \;=\;\max(A_{\rm left},\,A_{\rm top}).
+   \]
+   And for each fountain we compute both \(\Delta_{\rm left}\) and \(\Delta_{\rm top}\), and so
+   \[
+     \alpha_i \;=\;\max\bigl(A_{\rm left}+\Delta_{\rm left}\,,\;A_{\rm top}+\Delta_{\rm top}\bigr),
+     \quad
+     \text{answer}_i=\alpha_i-\alpha.
+   \]
+
+All of this runs in \(O(k\log k)\) per test (to sort and build the segment tree) plus \(O(\log k)\) per fountain query.  Since \(\sum k\le2\cdot10^5\), it easily fits under time limits.
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class SegTree {
+        int n;
+        int[] tree;
+        // Build a segment tree (1-based indexing) over data[1..n].
+        SegTree(int n) {
+            this.n = n;
+            tree = new int[4*(n+1)];
+        }
+        void build(int node, int l, int r, int[] data) {
+            if (l == r) {
+                tree[node] = data[l];
+            } else {
+                int mid = (l+r)>>>1;
+                build(node<<1, l, mid, data);
+                build(node<<1|1, mid+1, r, data);
+                tree[node] = Math.max(tree[node<<1], tree[node<<1|1]);
+            }
+        }
+        // find first index in [ql..qr] whose value > x, or return -1
+        int queryFirst(int node, int l, int r, int ql, int qr, int x) {
+            if (ql>r || qr<l || tree[node] <= x) return -1;
+            if (l == r) return l;
+            int mid = (l+r)>>>1;
+            int res = queryFirst(node<<1, l, mid, ql, qr, x);
+            if (res != -1) return res;
+            return queryFirst(node<<1|1, mid+1, r, ql, qr, x);
+        }
+    }
+
+    // Process one test case
+    static void solveCase(BufferedReader in, PrintWriter out) throws IOException {
+        StringTokenizer st = new StringTokenizer(in.readLine());
+        long n = Long.parseLong(st.nextToken());
+        long m = Long.parseLong(st.nextToken());
+        int k = Integer.parseInt(st.nextToken());
+
+        // Read fountains
+        int[] R = new int[k], C = new int[k];
+        for (int i = 0; i < k; i++) {
+            st = new StringTokenizer(in.readLine());
+            R[i] = Integer.parseInt(st.nextToken());
+            C[i] = Integer.parseInt(st.nextToken());
+        }
+
+        // We will do the "left-start" pass and the "top-start" pass similarly.
+        // Returns an object containing:
+        //  - bestArea: the maximum region size if we must keep ALL fountains (no removal)
+        //  - delta: an array delta[i] = how much region grows if we remove fountain i
+        class PassResult {
+            long bestArea;
+            long[] delta;
+        }
+
+        // Build a pass (axis = 0 for columns, 1 for rows)
+        PassResult doPass(int axis) {
+            // Step 1: group fountains by coordinate (C if axis=0, R if axis=1)
+            TreeMap<Integer, ArrayList<Integer>> groups = new TreeMap<>();
+            for (int i = 0; i < k; i++) {
+                int key = (axis==0 ? C[i] : R[i]);
+                int other = (axis==0 ? R[i] : C[i]);
+                groups.computeIfAbsent(key, x->new ArrayList<>()).add(other);
+            }
+            // Extract sorted keys
+            int G = groups.size();
+            Integer[] keys = groups.keySet().toArray(new Integer[0]);
+            // For each group, find the topmost fountain (max other+1) and second topmost
+            int[] Lold = new int[G+1], Lnew = new int[G+1];
+            // We'll map each fountain to its group index and whether it's "topmost"
+            int[] grpIdx = new int[k];
+            boolean[] isTopmost = new boolean[k];
+            long[] delta = new long[k];
+
+            // Build Lold, Lnew
+            for (int gi = 0; gi < G; gi++) {
+                ArrayList<Integer> lst = groups.get(keys[gi]);
+                Collections.sort(lst, Collections.reverseOrder());
+                int max1 = lst.get(0);
+                int max2 = (lst.size()>1 ? lst.get(1) : 0);
+                Lold[gi+1] = max1+1;     // constraint = maxRow+1
+                Lnew[gi+1] = (max2>0 ? max2+1 : 1);
+                // Mark which fountain in the input is that topmost
+                // We'll do a second pass to label them
+            }
+            // label each fountain
+            {
+                // For each group, build a queue of "others", so we can detect topmost by value
+                TreeMap<Integer, Queue<Integer>> queueMap = new TreeMap<>();
+                for (int gi=0; gi<G; gi++) {
+                    ArrayList<Integer> lst = groups.get(keys[gi]);
+                    Queue<Integer> q = new LinkedList<>(lst);
+                    queueMap.put(keys[gi], q);
+                }
+                for (int i = 0; i < k; i++) {
+                    int key = (axis==0 ? C[i] : R[i]);
+                    Queue<Integer> q = queueMap.get(key);
+                    // We pop until we match R[i] or C[i]
+                    int other = (axis==0 ? R[i] : C[i]);
+                    // Since sorted in reverse, the first match is the "topmost"
+                    int head;
+                    do {
+                        head = q.remove();
+                        if (head == other) break;
+                    } while (true);
+                    grpIdx[i] = new ArrayList<>(groups.keySet()).indexOf(key)+1;
+                    isTopmost[i] = (head == lstOfThisGroup.get(0));
+                    // after that we put it back (so we don't lose it for second-top logic)
+                    q.add(head);
+                }
+            }
+
+            // Build segment widths w[0..G], and prefixW
+            long[] w = new long[G+1], prefixW = new long[G+1];
+            // segment 0 is columns [1..keys[0]-1]
+            w[0] = (keys[0] - 1L);
+            for (int i = 1; i < G; i++) {
+                w[i] = (keys[i] - keys[i-1]);
+            }
+            // last segment
+            if (axis==0) {
+                // columns
+                w[G] = (m - keys[G-1] + 1);
+            } else {
+                // rows
+                w[G] = (n - keys[G-1] + 1);
+            }
+            prefixW[0] = w[0];
+            for (int i=1; i<=G; i++) prefixW[i] = prefixW[i-1] + w[i];
+
+            // Build prefix-max F
+            int[] F = new int[G+1];
+            F[0] = 1; // no fountain forces at segment 0, so it's height=1
+            for (int i=1; i<=G; i++) {
+                F[i] = Math.max(F[i-1], Lold[i]);
+            }
+            // Compute totalSum = sum(F[i]*w[i])
+            long totalSum = 0;
+            for (int i=0; i<=G; i++) {
+                totalSum += (long)F[i] * w[i];
+            }
+            // The best area if we keep ALL fountains:
+            long bestArea;
+            if (axis==0) {
+                // left-start: sum_{c=1..m}(n-f(c)+1) = m*(n+1) - totalSum
+                bestArea = m * (n + 1) - totalSum;
+            } else {
+                // top-start: sum_{r=1..n}(m-g(r)+1) = n*(m+1) - totalSum
+                bestArea = n * (m + 1) - totalSum;
+            }
+
+            // Build a segment tree on Lold[1..G] so we can find "first index>j where Lold[k]>x"
+            SegTree stree = new SegTree(G);
+            stree.build(1, 1, G, Lold);
+
+            // Now for each fountain i, if it's the topmost in its column (or row),
+            // removing it lowers Lold[j] to Lnew[j], so we recompute the delta.
+            for (int i = 0; i < k; i++) {
+                int j = grpIdx[i]; 
+                if (!isTopmost[i]) {
+                    delta[i] = 0; 
+                    continue;
+                }
+                int oldVal = Lold[j], newVal = Lnew[j];
+                if (newVal >= oldVal) {
+                    delta[i] = 0; 
+                    continue;
+                }
+                // find first p>j with Lold[p]>newVal
+                int p = stree.queryFirst(1, 1, G, j+1, G, newVal);
+                if (p < 0) p = G+1;
+                // sum of segment widths w[j..p-1]:
+                long widthSum = prefixW[p-1] - prefixW[j-1];
+                // the totalSum is decreased by (oldVal-newVal)*widthSum,
+                // so the area = (const - totalSum) is increased by the same
+                delta[i] = (long)(oldVal - newVal) * widthSum;
+            }
+
+            PassResult pr = new PassResult();
+            pr.bestArea = bestArea;
+            pr.delta = delta;
+            return pr;
+        }
+
+        // do left-pass and top-pass
+        PassResult leftPass = doPass(0);
+        PassResult topPass  = doPass(1);
+
+        // final alpha
+        long alpha = Math.max(leftPass.bestArea, topPass.bestArea);
+
+        // for each fountain, compute how much more we get if Bob gives it up
+        // newArea_i = max(left+deltaL, top+deltaT)
+        // answer_i = newArea_i - alpha
+        StringBuilder sb = new StringBuilder();
+        sb.append(alpha).append('\n');
+        for (int i = 0; i < k; i++) {
+            long aL = leftPass.bestArea + leftPass.delta[i];
+            long aT = topPass.bestArea  + topPass.delta[i];
+            long newA = Math.max(aL, aT);
+            sb.append(newA - alpha).append(i+1<k ? ' ' : '\n');
+        }
+        out.print(sb);
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            solveCase(in, out);
+        }
+        out.flush();
+        out.close();
+    }
+}
+```
+
+---
+
+**Explanation of Key Steps**
+
+1. **Greedy prefix‐max**  
+   To maximize Alice’s area when *requiring* that each fountain \((r,c)\) lie on Bob’s side, one shows that the optimal path’s “entry‐row” \(f(c)\) for column \(c\) is  
+   \[
+     f(c) \;=\;\max\{\,1,\;f(c-1),\;\max_{(r,c)\in\text{fountains}}\!(r+1)\}\!,
+   \]
+   i.e.\ take the column’s own constraint \(\ell(c)=\max(r+1)\) (or 1 if none), and prefix‐max it across \(c\).  This yields both monotonicity and the minimal possible \(f(c)\), which *maximizes* Alice’s area
+   \(\sum_{c=1}^m (n-f(c)+1)\).
+
+2. **Compression**  
+   Because \(m\) (or \(n\)) can reach \(10^9\), we only explicitly store the \(K\) columns (or rows) that carry at least one fountain constraint.  For any “gap” of unconstrained columns, \(\ell(c)=1\), so the prefix‐max stays flat.  We precompute a small array of “segments” each of which has a width equal to the number of columns in that gap (or constrained column itself) and a prefix‐max value.  Summing “width×prefix‐max” over the segments is exactly \(\sum f(c)\).
+
+3. **Removing one fountain**  
+   If Bob “gives” fountain \(i\) at \((r,c)\) to Alice, then in column \(c\) the required bound \(\ell(c)\) might drop from “the topmost fountain row+1” down to “the second‐topmost fountain row+1” (or 1 if none remain).  Such a drop in \(\ell(c)\) only affects the *prefix maxima* on a contiguous suffix of columns until you meet some later column whose own constraint already exceeds the new bound.  We find the **first** such column \(p>c\) via a segment tree in \(O(\log K)\), compute how many *columns* that suffix covered, multiply by the drop in prefix‐max, and we get exactly the gain in Alice’s area.  
+
+4. **Two‐axis symmetry**  
+   We repeat the same logic grouping by *rows* to simulate Alice starting on the *top* border.  We get two candidate best‐areas \(A_{\rm left}\) and \(A_{\rm top}\), and we take their maximum for \(\alpha\).  Similarly each fountain’s marginal gain is the maximum of its “left‐pass gain” and “top‐pass gain”.
+
+**Complexity**
+
+- We sort the \(k\) fountains by column (and by row) in \(O(k\log k)\).
+- We build a segment tree in \(O(k)\).
+- We answer each of the \(k\) removal‐queries in \(O(\log k)\) time.
+- Overall per test case is \(O(k\log k)\); since \(\sum k\le2\cdot10^5\), this runs comfortably in time.
+
+This completes the solution for both \(\alpha\) and the \(\alpha_i-\alpha\) values in the hard version of *Field Division*.

@@ -1,0 +1,217 @@
+**Analysis**
+
+We have card‐types labeled \(1,2,\dots,n\).  Alice starts with card \(1\) and wants card \(n\).  She can only trade “up” in her own valuation (she only accepts a card \(x\) if \(x>a\), where \(a\) is the card she currently holds).  The three opponents (Queen, King, Jack) each have a permutation \(p\) of \(\{1,\dots,n\}\) that encodes their ranking: they will give up card \(x\) for card \(a\) if and only if they prefer \(a\) to \(x\), i.e.\ \(p[a]>p[x]\).  
+
+Hence we get a directed graph on nodes \(\{1,\dots,n\}\).  From node \(a\) there is an edge to node \(x\) (labeled by which opponent we trade with) exactly when
+
+ 1. \(x>a\)  (Alice must gain a strictly larger card), and  
+ 2. for that opponent \(c\), \(p_c[a]>p_c[x]\).
+
+We want any path from \(1\) to \(n\).  A straightforward BFS/shortest‐path on this graph would be fine, except that there can be \(O(n^2)\) potential edges if we tried to build them all.  
+
+Instead, we do a “dynamic” graph‐exploration using three segment‐trees (one per opponent).  Each segment tree lets us maintain the *unvisited* card‐types in a range, keyed by the opponent’s preference value \(p_c[x]\).  When we pop a card \(a\) from our BFS queue, for each opponent \(c\in\{\text{Queen},\text{King},\text{Jack}\}\) we repeatedly ask:
+
+  • What is the unvisited card \(x>a\) of *minimum* \(p_c[x]\) in the range \([a+1,n]\)?  
+  • If that minimum \(p_c[x] < p_c[a]\), we can trade \(a\to x\) with opponent \(c\).  We then mark \(x\) visited, record how we got there, remove \(x\) from *all* three segment‐trees, and enqueue \(x\).  
+  • Keep repeating until no more \(x\) in \([a+1,n]\) satisfy \(p_c[x]<p_c[a]\).
+
+Because each card (node) is visited exactly once, this loop in total does \(O(n)\) removals, each removal and each segment‐tree query/update takes \(O(\log n)\).  Thus the overall is \(O(n\log n)\) per test, which is easily fast for \(\sum n\le2\cdot10^5\).  
+
+If at the end card \(n\) is visited, we reconstruct the path by standard BFS parent‐pointer reversal.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int INF = Integer.MAX_VALUE;
+
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            // Read the three permutations p[0]=Queen, p[1]=King, p[2]=Jack
+            int[][] p = new int[3][n+1];
+            for (int c = 0; c < 3; c++) {
+                for (int i = 1; i <= n; i++) {
+                    p[c][i] = in.nextInt();
+                }
+            }
+
+            // Build three segment-trees, each over [1..n], storing (minPrefValue, position).
+            SegTree[] seg = new SegTree[3];
+            for (int c = 0; c < 3; c++) {
+                seg[c] = new SegTree(n);
+                seg[c].build(1, 1, n, p[c]);
+            }
+
+            // BFS structures
+            boolean[] visited = new boolean[n+1];
+            int[] parent = new int[n+1];    // predecessor in the BFS tree
+            int[] how = new int[n+1];       // which opponent (0,1,2) we traded with to get here
+
+            // Start BFS from card 1
+            Deque<Integer> queue = new ArrayDeque<>();
+            visited[1] = true;
+            // remove card 1 from all segment-trees
+            for (int c = 0; c < 3; c++) {
+                seg[c].update(1, 1, n, 1, INF);
+            }
+            queue.add(1);
+
+            while (!queue.isEmpty()) {
+                int a = queue.poll();
+                if (a == n) break; // already reached n
+                // For each opponent c, try to find all x > a with p[c][x] < p[c][a].
+                for (int c = 0; c < 3; c++) {
+                    while (true) {
+                        // query the minimum p[c][x] in the range [a+1..n]
+                        if (a+1 > n) break;
+                        Pair best = seg[c].query(1, 1, n, a+1, n);
+                        if (best.pref >= p[c][a]) break; // no more valid trades with this c
+                        int x = best.pos;
+                        // visit x
+                        visited[x] = true;
+                        parent[x] = a;
+                        how[x] = c; // we got to x by trading with opponent c
+                        queue.add(x);
+                        // remove x from all three segment-trees so we never revisit
+                        for (int d = 0; d < 3; d++) {
+                            seg[d].update(1, 1, n, x, INF);
+                        }
+                    }
+                }
+            }
+
+            if (!visited[n]) {
+                out.println("NO");
+            } else {
+                // Reconstruct path from 1 to n
+                List<Pair> path = new ArrayList<>();
+                int cur = n;
+                while (cur != 1) {
+                    path.add(new Pair(how[cur], cur));
+                    cur = parent[cur];
+                }
+                Collections.reverse(path);
+
+                out.println("YES");
+                out.println(path.size());
+                for (Pair step : path) {
+                    char who = (step.pref==0 ? 'q' : step.pref==1 ? 'k' : 'j');
+                    out.println(who + " " + step.pos);
+                }
+            }
+        }
+
+        out.flush();
+    }
+
+    // Utility pair to hold (minPrefValue, position) or (opponent, position)
+    static class Pair {
+        int pref, pos;
+        Pair(int p, int x) { pref = p; pos = x; }
+    }
+
+    // A segment tree that on each node stores the minimum preference value in that segment
+    // and the position where that minimum occurs.
+    static class SegTree {
+        int n;
+        int[] minv;  // minimum preference in this node's interval
+        int[] idx;   // position of that minimum
+
+        SegTree(int size) {
+            n = size;
+            minv = new int[4*size + 5];
+            idx  = new int[4*size + 5];
+        }
+
+        // Build from the array pref[1..n]
+        void build(int node, int L, int R, int[] pref) {
+            if (L == R) {
+                minv[node] = pref[L];
+                idx[node]  = L;
+            } else {
+                int mid = (L+R)>>1;
+                build(node<<1,    L, mid, pref);
+                build(node<<1|1, mid+1, R, pref);
+                pull(node);
+            }
+        }
+
+        // Pull up info after children updates
+        void pull(int node) {
+            if (minv[node<<1] <= minv[node<<1|1]) {
+                minv[node] = minv[node<<1];
+                idx[node]  = idx[node<<1];
+            } else {
+                minv[node] = minv[node<<1|1];
+                idx[node]  = idx[node<<1|1];
+            }
+        }
+
+        // Point-update: set pref[pos] = value
+        void update(int node, int L, int R, int pos, int value) {
+            if (L == R) {
+                minv[node] = value;
+                // idx[node] stays L
+            } else {
+                int mid = (L+R)>>1;
+                if (pos <= mid) update(node<<1, L, mid, pos, value);
+                else          update(node<<1|1, mid+1, R, pos, value);
+                pull(node);
+            }
+        }
+
+        // Range-min query on [i..j], return (minValue, position)
+        Pair query(int node, int L, int R, int i, int j) {
+            if (i > R || j < L) {
+                return new Pair(INF, -1);
+            }
+            if (i <= L && R <= j) {
+                return new Pair(minv[node], idx[node]);
+            }
+            int mid = (L+R)>>1;
+            Pair left  = query(node<<1,    L, mid, i, j);
+            Pair right = query(node<<1|1, mid+1, R, i, j);
+            if (left.pref <= right.pref) return left;
+            else                         return right;
+        }
+    }
+
+    // Fast input reader
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader() { br = new BufferedReader(new InputStreamReader(System.in)); }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens())
+                st = new StringTokenizer(br.readLine());
+            return st.nextToken();
+        }
+        int nextInt() throws IOException { return Integer.parseInt(next()); }
+    }
+}
+```
+
+Explanation of key points:
+
+1. **Graph Modeling**  
+   Nodes are card‐types \(1\) through \(n\).  From node \(a\) there is a directed edge to \(x\) if and only if  
+   - \(x>a\) (Alice only trades up), and  
+   - the opponent \(c\) we choose satisfies \(p_c[a]>p_c[x]\) (they prefer Alice’s \(a\) to their \(x\)).
+
+2. **Implicit Edges via Segment Trees**  
+   Rather than explicitly build up to \(O(n^2)\) edges, we do a BFS from node \(1\).  Whenever we dequeue a node \(a\), for each opponent \(c\) we want *all* nodes \(x>a\) with \(p_c[x]<p_c[a]\).  We maintain a segment‐tree over the card‐ids \([1..n]\), storing the *minimum* \(p_c[x]\) in each range and the position of that minimum.  We also keep *only unvisited* cards in that tree (visited cards are “deleted” by setting their preference to \(+\infty\)).
+
+   Thus we can in \(O(\log n)\) find the smallest \(p_c[x]\) in \([a+1..n]\).  If it is below \(p_c[a]\), we know that particular \(x\) is tradeable, we visit it, enqueue it, and delete it from all three trees.  We repeat until no more valid \(x\) remain for that opponent.  Since each node is deleted once, the total work is \(O(n\log n)\).
+
+3. **Reconstruction**  
+   We keep `parent[x]` = the node we came from, and `how[x]` = which opponent (\(0,1,2\) for q/k/j).  Once we reach node \(n\), we back‐track to \(1\) and output the trades in order.
+
+This runs in \(O(n\log n)\) per test, and the sum of \(n\) over all tests is up to \(2\cdot10^5\), so it easily fits under the 2-second limit.

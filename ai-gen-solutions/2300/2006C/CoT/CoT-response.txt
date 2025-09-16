@@ -1,0 +1,261 @@
+**Analysis**
+
+We have an array a₁…aₙ.  A subarray [ℓ..r] is called *brilliant* if, when we take its *set* of distinct values and repeatedly insert integer averages of any two (whenever the average is an integer and not already present), we eventually fill in *every* integer between the minimum and the maximum of that set.  Equivalently, the *closure under integer‐averaging* is exactly the full consecutive range [min…max].
+
+A classical fact about the “closure under taking midpoints (x+y)/2 when x+y is even” is that if you start with integer points S, then the closure is an arithmetic progression whose step is the *odd part* of the GCD of all pairwise differences in S.  Concretely, if
+
+ g = gcd{ s–t : s,t∈S },  
+write g = 2ᵏ·d with d odd.  Then the closure is the progression
+
+  min(S), min(S)+d, min(S)+2d, …, max(S)
+
+and hence it is *fully consecutive* if and only if d=1 (in which case g is a pure power of two).
+
+Thus a subarray is brilliant ⇔ when you take its distinct values S, the GCD of all differences in S is a power of two.
+
+---
+
+We must count all subarrays [ℓ..r] of the original array that satisfy that property.  A direct O(n²) is impossible up to n=4·10⁵.  We proceed by the standard trick of *“greedy segment-by-segment around each position as the minimum”*.
+
+1.  First, for each index i, compute
+   - L[i] = the nearest index <i with a[L[i]]<a[i], or −1 if none.
+   - R[i] = the nearest index >i with a[R[i]]<a[i], or n if none.
+
+   By a subarray whose minimum occurs *exactly* at i we mean ℓ> L[i], i∈[ℓ..r], r< R[i].  We cover *all* subarrays by letting i run over all possible “locations of the minimum.”
+
+2.  Fix i.  We only need to count subarrays [ℓ..r] with L[i]<ℓ≤i≤r< R[i] whose GCD-odd-part criterion holds.  Split into three types:
+
+   (a)  **Left-only**:  r=i, ℓ<i.  
+   (b)  **Right-only**: ℓ=i, r>i.  
+   (c)  **Crossing**:   ℓ<i<r.
+
+   In all these subarrays the minimal value is a[i].  Define for ℓ<i
+   \[
+     G_L(ℓ)\;=\;\gcd\bigl\{\,a[j]-a[i]:\, j=ℓ,ℓ+1,\dots,i\bigr\},
+   \]
+   and for r>i
+   \[
+     G_R(r)\;=\;\gcd\bigl\{\,a[j]-a[i]:\, j=i,i+1,\dots,r\bigr\}.
+   \]
+   Then the GCD of *all* differences in the subarray is \(\gcd(G_L(\ell),\,G_R(r))\).
+
+   - (a) When r=i, the GCD is \(G_L(ℓ)\).  We want that to be a power of two.  
+   - (b) When ℓ=i, the GCD is \(G_R(r)\).  We want that a power of two.  
+   - (c) When ℓ<i<r, the GCD is \(\gcd\bigl(G_L(ℓ),G_R(r)\bigr)\).  We want that also to be a pure power of two.
+
+3.  To do this fast, observe as ℓ moves left from i−1 down to L[i]+1, the sequence of values
+   \[
+     G_L(i-1),\;G_L(i-2),\;\dots,\;G_L(L[i]+1)
+   \]
+   changes only O(log M) times (where M≈10⁹ is the size of the numbers), because each step takes a gcd and once it hits 1 it stays 1 forever.  We store these “runs” in a tiny list
+   \[
+     (g_{L,1},\,w_{L,1}),\,(g_{L,2},\,w_{L,2}),\;\dots
+   \]
+   where each g_{L,k} is a distinct gcd‐value and w_{L,k} is how many ℓ achieve that value.  Similarly build
+   \[
+     (g_{R,1},\,w_{R,1}),\dots 
+   \]
+   for r from i+1 up to R[i]−1.
+
+4.  Then
+
+   - the count of type (a) is the sum of w_{L,k} over those k with g_{L,k} a power of two,
+   - the count of type (b) is the sum of w_{R,k} over those k with g_{R,k} a power of two,
+   - the count of type (c) is
+     \[
+       \sum_{k,\,\ell}\;w_{L,k}\;\times\;w_{R,\ell}
+       \quad\text{over all pairs $(k,\ell)$ such that}\;
+       \gcd\bigl(g_{L,k},\,g_{R,\ell}\bigr)\text{ is a power of two.}
+     \]
+
+All singletons [i..i] are trivially brilliant, so we add **n** at the very end.
+
+Each position i only does O(log M) work on the left, O(log M) on the right, and O((log M)²) to combine the two lists.  Since log M ≈ 30, this runs in O(n·(log M)²) comfortably within the time limit up to n=4⋅10⁵.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static int gcd(int a, int b) {
+        while (b != 0) {
+            int t = a % b;
+            a = b;
+            b = t;
+        }
+        return a;
+    }
+    // test if x is 0 or a power of two
+    static boolean isPow2OrZero(int x) {
+        return (x & (x - 1)) == 0;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(in.readLine());
+        int t = Integer.parseInt(st.nextToken());
+
+        // Reusable arrays up to total N = 400,000
+        int[] a = new int[400000];
+        int[] L = new int[400000], R = new int[400000];
+        int[] stack = new int[400000];
+
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // Compute L[i] = nearest index < i with a[L[i]] < a[i], else -1
+            int top = 0;
+            for (int i = 0; i < n; i++) {
+                while (top > 0 && a[stack[top-1]] >= a[i]) {
+                    top--;
+                }
+                L[i] = (top == 0 ? -1 : stack[top-1]);
+                stack[top++] = i;
+            }
+
+            // Compute R[i] = nearest index > i with a[R[i]] < a[i], else n
+            top = 0;
+            for (int i = n - 1; i >= 0; i--) {
+                while (top > 0 && a[stack[top-1]] >= a[i]) {
+                    top--;
+                }
+                R[i] = (top == 0 ? n : stack[top-1]);
+                stack[top++] = i;
+            }
+
+            long ans = 0;
+            // Count all singletons
+            ans += n;
+
+            // Temporary arrays to hold the "gcd runs"
+            // at most ~32 runs each side
+            int[] gLval = new int[32],  gLcnt = new int[32];
+            int[] gRval = new int[32],  gRcnt = new int[32];
+
+            for (int i = 0; i < n; i++) {
+                int leftBound = L[i], rightBound = R[i];
+                int szL = 0, szR = 0;
+
+                // Build gcd‐runs for ℓ<i
+                int cur = 0;
+                int pos = i - 1;
+                while (pos > leftBound) {
+                    int d = a[pos] - a[i];
+                    cur = gcd(cur, d);
+                    if (szL == 0 || gLval[szL-1] != cur) {
+                        gLval[szL] = cur;
+                        gLcnt[szL] = 1;
+                        szL++;
+                    } else {
+                        gLcnt[szL - 1]++;
+                    }
+                    // once it hits 1 it stays 1 → we can bulk‐assign the rest
+                    if (cur == 1) {
+                        int rem = pos - leftBound - 1; 
+                        if (rem > 0) {
+                            gLcnt[szL - 1] += rem;
+                        }
+                        break;
+                    }
+                    pos--;
+                }
+
+                // Build gcd‐runs for r>i
+                cur = 0;
+                pos = i + 1;
+                while (pos < rightBound) {
+                    int d = a[pos] - a[i];
+                    cur = gcd(cur, d);
+                    if (szR == 0 || gRval[szR-1] != cur) {
+                        gRval[szR] = cur;
+                        gRcnt[szR] = 1;
+                        szR++;
+                    } else {
+                        gRcnt[szR - 1]++;
+                    }
+                    if (cur == 1) {
+                        int rem = rightBound - pos - 1;
+                        if (rem > 0) {
+                            gRcnt[szR - 1] += rem;
+                        }
+                        break;
+                    }
+                    pos++;
+                }
+
+                // (a) ℓ<i, r=i
+                for (int j = 0; j < szL; j++) {
+                    if (isPow2OrZero(gLval[j])) {
+                        ans += gLcnt[j];
+                    }
+                }
+                // (b) ℓ=i, r>i
+                for (int j = 0; j < szR; j++) {
+                    if (isPow2OrZero(gRval[j])) {
+                        ans += gRcnt[j];
+                    }
+                }
+
+                // (c) ℓ<i<r
+                for (int x = 0; x < szL; x++) {
+                    int gx = gLval[x], cx = gLcnt[x];
+                    for (int y = 0; y < szR; y++) {
+                        int gy = gRval[y], cy = gRcnt[y];
+                        boolean good;
+                        if (gx == 0 && gy == 0) {
+                            // All elements same
+                            good = true;
+                        } else if (gx == 0) {
+                            // gcd = gy
+                            good = isPow2OrZero(gy);
+                        } else if (gy == 0) {
+                            // gcd = gx
+                            good = isPow2OrZero(gx);
+                        } else {
+                            // gcd(gx,gy) has no odd factor ↔ odd(gx) and odd(gy) are coprime
+                            int ox = gx >>> Integer.numberOfTrailingZeros(gx);
+                            int oy = gy >>> Integer.numberOfTrailingZeros(gy);
+                            good = (gcd(ox, oy) == 1);
+                        }
+                        if (good) {
+                            ans += (long)cx * cy;
+                        }
+                    }
+                }
+            }
+
+            sb.append(ans).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of the main points**
+
+1. We locate for each index i the **maximal span** `(L[i], R[i])` in which a[i] is the *unique* minimum (no strictly smaller value inside).  Any subarray whose minimum is at i must have `ℓ > L[i]` and `r < R[i]`.
+
+2. In such a subarray, every value `a[j] ≥ a[i]`.  We define
+   ```
+     G_L(ℓ) = gcd{ a[ℓ]−a[i], a[ℓ+1]−a[i], …, a[i]−a[i]=0 }
+     G_R(r) = gcd{ a[i]−a[i]=0, a[i+1]−a[i], …, a[r]−a[i] }.
+   ```
+   Then the overall GCD of differences in [ℓ..r] is `gcd(G_L(ℓ), G_R(r))`.  That subarray is brilliant exactly when that GCD is a power of 2 (we allow 0 or powers of 2).
+
+3. We must count three types of subarrays ending or starting at i or crossing i:
+   - Left‐only (r=i)
+   - Right‐only (ℓ=i)
+   - Crossing (ℓ<i<r)
+
+4. Crucially, as ℓ runs left from i−1 down to L[i]+1, the sequence of `G_L(ℓ)` can only *decrease* by dividing (gcd) and once it becomes 1 it stays 1.  Hence it has O(log M) distinct runs.  We record those runs in a small array `(value, count)`.  Similarly on the right.  Then we tally up the contributions in O((log M)²) per i.
+
+5. Finally we add **n** for all size‐1 subarrays (trivially brilliant).  Overall complexity is O(n·(log M)²) with M≈10⁹, which fits easily for ∑n≤4·10⁵.

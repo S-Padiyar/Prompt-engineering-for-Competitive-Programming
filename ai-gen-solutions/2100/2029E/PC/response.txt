@@ -1,0 +1,85 @@
+import java.io.*;
+import java.util.*;
+public class Main {
+    static final int MAXA = 400_000;
+    static ArrayList<Integer>[] divisors = new ArrayList[MAXA+1];
+    static int[] spf = new int[MAXA+1];
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer tok;
+        for (int i = 2; i <= MAXA; i++) {
+            if (spf[i] == 0) {
+                for (int j = i; j <= MAXA; j += i) {
+                    if (spf[j] == 0) spf[j] = i;
+                }
+            }
+        }
+        for (int i = 2; i <= MAXA; i++) divisors[i] = new ArrayList<>();
+        for (int d = 2; d <= MAXA; d++) {
+            for (int m = d; m <= MAXA; m += d) {
+                divisors[m].add(d);
+            }
+        }
+        boolean[] isTarget = new boolean[MAXA+1];
+        int[] visited = new int[MAXA+1];
+        int visitMark = 1;
+        tok = new StringTokenizer(br.readLine());
+        int t = Integer.parseInt(tok.nextToken());
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            tok = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(tok.nextToken());
+            int[] a = new int[n];
+            tok = new StringTokenizer(br.readLine());
+            int minVal = MAXA+1, maxVal = 0;
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(tok.nextToken());
+                if (a[i] < minVal) minVal = a[i];
+                if (a[i] > maxVal) maxVal = a[i];
+                isTarget[a[i]] = true;
+            }
+            HashSet<Integer> primeSet = new HashSet<>();
+            int x = minVal;
+            while (x > 1) {
+                int p = spf[x];
+                primeSet.add(p);
+                while (x % p == 0) x /= p;
+            }
+            ArrayList<Integer> cands = new ArrayList<>(primeSet);
+            Collections.sort(cands);
+            int answer = -1;
+            for (int p : cands) {
+                visitMark++;
+                if (visitMark == Integer.MAX_VALUE) {
+                    Arrays.fill(visited, 0);
+                    visitMark = 1;
+                }
+                ArrayDeque<Integer> dq = new ArrayDeque<>();
+                dq.add(p);
+                visited[p] = visitMark;
+                int found = 0;
+                while (!dq.isEmpty()) {
+                    int u = dq.poll();
+                    if (isTarget[u]) {
+                        found++;
+                        if (found == n) break;
+                    }
+                    for (int d : divisors[u]) {
+                        int v = u + d;
+                        if (v <= maxVal && visited[v] != visitMark) {
+                            visited[v] = visitMark;
+                            dq.add(v);
+                        }
+                    }
+                }
+                if (found == n) {
+                    answer = p;
+                    break;
+                }
+            }
+            for (int v : a) isTarget[v] = false;
+            sb.append(answer).append('\n');
+        }
+        System.out.print(sb);
+    }
+}

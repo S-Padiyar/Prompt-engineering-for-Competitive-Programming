@@ -1,0 +1,181 @@
+**Problem Restatement**
+
+We have a sequence of integer **blocks**, each block described by a pair \((a_i,b_i)\) meaning “\(a_i\) consecutive copies of the integer \(b_i\)”.  Adjacent blocks always have different values \(b_i\neq b_{i+1}\).  We form the full (expanded) array of length \(\sum a_i\) and then apply the following deletion process, counting seconds:
+
+- Each second, **simultaneously** remove the first element of **every** remaining contiguous run of equal values.  
+- When a block becomes empty, its neighbors (if any) of the _same value_ will merge into one larger block (and continue losing one per second).
+
+We call the **strength** of the array the number of seconds until it becomes empty.  
+
+We are given \(n\) pairs (the run‐length encoding of the array).  For each prefix of the first \(k\) blocks \((1\le k\le n)\), we must compute the strength of the array formed by those \(k\) blocks.
+
+---
+
+**Key Observation and Algorithm**
+
+Label the blocks \(1,2,\dots,n\) with \(\text{size}[i]=a_i\) and \(\text{val}[i]=b_i\).  Define \(\mathrm{dp}[i]\) = the time in seconds at which the entire cluster originating at block \(i\) finally disappears, **including** all merges that may occur with previous blocks of the same value.
+
+1. **Base case**:  If block \(i\) has value \(v\) and this is its first occurrence, then it never merges with an earlier block of value \(v\).  Hence 
+   
+   \[
+     \mathrm{dp}[i] = a_i.
+   \]
+2. **Merge case**:  Suppose block \(i\) has value \(v\) and it previously occurred at index \(j\).  Then block \(j\) and block \(i\) _might_ merge, but only after _all_ blocks between \(j\) and \(i\) have disappeared.  
+   - Let 
+     \[
+       G \;=\;\max_{j<k<i}\;\mathrm{dp}[k]
+     \]
+     be the time at which the last of the intervening clusters has died.  
+   - By that time \(G\), each of the two clusters \(j\) and \(i\) has been losing one element per second.  If \(\mathrm{dp}[j]>G\), then at time \(G\) cluster \(j\) still has \(\mathrm{dp}[j]-G\) elements left; similarly cluster \(i\) has \(\mathrm{dp}[i]-G\).  They then merge into one cluster of size \((\mathrm{dp}[j]-G)+(\mathrm{dp}[i]-G)\), which in turn will take that many seconds to vanish.  Hence the final disappearance time if they merge is
+     \[
+       G + \bigl(\mathrm{dp}[j]-G\bigr)\;+\;\bigl(\mathrm{dp}[i]-G\bigr)
+       \;=\;\mathrm{dp}[j]+\mathrm{dp}[i]-G.
+     \]
+   - If \(\mathrm{dp}[j]\le G\), then block \(j\) has already died by the time the gap clears, so it contributes no merge.  Thus overall,
+     \[
+       \mathrm{dp}[i] 
+         = \max\bigl(\,a_i,\;a_i + (\mathrm{dp}[j]-G)\bigr)
+         = a_i \;+\;\max\bigl(0,\;\mathrm{dp}[j]-G\bigr).
+     \]
+   - (If there are no blocks in between, then \(G=0\), so \(\mathrm{dp}[i]=a_i+\mathrm{dp}[j]\).)
+
+Once we have \(\mathrm{dp}[i]\) for each \(i\), the strength of the prefix of length \(k\) is simply
+\[
+   \max_{1\le i\le k}\mathrm{dp}[i],
+\]
+the time when the very last cluster in that prefix dies.
+
+To implement efficiently:
+
+- We must know for each value \(v\) the **last occurrence** \(j\).  Use an array `last[v]`.
+- We must compute \(G=\max(dp[j+1..i-1])\) quickly.  We store all \(\mathrm{dp}[i]\) into a segment tree (or any RMQ structure) supporting:
+  - point updates \(\mathrm{dp}[i]\gets\) some value,  
+  - range‐maximum queries.
+- Each block requires one range‐max query and one point update, i.e.\ \(O(\log n)\).
+- Since \(\sum n\le3\cdot10^5\), this runs comfortably in time.
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXB = 300_000; // maximum possible b_i
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer tok;
+
+        int t = Integer.parseInt(in.readLine().trim());
+        // last[v] = last index where value v appeared; 0 if never
+        int[] last = new int[MAXB+1];
+        StringBuilder output = new StringBuilder();
+
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine().trim());
+            int[] a = new int[n+1], b = new int[n+1];
+            for (int i = 1; i <= n; i++) {
+                tok = new StringTokenizer(in.readLine());
+                a[i] = Integer.parseInt(tok.nextToken());
+                b[i] = Integer.parseInt(tok.nextToken());
+            }
+
+            // Segment tree for range max over dp[1..n]
+            SegTree st = new SegTree(n);
+
+            long best = 0;  // current maximum dp over [1..i]
+            for (int i = 1; i <= n; i++) {
+                long dpi = a[i];           // base dp[i] = a[i]
+                int v = b[i];
+                int j = last[v];           // previous occurrence
+                if (j != 0) {
+                    // G = max dp in (j, i), i.e. j+1..i-1
+                    long G = 0;
+                    if (j+1 <= i-1) {
+                        G = st.rangeMax(j+1, i-1);
+                    }
+                    // add merging bonus
+                    long dpj = st.rangeMax(j, j); // or store dp[j] separately
+                    dpi += Math.max(0L, dpj - G);
+                }
+                // store dp[i]
+                st.update(i, dpi);
+                // update global best
+                if (dpi > best) best = dpi;
+                output.append(best).append(' ');
+                last[v] = i;
+            }
+            output.append('\n');
+
+            // Clear last[] for this test
+            for (int i = 1; i <= n; i++) {
+                last[b[i]] = 0;
+            }
+        }
+
+        System.out.print(output);
+    }
+
+    // A simple segment tree for range-maximum, 1-based indices
+    static class SegTree {
+        int size;
+        long[] tree;
+
+        SegTree(int n) {
+            // find power-of-two >= n
+            size = 1;
+            while (size < n) size <<= 1;
+            tree = new long[2 * size];
+        }
+        // point update: set position pos (1..n) to value val
+        void update(int pos, long val) {
+            pos += size - 1;
+            tree[pos] = val;
+            while (pos > 1) {
+                pos >>= 1;
+                tree[pos] = Math.max(tree[2*pos], tree[2*pos+1]);
+            }
+        }
+        // range maximum in [l..r], 1-based inclusive
+        long rangeMax(int l, int r) {
+            long res = 0;
+            l += size - 1;
+            r += size - 1;
+            while (l <= r) {
+                if ((l & 1) == 1) res = Math.max(res, tree[l++]);
+                if ((r & 1) == 0) res = Math.max(res, tree[r--]);
+                l >>= 1; r >>= 1;
+            }
+            return res;
+        }
+    }
+}
+```
+
+---
+
+**Explanation of Key Steps**
+
+1. **`last[v]` array**: tracks the **last** block index that used value \(v\).  If `last[v]==0`, this is the first time we see \(v\).
+2. **Computing \(\mathrm{dp}[i]\)**:
+   - Start with `dp[i] = a[i]` (a new isolated block dies in \(a_i\) seconds).
+   - If `v=b[i]` occurred before at `j = last[v]>0`, we query
+     \[
+       G \;=\;\max\bigl(\mathrm{dp}[j+1],\dots,\mathrm{dp}[i-1]\bigr).
+     \]
+     Then we add `max(0, dp[j]-G)` to `dp[i]` to account for possible merge.
+3. **Segment tree**:
+   - After calculating `dp[i]`, we `update(i, dp[i])` so future queries can see it.
+   - We also maintain a running maximum `best = max(best, dp[i])` which is the strength of the prefix of length \(i\).
+4. **Clearing `last[]`**: Once a test case is done, we zero out `last[b[i]]` for \(i=1\ldots n\) to reuse the array in the next test.
+
+---
+
+**Complexity Analysis**
+
+- Let \(N=\sum n\) be the total number of blocks across all test cases (\(N\le 3\cdot10^5\)).
+- Each block does one segment‐tree range‐max query and one point‐update, each costing \(O(\log n)\). 
+- Hence the total time is \(O(N\log N)\), perfectly fine for \(N\le300\,000\).
+- Memory is \(O(N)\) for arrays plus \(O(N)\) for the segment tree.

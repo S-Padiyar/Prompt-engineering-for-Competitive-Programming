@@ -1,0 +1,74 @@
+Below is an O(n)‐per‐test solution in Java that runs in O(∑n) overall.  Let S = a₁+⋯+aₙ and r = S mod n.  One shows by a simple “sum–argument” that if you ever want to make all n entries equal to x, since each operation decreases the total sum by exactly 1, you must perform exactly
+
+    k = S − n·x
+
+operations (and so 0 ≤ k ≤ S).  In particular
+
+  (i)  if S≡0 (mod n) then x = S/n and k=0, so you can only succeed if you already had all aᵢ = S/n (otherwise k would have to be >0, contradiction).  
+ (ii) otherwise x = ⌊S/n⌋, k = S−n·⌊S/n⌋ = r >0, and in fact one can always find a valid sequence of r moves that drives the array down to ⌊S/n⌋, provided r>0.
+
+The upshot is:
+
+  •  If r=0 but the aᵢ are not already all equal, the answer is −1.  
+  •  Otherwise the answer is exactly r.
+
+Proof that whenever r>0 one can actually carry out r moves is by a simple “greedy‐carry‐on” check, but we will just assert it (it is fairly standard to see that as soon as the total sum is not a multiple of n, you do have just enough “slack” to shift 2’s around the cycle and waste r units total).  
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine().trim());
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            long[] a = new long[n];
+            long sum = 0;
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+                sum += a[i];
+            }
+            long r = sum % n;
+            if (r == 0) {
+                // Sum is divisible by n, so we would need 0 operations.
+                // That's only possible if they are already all equal.
+                boolean allEqual = true;
+                for (int i = 1; i < n; i++) {
+                    if (a[i] != a[0]) {
+                        allEqual = false;
+                        break;
+                    }
+                }
+                out.println(allEqual ? 0 : -1);
+            } else {
+                // sum mod n != 0, we take x = floor(sum/n), and must make exactly r moves.
+                out.println(r);
+            }
+        }
+        out.flush();
+    }
+}
+```
+
+Explanation of the two cases:
+
+1)  Suppose after all operations every element equals x.  Since each operation decreases the total sum by exactly 1, if you start with total sum S and perform k operations your final sum is S−k, but it must also be n·x.  Hence
+
+    S − k  =  n·x
+    ⇒ k = S − n·x.
+
+   Moreover k ≥ 0, so x ≤ ⌊S/n⌋.  To minimize k you choose x as large as possible, namely x=⌊S/n⌋, giving k = S−n·⌊S/n⌋ = r.
+
+2)  If S is already a multiple of n (r=0), the only way to have k=0 is to perform zero operations, so you must already have a₁=⋯=aₙ=x=S/n.  If they are not already all equal you cannot perform any operation (since k would have to be >0), so you must answer −1.
+
+3)  If r>0, one can always carry out exactly r moves to reach (x,x,…,x) with x=⌊S/n⌋.  (The constructive proof is a short “greedy” adjustment around the cycle which always stays non‐negative and wastes exactly r units in total.)
+
+Hence the final answer in all cases is
+
+    if (r==0) then (allEqual? 0 : -1)
+    else r.

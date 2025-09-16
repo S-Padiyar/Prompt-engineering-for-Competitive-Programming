@@ -1,0 +1,76 @@
+G. Sakurako's Task
+time limit per test2 seconds
+memory limit per test256 megabytes
+Sakurako has prepared a task for you:
+
+She gives you an array of n
+ integers and allows you to choose i
+ and j
+ such that i≠j
+ and ai≥aj
+, and then assign ai=ai−aj
+ or ai=ai+aj
+. You can perform this operation any number of times for any i
+ and j
+, as long as they satisfy the conditions.
+
+Sakurako asks you what is the maximum possible value of mexk
+∗
+ of the array after any number of operations.
+
+∗
+mexk
+ is the k
+-th non-negative integer that is absent in the array. For example, mex1({1,2,3})=0
+, since 0
+ is the first element that is not in the array, and mex2({0,2,4})=3
+, since 3
+ is the second element that is not in the array.
+
+Input
+The first line contains a single integer t
+ (1≤t≤104
+)  — the number of test cases.
+
+The first line of each test case contains two integers n
+ and k
+ (1≤n≤2⋅105,1≤k≤109
+)  — the number of elements in the array and the value k
+ for mexk
+.
+
+The second line of each test case contains n
+ integers a1,a2,…,an
+ (1≤ai≤109
+)  — the elements of the array.
+
+It is guaranteed that the sum of n
+ across all test cases does not exceed 2⋅105
+.
+
+Output
+For each test case, output the maximum mexk
+ that can be achieved through the operations.
+
+Example
+InputCopy
+6
+1 3
+3
+2 10
+1 1
+3 1
+1 2 3
+3 2
+1 2 4
+4 5
+2 2 2 16
+4 5
+2 2 2 3
+OutputCopy
+2
+11
+3
+4
+8
+8

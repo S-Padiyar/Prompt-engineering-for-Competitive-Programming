@@ -1,0 +1,126 @@
+**Analysis**
+
+We want a sequence \(a_1,a_2,\dots,a_n\) of integers in \([1,3\cdot10^5]\) so that all adjacent‐pair products
+\[
+a_i\cdot a_{i+1},\quad i=1,2,\dots,n-1
+\]
+are pairwise distinct, and we minimize the number of distinct values in the sequence.  Clearly if we use only \(k\) distinct values, then there are at most \(k^2\) distinct ordered products \((x,y)\mapsto x\cdot y\).  Since we need \(n-1\) distinct products, we must have
+\[
+k^2\ge n-1,
+\]
+so
+\[
+k\ge\lceil\sqrt{n-1}\rceil.
+\]
+One can show this is also achievable (up to an additive 1) by a classic **de Bruijn** approach:
+
+-  We take an “alphabet” of size \(k\) (we will choose \(k=\lceil\sqrt{n}\rceil\) so that \(k^2\ge n\)).
+-  We construct a **de Bruijn sequence** of order \(2\) on that alphabet; this is a cyclic sequence of length \(k^2\) in which every ordered pair of symbols \((x,y)\) appears exactly once (cyclically).
+-  If we write it out linearly as
+   \[
+     s_0,s_1,\dots,s_{k^2-1},
+   \]
+   then the \(k^2-1\) _linear_ adjacent pairs
+   \[
+     (s_0,s_1),\,(s_1,s_2),\dots,(s_{k^2-2},s_{k^2-1})
+   \]
+   are all distinct.  We only need the first \(n\) symbols of that sequence; with \(n\le k^2\) we get \(n-1\) distinct products and use exactly \(k\) distinct symbols \(\{0,1,\dots,k-1\}\), which we then shift to \(\{1,2,\dots,k\}\) in the final answer.
+
+Since \(\sum n\le10^6\), building one de Bruijn of length \(k^2\le10^6\) (for \(k\approx1000\)) and then slicing out the first \(n\) entries for each test is efficient.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static int K;               // alphabet size
+    static int DBN = 2;         // de Bruijn order = 2
+    static int[] a;             // work array for de Bruijn
+    static ArrayList<Integer> seq;  // holds the de Bruijn sequence (0..K-1)
+
+    // Hierholzer‐style recursive de Bruijn construction for order=2
+    static void db(int t, int p) {
+        if (t > DBN) {
+            if (DBN % p == 0) {
+                // output a[1..p]
+                for (int i = 1; i <= p; i++) {
+                    seq.add(a[i]);
+                }
+            }
+        } else {
+            a[t] = a[t - p];
+            db(t + 1, p);
+            for (int j = a[t - p] + 1; j < K; j++) {
+                a[t] = j;
+                db(t + 1, t);
+            }
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(new BufferedWriter(new OutputStreamWriter(System.out)));
+
+        int t = Integer.parseInt(in.readLine().trim());
+        int[] ns = new int[t];
+        int maxN = 0;
+        for (int i = 0; i < t; i++) {
+            ns[i] = Integer.parseInt(in.readLine().trim());
+            if (ns[i] > maxN) maxN = ns[i];
+        }
+
+        // Choose K = ceil(sqrt(maxN)) so that K^2 >= maxN
+        K = (int)Math.floor(Math.sqrt(maxN));
+        if ((long)K * K < maxN) {
+            K++;
+        }
+
+        // Build de Bruijn( K, order=2 )
+        // The resulting seq.size() == K^2
+        a = new int[K * DBN + 1];  // need indices up to a[DBN], a[0]
+        seq = new ArrayList<>(K * K);
+        db(1, 1);
+
+        // seq now length K^2; we will use seq[0..n-1], shifting each by +1
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < t; i++) {
+            int n = ns[i];
+            sb.setLength(0);
+            for (int j = 0; j < n; j++) {
+                // +1 to make symbols in [1..K] instead of [0..K-1]
+                sb.append(seq.get(j) + 1);
+                if (j + 1 < n) sb.append(' ');
+            }
+            out.println(sb);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1. **Why \(k^2\ge n-1\)?**  
+   We need \(n-1\) *distinct* adjacent products \((a_i,a_{i+1})\).  If only \(k\) distinct values appear in the sequence, the total number of *possible* ordered pairs is \(k^2\), so we must have \(k^2\ge n-1\).  
+
+2. **De Bruijn sequence of order 2 on an alphabet of size \(k\)**  
+   A de Bruijn sequence length \(k^2\) is a cyclic sequence in which *every* ordered pair of symbols appears **exactly once** as consecutive symbols (when considered cyclically).  Written linearly without the wrap–around edge, the first \(k^2-1\) pairs
+   \[
+   (s_0,s_1),\;(s_1,s_2),\;\dots,\;(s_{k^2-2},s_{k^2-1})
+   \]
+   are all distinct.  
+
+3. **Slicing off the first \(n\) symbols**  
+   Since \(n\le k^2\), we simply take
+   \[
+     a_i = s_{i-1}+1,\quad i=1,2,\dots,n
+   \]
+   (the \(\,+1\) ensures our values lie in \(1\ldots k\), all \(\le3\cdot10^5\)).  We get exactly \((n-1)\) distinct products, and only \(k\) distinct values appear.  
+
+4. **Complexity**  
+   - Building the de Bruijn sequence of length \(k^2\le10^6\) with the classic recursive (Hierholzer‐style) algorithm runs in \(O(k^2)\).  
+   - Printing out \(\sum n\le10^6\) numbers is also \(O(10^6)\).  
+   All comfortably fit under the \(3\) s/512 MB limits.

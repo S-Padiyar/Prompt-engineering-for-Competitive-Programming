@@ -1,0 +1,132 @@
+**Problem Restatement.**  
+We have *n* types of cards, and initially for each *i* = 1…*n* we have *a₍ᵢ₎* cards of type *i*.  We may buy up to *k* extra cards (each purchase costs one coin), choosing any types we like.  After buying, we must split *all* the cards into decks so that:
+
+- All decks have the same size *s*.
+- Within one deck, no two cards share the same type.
+
+We want to maximize *s*.
+
+---
+
+**Key Observations.**
+
+1.  Let *S* = ∑₍ᵢ₌₁…ₙ₎ *a₍ᵢ₎* be the total number of cards we start with, and let *M* = max₍ᵢ₎ *a₍ᵢ₎*.  
+2.  Suppose finally we have bought *x₍ᵢ₎* cards of type *i*, for a total of ∑ *x₍ᵢ₎* ≤ *k*.  Then our new counts are *b₍ᵢ₎* = *a₍ᵢ₎* + *x₍ᵢ₎*.  
+3.  If we form *m* decks each of size *s*, then  
+   - Total cards used: ∑ *b₍ᵢ₎* = *m·s*.  
+   - Because within each deck a type can appear at most once, over *m* decks each type *i* can be used at most *m* times, so *b₍ᵢ₎* ≤ *m* must hold for all *i*.  
+   - Conversely, any choice of *b₍ᵢ₎* ∈ [*a₍ᵢ₎*, *m*] summing to *m·s* can be distributed to decks (a standard “fill one copy of type *i* in *b₍ᵢ₎* distinct decks” argument).  
+
+4.  Hence the constraints reduce to finding integers *s* (deck size) and *m* (number of decks) so that:
+   - ∑ *a₍ᵢ₎* ≤ *m·s* ≤ ∑ *a₍ᵢ₎* + *k*   (we buy exactly *m·s* – ∑ *a₍ᵢ₎* ≤ *k* cards),
+   - *m* ≥ max₍ᵢ₎ *a₍ᵢ₎* = *M*  (so that we never need to cap a type below its original count),
+   - *s* ≤ *n*  (deck size cannot exceed the number of distinct types).
+
+   Let *S* = ∑ *a₍ᵢ₎*.  Then these become:
+   - *m·s* ≥ *S*  ⇒  *m* ≥ ⌈*S* / *s*⌉,  
+   - *m·s* ≤ *S* + *k*  ⇒  *m* ≤ ⌊(*S* + *k*) / *s*⌋,  
+   - also *m* ≥ *M*.  
+
+   Therefore for a fixed *s*, feasibility is:
+     max( *M*, ⌈*S* / *s*⌉ )  ≤  ⌊(*S*+*k*) / *s*⌋.
+
+5.  We want the maximum *s* ∈ [1…*n*] satisfying that.  Although one might hope for a monotonic (binary‐searchable) structure, in fact the condition can be non‐monotonic in *s*.  However, the sum of all *n* across test cases is ≤2·10⁵, so we can afford an *O(n)* check per test.  
+
+---
+
+**Solution Outline.**
+
+For each test:
+
+1. Read *n*, *k*, and the array *a₁…aₙ*.  
+2. Compute  
+   - *S* = ∑ *aᵢ*  (as `long`),  
+   - *M* = max₍ᵢ₎ *aᵢ*.  
+3. Initialize `best = 1` (we can always make deck‐size 1).  
+4. For *s* from 1 to *n*:
+   - Compute  
+     L = ceil(S/s) = (S + s – 1) / s  
+     R = floor((S + k) / s)  
+   - Let `need = Math.max(M, L);`
+   - If `need <= R` then `best = s`.
+5. Print `best`.
+
+This runs in *O(n)* per test, total *O(∑n) = O(2·10⁵)*, and uses only constant extra memory (besides the input array).
+
+---
+
+```java
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.IOException;
+import java.util.StringTokenizer;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        // Fast input
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            // Read n, k
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+            
+            // Read array a[]
+            long S = 0;       // sum of a[i]
+            long M = 0;       // max of a[i]
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                long ai = Long.parseLong(st.nextToken());
+                S += ai;
+                if (ai > M) {
+                    M = ai;
+                }
+            }
+            
+            int best = 1;  // deck size at least 1 is always possible
+            // Try all s = 1..n
+            for (int s = 1; s <= n; s++) {
+                // Minimal number of decks needed so that m*s >= S
+                long L = (S + s - 1) / s;            
+                // Maximal number of decks we can afford buying at most k cards
+                long R = (S + k) / s;               
+                long need = Math.max(M, L);
+                // Feasible if there's some integer m in [need..R]
+                if (need <= R) {
+                    best = s;
+                }
+            }
+            
+            System.out.println(best);
+        }
+    }
+}
+```
+
+---
+
+**Worked Example.**  
+Take the sample  
+```
+n = 3, k = 1, a = [3, 2, 2].
+```
+Here *S* = 7, *M* = 3.
+
+We test s = 1…3:
+
+- s = 1:  
+  L = ceil(7/1)=7,   R = floor((7+1)/1)=8,  need = max(3,7)=7 ≤ 8 ⇒ OK. best=1  
+- s = 2:  
+  L = ceil(7/2)=4,   R = floor(8/2)=4,    need = max(3,4)=4 ≤ 4 ⇒ OK. best=2  
+- s = 3:  
+  L = ceil(7/3)=3,   R = floor(8/3)=2,    need = max(3,3)=3 > 2 ⇒ NO  
+
+Answer = 2, which matches the sample.
+
+---
+
+**Complexity.**  
+For each test case we do an *O(n)* loop (s from 1 to *n*), and each iteration is *O(1)* work. Summing over all test cases gives *O(∑n) = O(2·10⁵)* time. Memory is *O(n)* for storing the array, plus negligible overhead.

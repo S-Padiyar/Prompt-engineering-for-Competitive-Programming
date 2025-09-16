@@ -1,0 +1,105 @@
+D. Grid Puzzle
+time limit per test2 seconds
+memory limit per test256 megabytes
+You are given an array a
+ of size n
+.
+
+There is an n×n
+ grid. In the i
+-th row, the first ai
+ cells are black and the other cells are white. In other words, note (i,j)
+ as the cell in the i
+-th row and j
+-th column, cells (i,1),(i,2),…,(i,ai)
+ are black, and cells (i,ai+1),…,(i,n)
+ are white.
+
+You can do the following operations any number of times in any order:
+
+Dye a 2×2
+ subgrid white;
+Dye a whole row white. Note you can not dye a whole column white.
+Find the minimum number of operations to dye all cells white.
+
+Input
+The first line contains an integer t
+ (1≤t≤104
+) — the number of test cases.
+
+For each test case:
+
+The first line contains an integer n
+ (1≤n≤2⋅105
+) — the size of the array a
+.
+The second line contains n
+ integers a1,a2,…,an
+ (0≤ai≤n
+).
+It's guaranteed that the sum of n
+ over all test cases will not exceed 2⋅105
+.
+
+Output
+For each test case, output a single integer — the minimum number of operations to dye all cells white.
+
+Example
+InputCopy
+10
+1
+0
+4
+2 4 4 2
+4
+3 2 1 0
+3
+0 3 0
+3
+0 1 3
+3
+3 1 0
+4
+3 1 0 3
+4
+0 2 2 2
+6
+1 3 4 2 0 4
+8
+2 2 5 2 3 4 2 4
+OutputCopy
+0
+3
+2
+1
+2
+2
+3
+2
+4
+6
+Note
+In the first test case, you don't need to do any operation.
+
+In the second test case, you can do:
+
+Dye (1,1),(1,2),(2,1)
+, and (2,2)
+ white;
+Dye (2,3),(2,4),(3,3)
+, and (3,4)
+ white;
+Dye (3,1),(3,2),(4,1)
+, and (4,2)
+ white.
+It can be proven 3
+ is the minimum number of operations.
+
+In the third test case, you can do:
+
+Dye the first row white;
+Dye (2,1),(2,2),(3,1)
+, and (3,2)
+ white.
+It can be proven 2
+ is the minimum number of operations.

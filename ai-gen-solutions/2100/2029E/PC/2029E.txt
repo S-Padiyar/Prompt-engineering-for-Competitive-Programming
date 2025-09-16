@@ -1,0 +1,105 @@
+E. Common Generator
+time limit per test2 seconds
+memory limit per test512 megabytes
+For two integers x
+ and y
+ (x,y≥2
+), we will say that x
+ is a generator of y
+ if and only if x
+ can be transformed to y
+ by performing the following operation some number of times (possibly zero):
+
+Choose a divisor d
+ (d≥2
+) of x
+, then increase x
+ by d
+.
+For example,
+
+3
+ is a generator of 8
+ since we can perform the following operations: 3−→−d=36−→−d=28
+;
+4
+ is a generator of 10
+ since we can perform the following operations: 4−→−d=48−→−d=210
+;
+5
+ is not a generator of 6
+ since we cannot transform 5
+ into 6
+ with the operation above.
+Now, Kevin gives you an array a
+ consisting of n
+ pairwise distinct integers (ai≥2
+).
+
+You have to find an integer x≥2
+ such that for each 1≤i≤n
+, x
+ is a generator of ai
+, or determine that such an integer does not exist.
+
+Input
+Each test contains multiple test cases. The first line of the input contains a single integer t
+ (1≤t≤104
+) — the number of test cases. The description of test cases follows.
+
+The first line of each test case contains a single integer n
+ (1≤n≤105
+) — the length of the array a
+.
+
+The second line contains n
+ integers a1,a2,…,an
+ (2≤ai≤4⋅105
+) — the elements in the array a
+. It is guaranteed that the elements are pairwise distinct.
+
+It is guaranteed that the sum of n
+ over all test cases does not exceed 105
+.
+
+Output
+For each test case, output a single integer x
+ — the integer you found. Print −1
+ if there does not exist a valid x
+.
+
+If there are multiple answers, you may output any of them.
+
+Example
+InputCopy
+4
+3
+8 9 10
+4
+2 3 4 5
+2
+147 154
+5
+3 6 8 25 100000
+OutputCopy
+2
+-1
+7
+3
+Note
+In the first test case, for x=2
+:
+
+2
+ is a generator of 8
+, since we can perform the following operations: 2−→−d=24−→−d=48
+;
+2
+ is a generator of 9
+, since we can perform the following operations: 2−→−d=24−→−d=26−→−d=39
+.
+2
+ is a generator of 10
+, since we can perform the following operations: 2−→−d=24−→−d=26−→−d=28−→−d=210
+.
+In the second test case, it can be proven that it is impossible to find a common generator of the four integers.

@@ -1,0 +1,173 @@
+**Analysis**
+
+We have an array $a$ of length $n$, and in each operation we must remove a contiguous block of size exactly $k$ until the array’s length is at most $k$.  Let the final length of the array be
+
+-   if $n\le k$, we do zero operations and keep all $n$ elements;
+-   if $n>k$, we repeatedly subtract $k$ until the length is $\le k$.  One easily checks that the final length is
+  
+  \[
+    r = 
+    \begin{cases}
+      n \bmod k,& n \bmod k\neq 0,\\
+      k,& n\bmod k=0.
+    \end{cases}
+  \]
+
+Denote by $r$ this final length.  We then take the median of those $r$ elements; by definition (for an array of length $r$) the median is the $\lfloor (r+1)/2\rfloor$-th element in sorted order.  We wish to **maximize** that median by clever choices of which $k$-blocks to remove.
+
+A key combinatorial fact is that specifying which $k$-blocks to remove is exactly equivalent to choosing **one** survivor from each of the $r$ residue‐classes modulo $k$ among the original positions.  Concretely, if we index $a$ from $0$ to $n-1$, then the survivors must occupy exactly one index in each class
+
+\[
+  \{\,j,\, j+k,\, j+2k,\dots\}\quad (j=0,1,\dots,r-1).
+\]
+
+Those are disjoint runs of “would‐be deletions,” each run of non‐survivors has size a multiple of $k$, so we can peel off $k$‐blocks from it until it vanishes.
+
+Thus the final survivors are
+\[
+  S=\{\,s_0,s_1,\dots,s_{r-1}\},\quad
+  s_j\equiv j\pmod{k},\quad j=0,1,\dots,r-1,
+\]
+exactly one choice per residue‐class.
+
+Now let $X$ be a candidate for “can we achieve median $\ge X$”?  To have the median (the $\lfloor (r+1)/2\rfloor$-th smallest) at least $X$, we must have
+
+-   at least 
+    \[
+      T \;=\; r\;-\;\bigl\lfloor\tfrac{r+1}2\bigr\rfloor\;+\;1
+    \]
+    of our chosen survivors $\ge X$,
+-   and we pick one survivor in each of the $r$ residue‐classes.
+
+So for each residue‐class $j\in\{0,1,\dots,r-1\}$, we look down the arithmetic progression
+\[
+  j,\; j+k,\; j+2k,\;\dots
+\]
+and ask “is there \emph{any} $a[i]\ge X$ in that class?”  If so we call that class _good_.  We count the number of good classes.  If the number of good classes is at least $T$, we can choose $T$ of them to contribute $\ge X$ and the remaining $r-T$ arbitrarily, yielding median$\ge X$.
+
+We thus have a monotonic condition in $X$.  We can binary‐search on $X$ in the range $[1,\max(a)]$, checking in $O(n)$ time for each $X$ whether there are at least $T$ good residue‐classes.  Overall this takes $O(n\log M)$ time per test (with $M$ up to $10^9$), which is fast enough for $\sum n\le5\times10^5$.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            int k = in.nextInt();
+            int[] a = new int[n];
+            int maxv = 0;
+            for (int i = 0; i < n; i++) {
+                a[i] = in.nextInt();
+                if (a[i] > maxv) maxv = a[i];
+            }
+            // Compute final length r:
+            int r = n % k;
+            if (r == 0) r = k;
+            // Number of survivors we must have >= X to force median>=X:
+            // median index = floor((r+1)/2), 
+            // so need (r - medianIndex + 1) survivors >= X.
+            int medianIndex = (r + 1) / 2;           // floor((r+1)/2)
+            int need = r - medianIndex + 1;
+
+            // Binary search on X in [1..maxv].
+            int lo = 1, hi = maxv;
+            while (lo < hi) {
+                int mid = lo + (hi - lo + 1) / 2;
+                if (canHaveAtLeast(a, n, k, r, need, mid)) {
+                    lo = mid;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+
+            out.println(lo);
+        }
+
+        out.flush();
+    }
+
+    /**
+     * Check whether we can achieve median >= X by seeing
+     * if at least 'need' of the r residue-classes
+     * each contain some a[i] >= X.
+     */
+    static boolean canHaveAtLeast(int[] a, int n, int k, int r, int need, int X) {
+        int countGood = 0;
+        // We only care about the first r residue-classes: j=0..r-1.
+        // In each, look at positions j, j+k, j+2k, ...
+        for (int j = 0; j < r; j++) {
+            boolean good = false;
+            for (int pos = j; pos < n; pos += k) {
+                if (a[pos] >= X) {
+                    good = true;
+                    break;
+                }
+            }
+            if (good) {
+                if (++countGood >= need) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    /** fast I/O **/
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader() {
+            br = new BufferedReader(new InputStreamReader(System.in));
+        }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens()) {
+                String s = br.readLine();
+                if (s == null) return null;
+                st = new StringTokenizer(s);
+            }
+            return st.nextToken();
+        }
+        int nextInt() throws IOException {
+            return Integer.parseInt(next());
+        }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Final survivor‐count**  
+   Repeatedly removing blocks of size $k$ from length $n$ until $\le k$ leaves
+   \[
+     r = 
+     \begin{cases}
+       n \bmod k, & n \bmod k \neq 0,\\
+       k, & n \bmod k = 0.
+     \end{cases}
+   \]
+
+2. **Residue‐class decomposition**  
+   It’s a known combinatorial fact that “deleting contiguous blocks of size $k$ until only $r$ remain” 
+   is exactly the same as “choosing exactly one survivor in each of the $r$ residue‐classes 
+   $\{\,j,j+k,j+2k,\dots\}$ for $j=0,1,\dots,r-1$.”  
+
+3. **Median condition**  
+   If the final sorted survivors are $c_1\le c_2\le \cdots\le c_r$, the median is $c_{\lfloor (r+1)/2\rfloor}$.  
+   To force $c_{\lfloor (r+1)/2\rfloor}\ge X$, we need **all** of $c_{\lfloor (r+1)/2\rfloor},\dots,c_r\ge X$.  
+   That is $(r - \lfloor (r+1)/2\rfloor +1)$ survivors $\ge X$.  
+
+4. **Binary search**  
+   We binary‐search on $X$.  To test a given $X$, we mark a residue‐class _good_ if it contains \emph{any} 
+   array value $\ge X$.  We count how many of the first $r$ residue‐classes are good; if at least 
+   $r - \lfloor (r+1)/2\rfloor +1$ are good, we can choose those to be our large survivors and achieve 
+   median $\ge X$.  
+
+Each check runs in $O(n)$ by scanning at most $n$ positions once, and thus the total per test is $O(n\log(\max a_i))$, which is efficient for $\sum n\le5\cdot10^5\,$.

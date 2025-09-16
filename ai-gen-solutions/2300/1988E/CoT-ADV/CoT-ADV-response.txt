@@ -1,0 +1,261 @@
+**Problem Restatement**
+
+You are given a permutation a of size n.  Define  
+    f(a) = ∑_{1 ≤ l ≤ r ≤ n} min(a[l..r])  
+
+For each position i (1≤i≤n), you form a new array b by removing a[i] and concatenating the two sides:
+
+    b = [a[1],…,a[i−1],a[i+1],…,a[n]]  
+
+You must compute f(b) for each i from 1 to n.
+
+**Input**
+
+t — number of test cases, up to 10^5  
+For each test case:  
+    n — size of the permutation (1≤n≤5⋅10^5, sum of n over all test cases ≤10^6)  
+    a₁…aₙ — a permutation of 1..n
+
+**Output**
+
+For each test case, output n integers: the i-th integer is f(b) when you remove a[i].
+
+---
+
+**Constraints & Observations**
+
+- n up to 5⋅10^5 per test, total ≤10^6 ⇒ we need O(n) or O(n log n) per test.
+- We must answer all n “removal” queries for one array very fast.
+
+A standard fact: for any array x[1..m],
+
+    f(x) = ∑_{j=1..m} x[j] ⋅ (# of subarrays for which x[j] is the minimum).  
+
+One can compute, in O(m), for each j its “previous smaller” index PL[j] and “next smaller” index NL[j], and then
+
+    count_j = (j−PL[j]) ⋅ (NL[j]−j)  
+    f(x) = ∑ x[j]⋅count_j.  
+
+But here we remove one element and want to re-compute f on the size-(n−1) array.  Naively re-computing all PL/NL for each removal is too slow.
+
+---
+
+**Key Idea (Difference-of-prefixes derivation)**
+
+It turns out that if you look at the original array a[1..n], and define
+
+  Sᵢ = Sum of min(a[l..r]) over all subsegments [l..r] **that cover** position i 
+
+then one can prove (by a careful double‐sum reorganization) that
+
+  answer[i] = f(b) = f(a) − Sᵢ.  
+
+Moreover Sᵢ itself can be computed for all i in O(n) by observing that
+
+  Sᵢ = 
+    ∑_{j≥i} a[j]·(NL[j]−j)·max(0, i−PL[j])  
+   +∑_{j≤i} a[j]·(j−PL[j])·max(0, NL[j]−i)
+   −  a[i]·(i−PL[i])·(NL[i]−i).
+
+Each of those two big sums can in turn be handled by a simple “range‐add + prefix‐sum” trick in O(n).  
+
+---
+
+**Overall Algorithm**
+
+For each test case:
+
+1. Read n and the permutation a[1..n].
+2. Compute PL[ ] and NL[ ] (previous‐smaller and next‐smaller) in O(n) with a monotonic stack.
+3. Precompute for each j:
+     W1[j] = a[j] * (NL[j] − j)
+     W2[j] = a[j] * (j − PL[j])
+   and also X[j] = a[j]⋅(j−PL[j])⋅(NL[j]−j).  
+4. Let totalF = ∑_{j=1..n} X[j]  (that is f(a)).
+5. We want Sᵢ = termLeft[i] + termRight[i] − X[i], where
+     termLeft[i]  = ∑_{j≥i} W1[j] * max(0, i − PL[j])
+     termRight[i] = ∑_{j≤i} W2[j] * max(0, NL[j] − i)
+   We build both arrays (for i=1..n) by standard difference‐array + prefix‐sum in O(n):
+   - For termLeft, for each j we add W1[j] to indices i=PL[j]+1..j (since only there i−PL[j]>0), and also add −PL[j]*W1[j] to the same range; then termLeft[i] = i*Sum1[i] − Sum2[i].
+   - For termRight analogous.
+6. Then for each i:
+      Sᵢ = termLeft[i] + termRight[i] − X[i]
+      answer[i] = totalF − Sᵢ.
+7. Print answer[1..n].
+
+The overall complexity is O(n) per test (dominated by the two passes of stack and a handful of prefix‐sums) and O(n) memory.
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int T = Integer.parseInt(in.readLine().trim());
+        // We will re-use arrays up to total N ≤ 10^6 over all tests.
+        // We'll allocate them lazily per test.
+        while (T-- > 0) {
+            int n = Integer.parseInt(in.readLine().trim());
+            int[] a = new int[n+2];
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // 1) Compute PL[] (previous smaller) and NL[] (next smaller)
+            int[] PL = new int[n+2], NL = new int[n+2];
+            // values a[0] = a[n+1] = +∞ sentinel
+            a[0] = a[n+1] = Integer.MAX_VALUE;
+
+            // compute PL with a stack
+            {
+                Deque<Integer> stk = new ArrayDeque<>();
+                stk.push(0);
+                for (int i = 1; i <= n; i++) {
+                    while (a[stk.peek()] > a[i]) {
+                        stk.pop();
+                    }
+                    PL[i] = stk.peek();
+                    stk.push(i);
+                }
+            }
+            // compute NL with a stack
+            {
+                Deque<Integer> stk = new ArrayDeque<>();
+                stk.push(n+1);
+                for (int i = n; i >= 1; i--) {
+                    while (a[stk.peek()] > a[i]) {
+                        stk.pop();
+                    }
+                    NL[i] = stk.peek();
+                    stk.push(i);
+                }
+            }
+
+            // 2) Precompute W1, W2, X and totalF = sum X
+            long[] W1 = new long[n+2], W2 = new long[n+2], X = new long[n+2];
+            long totalF = 0;
+            for (int j = 1; j <= n; j++) {
+                long leftCnt = j - PL[j];
+                long rightCnt = NL[j] - j;
+                long xj = (long) a[j] * leftCnt * rightCnt;
+                X[j] = xj;
+                totalF += xj;
+
+                W1[j] = (long) a[j] * rightCnt;   // for termLeft
+                W2[j] = (long) a[j] * leftCnt;    // for termRight
+            }
+
+            // 3) Build termLeft and termRight by difference-arrays + prefix-sum
+            long[] diffA = new long[n+3], diffB = new long[n+3];
+            // termLeft[i] = i * A[i] - B[i],
+            // where A[i] = sum of W1[j] over j>=i with PL[j]<i<=j,
+            // and   B[i] = sum of W1[j]*PL[j] over same j-range.
+
+            // Range update for each j: i runs from (PL[j]+1) to j.
+            for (int j = 1; j <= n; j++) {
+                int L = PL[j] + 1, R = j;
+                if (L <= R) {
+                    diffA[L] += W1[j];
+                    diffA[R+1] -= W1[j];
+                    diffB[L] += W1[j] * PL[j];
+                    diffB[R+1] -= W1[j] * PL[j];
+                }
+            }
+            long[] termLeft = new long[n+2];
+            long curA = 0, curB = 0;
+            for (int i = 1; i <= n; i++) {
+                curA += diffA[i];
+                curB += diffB[i];
+                termLeft[i] = (long)i * curA - curB;
+            }
+
+            // Now build termRight similarly
+            Arrays.fill(diffA, 0);
+            Arrays.fill(diffB, 0);
+            // termRight[i] = U[i] - i*V[i],
+            // where U[i] = sum W2[j]*NL[j] over j≤i with i<NL[j],
+            //       V[i] = sum W2[j]      over same j-range.
+            // So each j updates i in [j..NL[j]-1].
+            for (int j = 1; j <= n; j++) {
+                int L = j, R = NL[j] - 1;
+                if (L <= R) {
+                    diffA[L] += W2[j] * NL[j];
+                    diffA[R+1] -= W2[j] * NL[j];
+                    diffB[L] += W2[j];
+                    diffB[R+1] -= W2[j];
+                }
+            }
+            long[] termRight = new long[n+2];
+            curA = curB = 0;
+            for (int i = 1; i <= n; i++) {
+                curA += diffA[i];
+                curB += diffB[i];
+                termRight[i] = curA - (long)i * curB;
+            }
+
+            // 4) Now for each i, S_i = termLeft[i] + termRight[i] - X[i],
+            //    answer = totalF - S_i
+            StringBuilder ans = new StringBuilder();
+            for (int i = 1; i <= n; i++) {
+                long Si = termLeft[i] + termRight[i] - X[i];
+                long fi = totalF - Si;
+                ans.append(fi).append(' ');
+            }
+            out.println(ans);
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Previous/Next Smaller**  
+   We compute for each index j:
+   - PL[j] = the index of the previous strictly smaller element (0 if none)
+   - NL[j] = the index of the next strictly smaller element (n+1 if none)  
+   This is done in two O(n) scans with a monotonic stack.
+
+2. **Contribution of Each Element in the Original Array**  
+   It is well known that  
+     f(a) = ∑_{j=1..n} a[j]⋅(j−PL[j])⋅(NL[j]−j).  
+   We store  
+     X[j] = a[j]⋅(j−PL[j])⋅(NL[j]−j),  
+   so that `totalF = ∑ X[j]` in O(n).
+
+3. **Sum of Minimums Over Subarrays Covering i, Sᵢ**  
+   One can reorganize the double sum for “all intervals [l..r] that cover i” by grouping according to which element j is the minimum, and count only those intervals that include i.  After some algebra one proves
+
+     Sᵢ =  
+       ∑_{j≥i} a[j]·(NL[j]−j)·max(0, i−PL[j])  
+       + ∑_{j≤i} a[j]·(j−PL[j])·max(0, NL[j]−i)  
+       −  a[i]·(i−PL[i])·(NL[i]−i).
+
+   We split that into two terms (left part and right part) that both look like  
+     A[i] = ∑ W1[j]·max(0, i−PL[j])  
+     B[i] = ∑ W2[j]·max(0, NL[j]−i)
+
+   which can be computed in O(n) by doing two range-add/point-query passes (or equivalently difference array + prefix sums).
+
+4. **Final Answer**  
+   Since every subarray of b either was already counted in f(a) (if it didn’t use position i) or was counted in Sᵢ for f(a) (if it did use i), one shows
+
+     f(b) = f(a) − Sᵢ.
+
+   We thus compute each answer[i] = totalF − Sᵢ in O(1) once Sᵢ is known.
+
+---
+
+**Complexity**
+
+- Each test: O(n) time (two monotonic‐stack passes, a few O(n) difference‐array sweeps, O(n) final loop).  
+- Overall O(∑n) ≤ 10⁶.  
+- Uses O(n) extra arrays per test.

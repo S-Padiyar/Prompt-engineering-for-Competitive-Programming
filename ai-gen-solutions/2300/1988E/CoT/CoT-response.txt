@@ -1,0 +1,294 @@
+**Analysis**
+
+We have an array a of length n (a permutation of 1…n).  We delete each element a_i in turn and form  
+    b = [a_1,…,a_{i−1}, a_{i+1},…,a_n],  
+and we must compute
+
+    f(b) = ∑_{l=1}^{n−1} ∑_{r=l}^{n−1} min⁡( b_l,…,b_r ).
+
+A direct re-computation for each deletion would be O(n²) per query, too large when n can be up to 5·10⁵.
+
+Instead we decompose each f(b) into three parts:
+
+ 1.  The contribution of all subarrays lying entirely to the left of the deletion point.
+ 2.  The contribution of all subarrays lying entirely to the right of the deletion point.
+ 3.  The contribution of all subarrays that “straddle” the deletion point—i.e. those whose left end is in the left block and whose right end is in the right block.
+
+We can precompute
+
+  •  preF[k] = f(a[1..k]) = the sum of minimums of all subarrays of the prefix of length k.  
+  •  sufF[k] = f(a[k..n]) = the sum of minimums of all subarrays of the suffix starting at k.
+
+Both can be built in O(n) by the well-known “stack + running total” trick:
+
+— To build preF, walk i=1…n, maintain a monotonic (increasing) stack of pairs (value, count).  Each time you push a[i], you pop all ≥ a[i], accumulate how many suffix‐runs they covered, etc., so in O(1) amortized you know
+
+  dpEnd[i] = ∑_{ℓ=1..i} min(a[ℓ..i])
+
+and then
+
+  preF[i] = preF[i−1] + dpEnd[i].
+
+— Similarly reverse the array to build sufF.
+
+Hence for deleting position i, the “left only” part is preF[i−1], the “right only” part is sufF[i+1].
+
+We only need to compute the “cross‐block” part
+
+  Cross(i) = ∑_{ℓ=1}^{i−1} ∑_{r=i+1}^{n} min( min(a[ℓ..i−1]) , min(a[i+1..r]) ).
+
+Call
+
+  Lmin(ℓ,i−1) = min(a[ℓ..i−1]),  
+  Rmin(i+1,r) = min(a[i+1..r]).
+
+We must sum min( Lmin(ℓ,i−1), Rmin(i+1,r) ) over all ℓ < i < r.  A clever way to do this in O(n log n) total is to observe that as we slide i from 1 to n:
+
+  –  We maintain two dynamic multisets of “active” indices:
+
+     •  S_L = {1,2,…,i−1}  (left of the hole)  
+     •  S_R = {i+1,i+2,…,n}  (right of the hole)
+
+  –  Each index k we associate two “weights”:
+
+         wL[k] = (k − L[k] + 1),     where L[k] is the boundary of how far to the left a[k] is the minimum  
+         wR[k] = (R[k] − k + 1),     where R[k] is the boundary of how far to the right a[k] is the minimum
+
+    (These come from the standard “next‐smaller / previous‐smaller” decomposition which figures f(a) itself.)
+
+  –  It can be shown that
+
+           Cross(i) = ∑_{k∈S_L} ∑_{ℓ∈S_R} wL[k]·wR[ℓ]·min(a[k],a[ℓ]).
+
+  –  If we move i→i+1, then S_L gains index i and S_R loses index i+1.  One can maintain
+
+           Cross(i+1) = Cross(i)
+                        − wR[i+1] · ∑_{k∈S_L} wL[k]·min(a[k],a[i+1])
+                        + wL[i]   · ∑_{ℓ∈S_R\{i+1\}} wR[ℓ]·min(a[i],a[ℓ]).
+
+    Each of those bracketed sums is exactly
+
+           ∑_{x∈S} w[x]·min(value[x],X)
+           =  ∑_{value[x] ≤ X} w[x]·value[x]
+            + X · ∑_{value[x] > X} w[x]
+
+    which can be done in O(log n) by maintaining two Fenwicks (BITs): one for ∑w[x] over values, one for ∑(value[x]·w[x]).
+
+Thus each deletion i’s Cross(i) can be built in O(log n) incrementally, and combined with preF[i−1] + sufF[i+1] gives f(b_i).
+
+Overall complexity per test is O(n) for preF/sufF + O(n) for next/prev smaller + O(n log n) for the Fenwick “slide‐window” → O(n log n).  Since ∑n ≤10^6, this runs comfortably in 4 s in Java.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 1000000 + 5;
+    static int[] a = new int[MAXN];
+    static int[] L = new int[MAXN], R = new int[MAXN];
+    static long[] wL = new long[MAXN], wR = new long[MAXN];
+    static long[] preF = new long[MAXN], sufF = new long[MAXN];
+    static long[] bitCntL = new long[MAXN], bitSumL = new long[MAXN];
+    static long[] bitCntR = new long[MAXN], bitSumR = new long[MAXN];
+    static int N;
+
+    // Fenwick methods (1-based):
+    static void fenwUpdate(long[] bit, int i, long delta) {
+        for (; i <= N; i += i & -i) {
+            bit[i] += delta;
+        }
+    }
+    static long fenwSum(long[] bit, int i) {
+        long s = 0;
+        for (; i > 0; i -= i & -i) {
+            s += bit[i];
+        }
+        return s;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter pw = new PrintWriter(new OutputStreamWriter(System.out));
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            N = Integer.parseInt(br.readLine().trim());
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= N; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // 1) Compute preF[i] = f(a[1..i]) in O(n).
+            {
+                long running = 0;
+                // stack of (value, count)
+                ArrayDeque<long[]> stck = new ArrayDeque<>();
+                preF[0] = 0;
+                for (int i = 1; i <= N; i++) {
+                    long cnt = 1;
+                    while (!stck.isEmpty() && stck.peek()[0] >= a[i]) {
+                        long[] top = stck.pop();
+                        running -= top[0] * top[1];
+                        cnt += top[1];
+                    }
+                    stck.push(new long[]{a[i], cnt});
+                    running += (long)a[i] * cnt;
+                    preF[i] = preF[i - 1] + running;
+                }
+            }
+
+            // 2) Compute sufF[i] = f(a[i..N]) in O(n), reversed.
+            {
+                long running = 0;
+                ArrayDeque<long[]> stck = new ArrayDeque<>();
+                sufF[N + 1] = 0;
+                for (int i = N; i >= 1; i--) {
+                    long cnt = 1;
+                    while (!stck.isEmpty() && stck.peek()[0] >= a[i]) {
+                        long[] top = stck.pop();
+                        running -= top[0] * top[1];
+                        cnt += top[1];
+                    }
+                    stck.push(new long[]{a[i], cnt});
+                    running += (long)a[i] * cnt;
+                    sufF[i] = sufF[i + 1] + running;
+                }
+            }
+
+            // 3) Compute next smaller to the right (R) and previous smaller to the left (L).
+            {
+                // L[i]: 1 + index of previous smaller.  If none, L[i] = 1.
+                ArrayDeque<Integer> stck = new ArrayDeque<>();
+                for (int i = 1; i <= N; i++) {
+                    while (!stck.isEmpty() && a[stck.peek()] > a[i]) {
+                        stck.pop();
+                    }
+                    int prev = stck.isEmpty() ? 0 : stck.peek();
+                    L[i] = prev + 1;
+                    stck.push(i);
+                }
+                // R[i]: index of next smaller minus 1.  If none, R[i] = N.
+                stck.clear();
+                for (int i = N; i >= 1; i--) {
+                    while (!stck.isEmpty() && a[stck.peek()] > a[i]) {
+                        stck.pop();
+                    }
+                    int nxt = stck.isEmpty() ? N+1 : stck.peek();
+                    R[i] = nxt - 1;
+                    stck.push(i);
+                }
+            }
+
+            // 4) Precompute the two weight arrays:
+            //    wL[i] = (i - L[i] + 1),   wR[i] = (R[i] - i + 1).
+            for (int i = 1; i <= N; i++) {
+                wL[i] = i - L[i] + 1;
+                wR[i] = R[i] - i + 1;
+            }
+
+            // 5) We'll sweep i=1..N, maintaining
+            //      Cross(i) = sum_{k < i < ℓ} wL[k]*wR[ℓ]*min(a[k],a[ℓ])
+            //    via two Fenwicks over “values = a[*]” for the sets
+            //      S_L = {1..i−1},  each with weight wL[k],
+            //      S_R = {i+1..N}, each with weight wR[ℓ].
+            //
+            //    Fenwicks store two arrays:  cnt[v] = ∑ weights of elements with value=v,
+            //                                 sum[v] = ∑ (value * weight).
+            //    Then ∑_{value≤X} sum[v] + X*(totalCnt - ∑_{value≤X} cnt[v])
+            //    is exactly ∑ weights[*] · min(value[*], X).
+
+            // Clear Fenwicks
+            for (int i = 1; i <= N; i++) {
+                bitCntL[i] = bitSumL[i] = 0;
+                bitCntR[i] = bitSumR[i] = 0;
+            }
+
+            // Initialize S_R = {2..N}.
+            long totalWR = 0;
+            for (int i = 2; i <= N; i++) {
+                totalWR += wR[i];
+                fenwUpdate(bitCntR, a[i], wR[i]);
+                fenwUpdate(bitSumR, a[i], wR[i] * a[i]);
+            }
+            long totalWL = 0;         // empty S_L
+            long cross = 0;
+
+            long[] ans = new long[N+1];
+            for (int i = 1; i <= N; i++) {
+                // f(b_i) = preF[i-1] + sufF[i+1] + Cross(i)
+                ans[i] = preF[i-1] + sufF[i+1] + cross;
+
+                if (i < N) {
+                    //  Remove i+1 from S_R => we must subtract all pairs with ℓ = i+1
+                    long valR = a[i+1], wr = wR[i+1];
+
+                    // deltaMinus = wr * ∑_{k ∈ S_L} wL[k]·min(a[k], valR)
+                    long cL_le = fenwSum(bitCntL, valR);
+                    long sL_le = fenwSum(bitSumL, valR);
+                    long deltaMinus = wr * (sL_le + valR * (totalWL - cL_le));
+
+                    // actually remove it
+                    fenwUpdate(bitCntR, valR, -wr);
+                    fenwUpdate(bitSumR, valR, -wr * valR);
+                    totalWR -= wr;
+
+                    // deltaPlus = wL[i] * ∑_{ℓ ∈ S_R} wR[ℓ]·min(a[ℓ], a[i])
+                    long valL = a[i], wl = wL[i];
+                    long cR_le = fenwSum(bitCntR, valL);
+                    long sR_le = fenwSum(bitSumR, valL);
+                    long deltaPlus = wl * (sR_le + valL * (totalWR - cR_le));
+
+                    // add i into S_L
+                    fenwUpdate(bitCntL, valL, wl);
+                    fenwUpdate(bitSumL, valL, wl * valL);
+                    totalWL += wl;
+
+                    cross = cross - deltaMinus + deltaPlus;
+                }
+            }
+
+            // 6) Print answers
+            StringBuilder sb = new StringBuilder();
+            for (int i = 1; i <= N; i++) {
+                sb.append(ans[i]).append(' ');
+            }
+            pw.println(sb.toString().trim());
+        }
+
+        pw.flush();
+    }
+}
+```
+
+**Explanation of the key steps**
+
+1. **Computing prefix‐ and suffix‐minimum sums (preF, sufF)**  
+   We use the classic “monotonic stack + running total” to get in O(n) time, for each index i, the sum of minimums of all subarrays ending at i (for preF) or starting at i (for sufF).
+
+2. **Next / previous smaller → weights wL, wR**  
+   For each position i, let  
+   &nbsp;&nbsp;L[i] = 1 + (index of previous element < a[i]), or 1 if none.  
+   &nbsp;&nbsp;R[i] = (index of next element < a[i]) − 1, or N if none.  
+   Then in the classical formula for f(a) you get contributions a[i]·(i−L[i]+1)·(R[i]−i+1).  We split that into  
+   &nbsp;&nbsp;wL[i] = (i−L[i]+1)  and  wR[i] = (R[i]−i+1).  
+
+3. **The “cross‐block” sums**  
+   One shows that deleting index i introduces exactly those new subarrays that pick some suffix of the left block and some prefix of the right block, and the total of their minima is
+   ```
+      Cross(i)
+      = sum_{k < i} sum_{ℓ > i} wL[k]·wR[ℓ] · min(a[k],a[ℓ]).
+   ```
+   We maintain two Fenwicks over “value = a[*]”, one for the left set S_L={1..i−1} and one for the right set S_R={i+1..n}.  Each update i→i+1 removes i+1 from S_R and adds i to S_L; the change in Cross(i) can be computed by two Fenwick‐queries of form
+   ```
+      ∑_{value≤X} (weight·value)
+      + X · (totalWeightInSet − ∑_{value≤X} weight)
+   ```
+   which is exactly ∑ weight·min(value,X).  Each of these is O(log n), so the entire sweep i=1..n is O(n log n).
+
+4. **Final answer**  
+   For each i,
+
+      f(b_i) = preF[i−1] + sufF[i+1] + Cross(i).
+
+Total time per test ∼ O(n) + O(n log n).  Since ∑n ≤ 10⁶, this easily runs in 4 s in Java.

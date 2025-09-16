@@ -1,0 +1,186 @@
+**Analysis**
+
+First, a key simplification is that for any root‐to‐leaf path in a 0/1‐string \(S\), the quantity
+
+\[
+\#(10)\;-\;\#(01)
+\]
+
+telescopes to
+
+\[
+S(1)\;-\;S(\text{leaf})
+\]
+
+where \(S(1)\) is the bit at the root and \(S(\text{leaf})\) is the bit at the leaf.  Hence the leaf has nonzero “weight” exactly when its bit differs from the root’s bit.  Equivalently,
+
+-  If the root’s bit is \(r\in\{0,1\}\), every leaf whose bit \(\ell\neq r\) contributes 1 to the “score,” and every leaf with \(\ell=r\) contributes 0.  
+-  Only the root’s bit and the leaves’ bits actually affect the final score.  All other vertices can be ignored (“irrelevant”).
+
+We are given some bits already fixed to `0` or `1` and some that are `?`.  Two players, Iris (who goes first) and Dora, take turns replacing any remaining `?` by `0` or `1`.  Iris tries to **maximize** the number of leaves whose bit differs from the root’s, while Dora tries to **minimize** it.
+
+Let
+
+- \(f_0\) = the number of _already fixed_ leaves that are `0`,
+- \(f_1\) = the number of _already fixed_ leaves that are `1`,
+- \(q\) = the number of leaves whose bit is currently `?`,
+- `rootQ` = whether the root is `?`,
+- `U` = the number of _irrelevant_ `?`‐vertices (i.e.\ non-root and non-leaf).
+
+We observe:
+
+1.  **If the root is already fixed** to \(r\in\{0,1\}\), then
+   -  among the fixed leaves, those different from \(r\) already contribute
+      \[
+        \bigl(r=0?\;f_1:f_0\bigr)
+      \]
+     to the score,
+   -  among the \(q\) as-yet-unknown leaves, Iris and Dora will alternate assigning them.  Whenever Iris assigns a leaf (on her turn) she can set it to \(\ne r\) and thus guarantee that leaf will later count as 1; whenever Dora assigns a leaf, she will set it to \(=r\), guaranteeing that leaf counts 0.  
+   -  Since Iris starts (and neither player has any incentive to waste a leaf‐assignment turn by picking an irrelevant vertex), of the \(q\) leaf turns Iris will get \(\lceil q/2\rceil\) moves and Dora \(\lfloor q/2\rfloor\).  Hence the total extra from the `?` leaves is \(\lceil q/2\rceil\).
+   
+   Therefore if the root is fixed to \(r\), the final score is
+   \[
+     \bigl(r=0?\;f_1:f_0\bigr)\;+\;\lceil q/2\rceil.
+   \]
+
+2.  **If the root is `?`**, then _whoever_ first chooses to assign the root will choose the bit \(r\) that best serves her goal:
+   -  If Iris picks the root, she sets \(r\) to maximize the mismatches among the _already fixed_ leaves, i.e.\ 
+     \(\max(f_0,f_1)\).
+   -  If Dora picks the root, she sets \(r\) to minimize the mismatches among the fixed leaves, i.e.\ 
+     \(\min(f_0,f_1)\).
+
+   After the root is assigned, the remaining \(q\) leaves are assigned alternatingly, _starting_ with the other player.  Whenever Iris assigns a leaf she can force it to differ from \(r\) (so that leaf contributes 1); whenever Dora assigns a leaf she sets it equal to \(r\) (leaf contributes 0).  Hence in those \(q\) assignments Iris will pick \(\lfloor q/2\rfloor\) or \(\lceil q/2\rceil\) leaves depending on whether she moves second or first among those \(q\).
+
+   Finally, whether Iris can arrange to _start_ the “relevant” game (the root + leaves) herself or force Dora to start depends on whether there is at least one irrelevant `?` in the tree.  If there is at least one irrelevant `?`, Iris can “burn” one turn on that irrelevant vertex and thereby flip which player takes the first _relevant_ (root-or-leaf) move.  If there are no irrelevant `?`, then the relevant game must begin with Iris’s turn.
+
+Putting it all together, one derives the following formula:
+
+1.  Count
+    -  \(f_0\)= # of fixed-zero leaves,
+    -  \(f_1\)= # of fixed-one leaves,
+    -  \(q\)= # of leaves that are `?`,
+    -  `rootQ` = (root==`?`),
+    -  `U` = total number of `?` in the tree minus \((\text{rootQ}?1:0)\) minus \(q\).  
+2.  If the root is **fixed** to \(r\), the answer is
+    \[
+      \bigl(r=0?\;f_1:f_0\bigr)\;+\;\Bigl\lceil \tfrac{q}{2}\Bigr\rceil.
+    \]
+3.  Otherwise (root is `?`):
+    -  Case 1 (Iris gets the first relevant move):  
+       Iris picks the root, so she obtains
+       \(\max(f_0,f_1)\) from the fixed leaves; then Dora picks the first of the \(q\) leaves, so Iris will pick \(\lfloor q/2\rfloor\) of them.  
+       Call
+       \[
+         C_1 \;=\;\max(f_0,f_1)\;+\;\Bigl\lfloor\tfrac{q}{2}\Bigr\rfloor.
+       \]
+    -  Case 2 (Dora gets the first relevant move):  
+       Dora picks the root, contributing \(\min(f_0,f_1)\); then Iris picks the first of the \(q\) leaves, so Iris will pick \(\lceil q/2\rceil\) of them.  
+       Call
+       \[
+         C_2 \;=\;\min(f_0,f_1)\;+\;\Bigl\lceil\tfrac{q}{2}\Bigr\rceil.
+       \]
+    -  If there is at least one irrelevant `?` (\(U>0\)), Iris can choose whether relevant moves start with her or with Dora, so she will pick \(\max(C_1,C_2)\).  
+      If there are no irrelevant `?` (\(U=0\)), the relevant game _must_ start with Iris, so the answer is \(C_1\).
+
+This runs in \(O(n)\) per test case (just counting degrees and the various classes of nodes) and thus is \(O(N)\) overall.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(in.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine().trim());
+            int[] deg = new int[n+1];
+            for (int i = 0; i < n-1; i++) {
+                StringTokenizer st = new StringTokenizer(in.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                deg[u]++; 
+                deg[v]++;
+            }
+            String s = in.readLine().trim();
+            
+            // Identify the leaves (degree 1, but not node 1),
+            // and count f0/f1/q among those leaves:
+            int f0 = 0, f1 = 0, ql = 0;
+            for (int i = 2; i <= n; i++) {
+                if (deg[i] == 1) {  // it's a leaf
+                    char c = s.charAt(i-1);
+                    if (c == '0') f0++;
+                    else if (c == '1') f1++;
+                    else            ql++;
+                }
+            }
+            
+            // Count total '?' in the whole tree:
+            int totQ = 0;
+            for (char c : s.toCharArray()) {
+                if (c == '?') totQ++;
+            }
+            boolean rootQ = (s.charAt(0) == '?');
+            // Number of irrelevant '?' = total '?' minus
+            // (leaf '?' plus 1 if root is '?'):
+            int irrelevant = totQ - ql - (rootQ ? 1 : 0);
+            boolean hasIrrelevant = (irrelevant > 0);
+            
+            int answer;
+            // Case A: root is already fixed
+            if (!rootQ) {
+                char r = s.charAt(0);
+                int base = (r == '0' ? f1 : f0);
+                // plus the ceiling of ql/2:
+                int add = (ql + 1) / 2;
+                answer = base + add;
+            }
+            else {
+                // Root is '?'.  We compute two candidates:
+                // C1 = Iris picks root first --> max(f0,f1) + floor(ql/2)
+                int C1 = Math.max(f0, f1) + (ql / 2);
+                // C2 = Dora picks root first --> min(f0,f1) + ceil(ql/2)
+                int C2 = Math.min(f0, f1) + ((ql + 1) / 2);
+                
+                if (hasIrrelevant) {
+                    // Iris can force whichever scenario she likes:
+                    answer = Math.max(C1, C2);
+                } else {
+                    // No irrelevant '?': relevant play must start with Iris
+                    answer = C1;
+                }
+            }
+            
+            sb.append(answer).append('\n');
+        }
+        
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of the Key Points**
+
+1.  **Telescoping**  
+    On a path \(v_1,v_2,\dots,v_k\) with bits \(b_1 b_2\dots b_k\), each substring 
+    “10” contributes \(+1\) and “01” contributes \(-1\).  Summing
+    \[
+      (b_1 - b_2) + (b_2 - b_3) + \dots + (b_{k-1}-b_k)
+      \;=\; b_1 - b_k,
+    \]
+    so the leaf’s “weight” is simply root bit minus leaf bit, which is nonzero exactly when they differ.
+
+2.  **Game on the Relevant Vertices**  
+    Only root and leaves matter; all other ‘?’ can be used to “burn” a turn if needed.  
+    -  If the root is known, leaf assignments alternate starting with Iris, giving her \(\lceil q/2\rceil\) mismatches.  
+    -  If the root is unknown, the _first_ relevant move chooses the root.  Whoever picks the root picks the bit that best serves them among the already fixed leaves.  The remaining \(q\) leaves then alternate, beginning with the _other_ player.
+
+3.  **Role of Irrelevant Moves**  
+    Having at least one irrelevant `?` allows Iris to “burn” exactly one turn (by assigning a meaningless vertex) if doing so flips the order of who moves first in the _relevant_ subgame.  Hence if there _is_ an irrelevant `?`, Iris can choose whether the relevant subgame starts with her or with Dora, taking the maximum of the two scenarios; if there _isn’t_, the relevant subgame must start with Iris.
+
+This runs in \(O(n)\) per test case, easily enough for \(n\) up to \(10^5\) and up to \(2\times 10^5\) total.

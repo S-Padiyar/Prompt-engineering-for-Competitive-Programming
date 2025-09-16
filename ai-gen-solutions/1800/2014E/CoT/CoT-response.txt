@@ -1,0 +1,199 @@
+**Analysis**
+
+We have an undirected graph \(G\) with \(n\) vertices and \(m\) edges.  Marian starts at vertex \(1\) and Robin at vertex \(n\).  Some of the vertices (say \(a_1,a_2,\dots,a_h\)) each have one horse.  If a traveler mounts a horse (instantly, at zero time) at one of these special vertices, thereafter every edge they traverse costs half its original weight (all edge weights are even, so half‐integral costs remain integral).  Once mounted, you stay mounted for the rest of your journey.  You may also choose never to mount any horse and travel on foot.
+
+They want to **meet** on some vertex \(v\), and meeting time is the maximum of the two arrival times (since if one arrives earlier they can wait).  We must minimize this meeting time over all possible meeting vertices.  If no meeting is possible, we output \(-1\).
+
+---
+
+**Key idea**:  We can treat "foot" vs. "horse" as two distinct states.  Build a _state‐expanded_ graph with \(2n\) nodes:
+
+-  Node \((u,0)\) means "at vertex \(u\), on foot."
+-  Node \((u,1)\) means "at vertex \(u\), riding a horse."
+
+We add edges as follows:
+
+1.  For every original undirected edge \(u\!-\!v\) of weight \(w\):
+    -  \((u,0)\to(v,0)\) and \((v,0)\to(u,0)\) each with cost \(w\)  (walking both ways)
+    -  \((u,1)\to(v,1)\) and \((v,1)\to(u,1)\) each with cost \(w/2\)  (riding both ways)
+
+2.  For every horse‐vertex \(u\), we add a zero‐cost edge \((u,0)\to(u,1)\).  This models “instantly mounting the horse” at \(u\).  (There is no going back to foot, so no \((u,1)\to(u,0)\) edge.)
+
+We then run Dijkstra’s algorithm twice on this \(2n\)-node graph:
+
+-  **From** source \((1,0)\) to compute every shortest‐path distance \(\mathrm{distM}[\,\cdot\,]\).  The foot‐state node for Marian is \((1,0)\).
+-  **From** source \((n,0)\) to compute every shortest‐path distance \(\mathrm{distR}[\,\cdot\,]\).  The foot‐state node for Robin is \((n,0)\).
+
+After that, for each original vertex \(v\in\{1,\dots,n\}\), Marian’s best arrival time is
+\[
+  T_M(v)\;=\;\min\bigl(\mathrm{distM}[(v,0)],\;\mathrm{distM}[(v,1)]\bigr),
+\]
+and similarly Robin’s best arrival time is
+\[
+  T_R(v)\;=\;\min\bigl(\mathrm{distR}[(v,0)],\;\mathrm{distR}[(v,1)]\bigr).
+\]
+They can meet at \(v\) at time \(\max\{T_M(v),T_R(v)\}\).  We take the minimum of that over all \(v\).  If for every \(v\) at least one of \(T_M(v)\) or \(T_R(v)\) is infinite (unreachable), we print \(-1\).
+
+Because \(\sum n,\sum m\le2\cdot10^5\) over all test‐cases, two runs of Dijkstra on the \(2n\)-node, \(O(m)\)-edge expanded graph per test is fast enough in \(O\bigl((n+m)\log (n+m)\bigr)\).  
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final long INF = Long.MAX_VALUE / 4;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter pw = new PrintWriter(System.out);
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            int h = Integer.parseInt(st.nextToken());
+
+            // Read horse‐vertices
+            st = new StringTokenizer(br.readLine());
+            boolean[] hasHorse = new boolean[n];
+            for (int i = 0; i < h; i++) {
+                int x = Integer.parseInt(st.nextToken()) - 1;
+                hasHorse[x] = true;
+            }
+
+            // We build a state‐expanded graph with 2*n nodes:
+            //  [0..n-1]   = foot‐state (u,0)
+            //  [n..2n-1] = horse‐state (u,1)
+            int N = 2 * n;
+
+            // Adjacency‐list via head/next arrays for speed
+            int[] head = new int[N];
+            Arrays.fill(head, -1);
+            int estEdges = 4 * m + h;  // roughly
+            int[] to   = new int[estEdges * 2]; // *2 for undirected foot‐foot & horse‐horse
+            long[] wgt = new long[estEdges * 2];
+            int[] nxt  = new int[estEdges * 2];
+            int edgeCount = 0;
+
+            // Helper to add a directed edge u->v with cost w
+            class EAdder {
+                void add(int u, int v, long w) {
+                    to[edgeCount] = v;
+                    wgt[edgeCount] = w;
+                    nxt[edgeCount] = head[u];
+                    head[u] = edgeCount++;
+                }
+            }
+            EAdder adder = new EAdder();
+
+            // Read original edges and add 4 directed edges per undirected:
+            //  foot->foot, horse->horse (half cost), both directions.
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken()) - 1;
+                int v = Integer.parseInt(st.nextToken()) - 1;
+                long w = Long.parseLong(st.nextToken());
+                // foot‐foot
+                adder.add(u, v, w);
+                adder.add(v, u, w);
+                // horse‐horse (w/2)
+                adder.add(u + n, v + n, w/2);
+                adder.add(v + n, u + n, w/2);
+            }
+
+            // Add zero‐cost edges (u,0)->(u,1) at the horse vertices
+            for (int u = 0; u < n; u++) {
+                if (hasHorse[u]) {
+                    adder.add(u, u + n, 0L);
+                }
+            }
+
+            // Dijkstra from source s in [0..2n-1]
+            // Returns dist[] array of size 2n
+            class Dijkstra {
+                long[] run(int s) {
+                    long[] dist = new long[N];
+                    Arrays.fill(dist, INF);
+                    dist[s] = 0;
+                    PriorityQueue<int[]> pq = new PriorityQueue<>(
+                        Comparator.comparingLong(a -> a[0])
+                    );
+                    pq.add(new int[]{0, s});  // {distance, node}
+
+                    while (!pq.isEmpty()) {
+                        int[] top = pq.poll();
+                        long cd = top[0];
+                        int u = top[1];
+                        if (cd != dist[u]) continue;
+                        // relax edges
+                        for (int e = head[u]; e != -1; e = nxt[e]) {
+                            int v = to[e];
+                            long nd = cd + wgt[e];
+                            if (nd < dist[v]) {
+                                dist[v] = nd;
+                                pq.add(new int[]{(int)nd, v});
+                            }
+                        }
+                    }
+                    return dist;
+                }
+            }
+
+            // Run two Dijkstras
+            Dijkstra dij = new Dijkstra();
+            long[] distM = dij.run(0);        // from (1,0)
+            long[] distR = dij.run(n - 1);    // from (n,0)
+
+            // Compute best possible meeting time
+            long answer = INF;
+            for (int u = 0; u < n; u++) {
+                long tM = Math.min(distM[u], distM[u + n]);
+                long tR = Math.min(distR[u], distR[u + n]);
+                if (tM < INF && tR < INF) {
+                    long meet = Math.max(tM, tR);
+                    if (meet < answer) answer = meet;
+                }
+            }
+            if (answer == INF) answer = -1;
+            pw.println(answer);
+        }
+
+        pw.flush();
+        pw.close();
+    }
+}
+```
+
+**Explanation of the main steps**
+
+1. **State‐expansion**  
+   We double each vertex \(u\) into two states:
+   - \((u,0)\): walking
+   - \((u,1)\): riding
+
+2. **Edges in the expanded graph**  
+   - For each original undirected edge \(u\!-\!v\) with cost \(w\):
+     - \((u,0)\!\to\!(v,0)\) and \((v,0)\!\to\!(u,0)\) with cost \(w\).
+     - \((u,1)\!\to\!(v,1)\) and \((v,1)\!\to\!(u,1)\) with cost \(w/2\).
+   - For each horse‐vertex \(u\), we add \((u,0)\!\to\!(u,1)\) with cost \(0\).
+
+3. **Dijkstra**  
+   - We run Dijkstra from \((1,0)\) to compute Marian’s distances \(\mathrm{distM}[\cdot]\).  
+   - We run Dijkstra from \((n,0)\) to compute Robin’s distances \(\mathrm{distR}[\cdot]\).
+
+4. **Meeting‐time computation**  
+   For each vertex \(u\in\{1,\dots,n\}\), Marian’s best arrival time is  
+   \[
+     T_M(u)\;=\;\min\bigl(\mathrm{distM}[(u,0)],\;\mathrm{distM}[(u,1)]\bigr)
+   \]
+   and similarly  
+   \[
+     T_R(u)\;=\;\min\bigl(\mathrm{distR}[(u,0)],\;\mathrm{distR}[(u,1)]\bigr).
+   \]
+   If both are finite, they can meet at time \(\max\{T_M(u),T_R(u)\}\).  We take the minimum of that over all \(u\).  If no vertex allows both to arrive, we print \(-1\).
+
+This runs in \(O\bigl((n+m)\log(n+m)\bigr)\) per test, which is efficient for \(\sum n,\sum m\le2\times10^5\).

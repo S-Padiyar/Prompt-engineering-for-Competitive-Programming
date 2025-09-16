@@ -1,0 +1,105 @@
+**Analysis**
+
+We have an array a₁,…,aₙ of positive integers (1≤aᵢ≤10⁶), and we want to make it non‐decreasing by a minimal number of operations.  In one operation on index i, we replace
+
+​    aᵢ ← aᵢ².
+
+Observe:
+
+- Squaring 1 leaves it 1; squaring any integer ≥2 strictly increases it.
+- We can only *increase* elements by squaring, so if at any point aᵢ> aᵢ₊₁ and aᵢ₊₁=1, we are stuck (1²=1) ⇒ impossible.
+- Otherwise, when aᵢ> aᵢ₊₁≥2, we can repeatedly square aᵢ₊₁ until it reaches or exceeds aᵢ.
+
+Naïvely storing actual values in 64-bit may overflow easily, because squaring can blow up beyond 2⁶³.  What we *actually* need to compare is whether
+
+​    (aᵢ₊₁)^(2ᵏ)  ≥  aᵢ
+
+for the minimal integer k≥0.  Take natural‐logs:
+
+​    ln[(aᵢ₊₁)^(2ᵏ)]  =  2ᵏ·ln(aᵢ₊₁).
+
+We want the smallest k such that
+
+​    2ᵏ·ln(aᵢ₊₁)  ≥  ln(aᵢ).
+
+Since k is typically very small (even turning a small integer ≥2 into a huge previous value takes only *O(log log)* squarings), we can simply maintain an array `L[i] = ln(a[i])` in double‐precision, and for each position i from 2…n do:
+
+1.  If `L[i] ≥ L[i-1]` (within a small epsilon), no operation is needed.
+2.  Else if the *original* a[i] was 1, it cannot grow ⇒ print –1.
+3.  Otherwise repeatedly do `L[i] ← 2·L[i]`, counting how many times, until `L[i] ≥ L[i-1]`.  Add that count to our answer.
+
+The overall time is 
+```
+O(n · (max # squarings per element)) = O(n · log log_maxA),
+```
+which is entirely safe for n up to 2×10⁵.  
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(br.readLine().trim());
+        final double EPS = 1e-12;
+
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            long[] a = new long[n];
+            double[] L = new double[n];
+
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+                L[i] = Math.log(a[i]);
+            }
+
+            long ans = 0;
+            boolean ok = true;
+
+            // Process from left to right
+            for (int i = 1; i < n; i++) {
+                // If already non-decreasing, continue
+                if (L[i] + EPS >= L[i - 1]) {
+                    continue;
+                }
+                // If a[i] was 1, squaring won't help
+                if (a[i] == 1) {
+                    ok = false;
+                    break;
+                }
+                // Otherwise, keep squaring (doubling log) until it is big enough
+                int cnt = 0;
+                double curLog = L[i];
+                while (curLog + EPS < L[i - 1]) {
+                    curLog *= 2.0;
+                    cnt++;
+                }
+                ans += cnt;
+                L[i] = curLog;
+            }
+
+            out.println(ok ? ans : -1);
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of key steps**
+
+1. We store `L[i] = ln(a[i])` for each element.
+2. Whenever `L[i] < L[i-1]`, we must perform operations on index `i`.  
+   - If `a[i]=1`, it's impossible, since `1²=1`.
+   - Otherwise, each squaring doubles the log:  
+        \[ \ln((a_i)²) = 2·\ln(a_i). \]
+   - We loop, doubling `L[i]` until it is at least `L[i-1]`.  We count how many doublings (squarings) we needed.
+3. We accumulate these counts in `ans`.  If ever we hit an impossible step (`a[i]==1` but still too small), we print `-1`.
+4. Otherwise we print the total `ans`.
+
+This runs in O(n·log log M) where M≤10⁶ is the maximum element, which is perfectly efficient for n up to 2·10⁵.

@@ -1,0 +1,143 @@
+**Problem Restatement**
+
+We have an array of \(n\) stick‐lengths \(a_1,a_2,\dots,a_n\).  There are \(q\) queries, each specifying a subarray \([l,r]\) (with \(r-l+1\ge6\)).  For each query we must decide whether it is possible to pick *six distinct sticks* in that subarray and partition them into two triples, each of which can form a non‐degenerate triangle.  A triangle of side‐lengths \((x,y,z)\) (sorted \(x\le y\le z\)) is non‐degenerate if and only if
+```
+x + y > z.
+```
+
+We must answer each query by printing “YES” if we *can* form two such triangles, or “NO” otherwise.
+
+---
+
+**Key Observations**
+
+1. **Triangle in a multiset**  
+   If you sort a multiset of lengths in non‐decreasing order, the classic necessary‐and‐sufficient condition for *at least one* triangle is that there exists some consecutive triple \((b_i,b_{i+1},b_{i+2})\) with
+   \[
+     b_i + b_{i+1} > b_{i+2}.
+   \]
+
+2. **Two disjoint triangles**  
+   We need *two* disjoint triples satisfying the triangle condition.  Once you have one such triple among sorted elements \((b_i,b_{i+1},b_{i+2})\), those three sticks are “used up.”  You then need another triple among the *remaining* sticks.  In terms of sorted indices, if the first good triple starts at index \(i\), then a second non‐overlapping triple must start at an index \(j\ge i+3\).
+
+3. **Worst‐case “no‐triangle” sequences**  
+   The famous worst‐case for avoiding any triangle at all is the Fibonacci‐type growth:
+   \[
+     1,1,2,3,5,8,\dots
+   \]
+   In such a sequence every triple \(F_k,F_{k+1},F_{k+2}\) satisfies
+   \[
+     F_k + F_{k+1} = F_{k+2},
+   \]
+   so *no* three form a non‐degenerate triangle.  Up to \(10^9\), there are only about 45 Fibonacci numbers.  Thus:
+   - Any multiset of size \(\ge46\) *must* contain at least one triangle triple.
+   - If we remove three sticks that form one triangle from a set of size \(L\), the remainder has size \(L-3\).  To still force *another* triangle in the remainder, you need \(L-3\ge46\), i.e.\ \(L\ge49\).  
+
+Hence:
+
+- **If** the subarray length \(r-l+1\ge49\), we can immediately answer “YES” (two disjoint triangles necessarily exist by pigeon‐hole on the Fibonacci bound).
+- Otherwise, if the length \(L\) is between \(6\) and \(48\), we can simply:
+  1. Extract those \(L\) sticks,
+  2. Sort them in \(O(L\log L)\), and
+  3. Scan the sorted list to see if there exist two indices \(i<j\) with \(j\ge i+3\) for which both
+     \[
+       b_i + b_{i+1} > b_{i+2}
+       \quad\text{and}\quad
+       b_j + b_{j+1} > b_{j+2}
+     \]
+  If yes, print **YES**, otherwise **NO**.
+
+Since \(L\le48\), the sort is at most \(48\log48\approx270\) comparisons, and we do this at most \(10^5\) times, which is well within the time limit.
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        // Fast I/O
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter    pw = new PrintWriter(new BufferedOutputStream(System.out));
+        StringTokenizer st = new StringTokenizer(br.readLine());
+
+        int n = Integer.parseInt(st.nextToken());
+        int q = Integer.parseInt(st.nextToken());
+
+        // Read the sticks
+        long[] a = new long[n];
+        st = new StringTokenizer(br.readLine());
+        for (int i = 0; i < n; i++) {
+            a[i] = Long.parseLong(st.nextToken());
+        }
+
+        // For each query
+        for (int qi = 0; qi < q; qi++) {
+            st = new StringTokenizer(br.readLine());
+            int l = Integer.parseInt(st.nextToken()) - 1; // 0-based
+            int r = Integer.parseInt(st.nextToken()) - 1;
+            int len = r - l + 1;
+
+            // If the range is large enough, we guarantee two triangles
+            if (len >= 49) {
+                pw.println("YES");
+                continue;
+            }
+
+            // Otherwise, extract and sort
+            long[] temp = new long[len];
+            for (int i = 0; i < len; i++) {
+                temp[i] = a[l + i];
+            }
+            Arrays.sort(temp);
+
+            // Find up to two non-overlapping good triples
+            int firstIdx = -1;  // where we found the first triangle
+            boolean ok = false;
+            for (int i = 0; i + 2 < len; i++) {
+                if (temp[i] + temp[i + 1] > temp[i + 2]) {
+                    // Found a triangle at i..i+2
+                    if (firstIdx == -1) {
+                        firstIdx = i;  // record the first
+                    } else if (i >= firstIdx + 3) {
+                        // Non-overlapping with the first
+                        ok = true;
+                        break;
+                    }
+                }
+            }
+
+            pw.println(ok ? "YES" : "NO");
+        }
+
+        pw.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Threshold shortcut**  
+   Any subarray of length \(\ge49\) must contain *at least two* disjoint triples satisfying the triangle inequality.  This follows from the fact that the largest possible length of a Fibonacci‐type (no‐triangle) sequence under \(10^9\) is \(45\).  To guarantee *two* triangles, you need to exceed \(45\) by \(3\) twice, i.e.\ \(45 + 3 + 3 = 51\).  But actually \(49\) suffices by a more careful count (\(45 + 3 + 1=49\)).
+
+2. **Brute‐force for small segments (\(L\le48\))**  
+   - Copy out the segment into a temporary array of size \(L\).
+   - Sort it in \(O(L\log L)\).
+   - Scan once to collect the indices of triples \((i,i+1,i+2)\) that satisfy the triangle inequality.  We need two such indices \(i < j\) with \(j \ge i+3\) to ensure disjointness.  This scan is just \(O(L)\).
+
+Overall time per query is \(O(L\log L)\) but with \(L\le48\), so even \(10^5\) such queries runs efficiently in under 5 s in Java.
+
+---
+
+**Complexity Analysis**
+
+- Let \(L = r-l+1\).
+- If \(L\ge49\): \(O(1)\) per query.
+- If \(L<49\): we do \(O(L)\) copy + \(O(L\log L)\) sort + \(O(L)\) scan = \(O(48\log48)\approx O(300)\) worst per query.
+
+With up to \(10^5\) queries, this is about \(3\times10^7\) primitive operations, well under typical 5 s limits in Java.
+
+Space complexity is \(O(n)\) for the main array plus \(O(48)\) extra for the temporary sort array.

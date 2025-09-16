@@ -1,0 +1,57 @@
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(in.readLine().trim());
+        final char[] PAT = {'n', 'a', 'r', 'e', 'k'};
+        final int NEG_INF = -1_000_000_000;
+        StringBuilder output = new StringBuilder();
+        while (t-- > 0) {
+            String[] nm = in.readLine().split(" ");
+            int n = Integer.parseInt(nm[0]), m = Integer.parseInt(nm[1]);
+            int[] dp = new int[5];
+            for (int s = 1; s < 5; s++) dp[s] = NEG_INF;
+            dp[0] = 0;
+            for (int i = 0; i < n; i++) {
+                String sline = in.readLine();
+                char[] S = sline.toCharArray();
+                int T = 0;
+                for (char c : S) {
+                    for (char pch : PAT) {
+                        if (c == pch) { T++; break; }
+                    }
+                }
+                int[] qCnt = new int[5], sOut = new int[5];
+                for (int s0 = 0; s0 < 5; s0++) {
+                    int state = s0, cnt = 0;
+                    for (char c : S) {
+                        if (c == PAT[state]) {
+                            state++;
+                            if (state == 5) {
+                                cnt++;
+                                state = 0;
+                            }
+                        }
+                    }
+                    qCnt[s0] = cnt;
+                    sOut[s0] = state;
+                }
+                int[] newDp = new int[5];
+                for (int s = 0; s < 5; s++) newDp[s] = dp[s];
+                for (int s0 = 0; s0 < 5; s0++) {
+                    if (dp[s0] == NEG_INF) continue;
+                    int got = dp[s0] + 10 * qCnt[s0] - T;
+                    int s1 = sOut[s0];
+                    newDp[s1] = Math.max(newDp[s1], got);
+                }
+                dp = newDp;
+            }
+            int ans = 0;
+            for (int s = 0; s < 5; s++) ans = Math.max(ans, dp[s]);
+            output.append(ans).append('\n');
+        }
+        System.out.print(output);
+    }
+}

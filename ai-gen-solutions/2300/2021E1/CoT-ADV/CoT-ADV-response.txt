@@ -1,0 +1,254 @@
+**Restatement**
+
+We have an undirected connected graph of \(n\) houses (vertices) and \(m\) edges, each edge having a latency (weight) \(w\).  Among the \(n\) houses, \(p\) of them require Internet; call these “special” vertices \(s_1,\dots,s_p\).
+
+We may choose to install up to \(k\) servers at any of the \(n\) houses (not necessarily special ones).  Then each special house \(s_i\) will connect to whichever server gives the smallest _bottleneck_ path latency, where the latency of a path is defined as the maximum edge‐weight on that path.  We sum those latencies over all special houses to get the total latency.
+
+We must output, for every \(k=1,2,\dots,n\), the minimum total latency achievable using up to \(k\) servers.
+
+---
+
+**Key observations**
+
+1. **Bottleneck distances come from the MST.**  
+   In any graph, the minimum‐maximum‐edge weight ("minimax") distance between two nodes equals the maximum‐edge‐weight along the unique path between them in any minimum spanning tree (MST).  Hence we may first build an MST of the graph and then ignore the other edges.
+
+2. **Kruskal‐reconstruction tree**  
+   If we run Kruskal's algorithm on the MST edges in increasing order of weight, each time we union two components we can create a new internal tree‐node whose weight is the edge’s weight, and whose two children are the roots of the two components being merged.  This builds a binary tree of size \(2n-1\): the original \(n\) vertices become the leaves (with weight \(0\)), and there are \(n-1\) internal nodes each labeled by the edge‐weight that merged two parts.  In this tree, the LCA of two original leaves has weight equal to the max‐edge on the MST‐path between them.
+
+3. **Dynamic‐programming on that tree**  
+   Suppose we place \(j\) centers among the leaves of a subtree.  We want to know the minimum sum of bottleneck‐distances by which that subtree’s special leaves are covered (some might remain “uncovered” if \(j=0\), to be covered higher up).  It turns out (by monotonicity of covering) that in each subtree you never leave any special leaf “uncovered” if you have at least one center in that subtree—covering it immediately can only help.  Hence:
+
+   - Let \(S[u]\) = number of special leaves in the subtree rooted at node \(u\).  
+   - Let \(f[u][j]\) = minimum total cost to _cover all_ \(S[u]\) special leaves using exactly \(j\) centers in that subtree (for \(j\le S[u]\)).  
+
+   If \(u\) is a leaf:
+   - If it is special, \(S[u]=1\).  Then  
+     \[
+       f[u][0]=0\quad(\text{no centers, but "uncovered" concept is only up to parent}),
+       \quad f[u][1]=0\quad(\text{one center right there covers it at cost }0).
+     \]
+   - If it is not special, \(S[u]=0\), and  
+     \[
+       f[u][0]=0,\quad f[u][1]=0.
+     \]
+
+   If \(u\) is an internal node with children \(a,b\) and “merge‐weight” \(\omega\), then \(S[u]=S[a]+S[b]\) and for \(1\le j\le S[u]\)
+   \[
+     f[u][j]
+       =\min_{\substack{0\le j_a\le S[a]\\0\le j_b\le S[b]\\j_a+j_b=j}}
+         \Bigl\{\,
+           f[a][j_a]+f[b][j_b]
+           \;+\;
+           \underbrace{(j_a=0\text{? }S[a]\!:\!0)\times\omega}_{\text{if no center in }a,\;all \(a\)-specials use a center in \(b\)} 
+           \;+\;
+           \underbrace{(j_b=0\text{? }S[b]\!:\!0)\times\omega}_{\text{symmetrically for }b}
+         \Bigr\}.
+   \]
+   That correctly models the fact that if one side has no centers, then its specials must “reach across” the merge‐edge to the other side at cost \(\omega\) per special; but if both sides have at least one center, then each side covers itself optimally and no cross‐term appears.  
+
+Finally we build this DP bottom‐up; at the ultimate root \(r\) of the reconstruction tree we have \(S[r]=p\).  Then
+\[
+  \bigl\{\,f[r][1],f[r][2],\dots, f[r][p]\bigr\}
+\]
+are the minimum total latencies using exactly \(1,2,\dots,p\) centers.  If \(k>p\), we can trivially cover each special with its own center, for cost \(0\).
+
+---
+
+**Implementation in Java**
+
+```java
+import java.util.*;
+import java.io.*;
+
+public class Main {
+    static final long INF = Long.MAX_VALUE / 4;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            // Read n, m, p
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            int p = Integer.parseInt(st.nextToken());
+
+            // Which leaves are special?
+            boolean[] isSpecial = new boolean[n+1];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < p; i++) {
+                int s = Integer.parseInt(st.nextToken());
+                isSpecial[s] = true;
+            }
+
+            // Read edges
+            Edge[] edges = new Edge[m];
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                long w = Long.parseLong(st.nextToken());
+                edges[i] = new Edge(u, v, w);
+            }
+
+            // Build MST by Kruskal
+            Arrays.sort(edges, Comparator.comparingLong(e -> e.w));
+            DSU dsu1 = new DSU(n+1);
+            List<Edge> mstEdges = new ArrayList<>(n-1);
+            for (Edge e : edges) {
+                int ru = dsu1.find(e.u);
+                int rv = dsu1.find(e.v);
+                if (ru != rv) {
+                    dsu1.union(ru, rv);
+                    mstEdges.add(e);
+                    if (mstEdges.size() == n-1) break;
+                }
+            }
+
+            // Build the Kruskal‐reconstruction tree
+            // We'll index new internal nodes from n+1 upward.
+            int maxNodes = 2*n; // safe upper bound
+            int[] left  = new int[maxNodes];
+            int[] right = new int[maxNodes];
+            long[] wgt  = new long[maxNodes];
+            for (int i = 1; i <= n; i++) {
+                wgt[i] = 0; // leaves have weight 0
+            }
+
+            // another DSU for merging into the reconstruction
+            DSU dsu2 = new DSU(2*n);
+            for (Edge e : mstEdges) {
+                int ru = dsu2.find(e.u);
+                int rv = dsu2.find(e.v);
+                int newNode = ++n;      // create a fresh internal node
+                wgt[newNode] = e.w;     // this node's weight = edge's weight
+                left[newNode]  = ru;
+                right[newNode] = rv;
+                dsu2.parent[ru] = newNode;
+                dsu2.parent[rv] = newNode;
+                dsu2.parent[newNode] = newNode;
+            }
+            int root = dsu2.find(1);  // the final root
+
+            // Prepare DP structures
+            long[][] f = new long[2*n+1][];  // f[u][j]
+            int[] S = new int[2*n+1];        // S[u] = # special leaves
+
+            // Post‐order DFS
+            dfs(root, left, right, wgt, isSpecial, f, S);
+
+            // f[root][j] is minimal cost with j centers.
+            // For k>p, cost=0; for k=1..p, cost = f[root][k].
+            StringBuilder sb = new StringBuilder();
+            for (int k = 1; k <= root; k++) {
+                long ans = (k <= S[root] ? f[root][k] : 0);
+                sb.append(ans).append(' ');
+            }
+            System.out.println(sb);
+        }
+    }
+
+    // DFS that computes f[u] and S[u] bottom‐up
+    static void dfs(int u, int[] left, int[] right, long[] wgt,
+                    boolean[] isSpecial, long[][] f, int[] S) {
+        if (left[u] == 0 && right[u] == 0) {
+            // leaf
+            S[u] = isSpecial[u] ? 1 : 0;
+            f[u] = new long[S[u] + 1];
+            f[u][0] = 0;
+            if (S[u] == 1) {
+                f[u][1] = 0;
+            }
+            return;
+        }
+
+        // Internal node
+        int a = left[u], b = right[u];
+        dfs(a, left, right, wgt, isSpecial, f, S);
+        dfs(b, left, right, wgt, isSpecial, f, S);
+
+        S[u] = S[a] + S[b];
+        f[u] = new long[S[u] + 1];
+        Arrays.fill(f[u], INF);
+        f[u][0] = 0;
+
+        long w = wgt[u];
+        for (int j1 = 0; j1 <= S[a]; j1++) {
+            long ca = f[a][j1];
+            if (ca >= INF) continue;
+            for (int j2 = 0; j2 <= S[b]; j2++) {
+                if (j1 + j2 == 0) continue; // zero centers covers nothing
+                long cb = f[b][j2];
+                if (cb >= INF) continue;
+                int j = j1 + j2;
+                long cost;
+                if (j1 > 0 && j2 > 0) {
+                    // both sides have centers => no cross‐term
+                    cost = ca + cb;
+                } else if (j1 == 0) {
+                    // no center in a => all S[a] specials use centers in b at cost w each
+                    cost = ca + cb + (long)S[a] * w;
+                } else {
+                    // j2 == 0
+                    cost = ca + cb + (long)S[b] * w;
+                }
+                if (cost < f[u][j]) {
+                    f[u][j] = cost;
+                }
+            }
+        }
+    }
+
+    // DSU for Kruskal and reconstruction‐union
+    static class DSU {
+        int[] parent;
+        DSU(int n) { parent = new int[n]; for(int i=0;i<n;i++) parent[i]=i; }
+        int find(int x){ return parent[x]==x?x: (parent[x]=find(parent[x])); }
+        void union(int a,int b){ parent[find(a)] = find(b); }
+    }
+
+    static class Edge {
+        int u,v;
+        long w;
+        Edge(int u,int v,long w){ this.u=u; this.v=v; this.w=w; }
+    }
+}
+```
+
+**Explanation of the main steps**
+
+1. **Build an MST** of the input graph by classic Kruskal + DSU in \(O(m\log m)\).  
+2. **Reconstruct** a binary “merge tree” of size \(2n\!-\!1\):  
+   - Leaves \(1\ldots n\) have weight \(0\).  
+   - For each of the \(n-1\) MST edges (in ascending order), union the two components, create a new internal node whose weight is that edge’s weight, and link the two old component‐roots as its children.  
+   - The final DSU‐root is the root of this binary tree.  
+3. **Mark which leaves are “special.”**  
+4. **DP bottom‐up** on the tree, computing for each node \(u\):  
+   - \(S[u]=\) number of special leaves in its subtree.  
+   - \(f[u][j]=\) minimal total latency to _cover all_ \(S[u]\) specials by placing exactly \(j\) servers _inside_ that subtree.  
+   - Recurrence for an internal node \(u\) with children \(a,b\) and merge‐weight \(\omega\) is
+     \[
+       f[u][0]=0,\quad
+       f[u][j]=\min_{j_a+j_b=j\atop 0\le j_a\le S[a],\,0\le j_b\le S[b]}
+         \Bigl\{
+           f[a][j_a]+f[b][j_b]
+           +\,\bigl(j_a=0?S[a]\times\omega:0\bigr)
+           +\,\bigl(j_b=0?S[b]\times\omega:0\bigr)
+         \Bigr\}.
+     \]
+   - Intuition: if one side has no centers (\(j_a=0\)), all its \(S[a]\) specials must “reach across” the merge‐edge to a center on the other side at cost \(\omega\) apiece.  If both sides have at least one center, each covers itself optimally.  
+5. **Answer**: at the root \(r\), \(S[r]=p\).  
+   - For \(k=1,2,\dots,p\), the minimum total latency with up to \(k\) servers is \(f[r][k]\).  
+   - If \(k>p\), we can put servers at all specials for cost \(0\).
+
+**Complexities**
+
+- Building the MST: \(O(m\log m)\).  
+- Building the reconstruction tree: essentially \(O(n)\).  
+- DP on \(2n-1\) nodes, each combining two children in \(O(S[a]\times S[b])\).  Summed over the tree this is \(O(p^2)\) in the worst case (with \(p\le n\le 400\)), which is easily under the given constraints.  
+- Overall per test: \(O(m\log m + p^2)\).  Since \(\sum n^3,m^3\le10^8\), it fits in 2 s.
+
+This solves the **easy version** (with \(n,m\le400\)) exactly.

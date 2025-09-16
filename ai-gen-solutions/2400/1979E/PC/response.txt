@@ -1,0 +1,231 @@
+**Analysis**
+
+We are given \(n\) distinct integer points \((x_i,y_i)\) in the plane and an even integer \(d\).  We wish to find three of these points \(A,B,C\) such that
+
+\[
+\;|x_A - x_B| + |y_A - y_B| \;=\;
+|x_B - x_C| + |y_B - y_C| \;=\;
+|x_C - x_A| + |y_C - y_A|\;=\;d.
+\]
+
+Such a triple is called an *equilateral triangle in the \(L^1\) (Manhattan) metric*.  It turns out that *all* such “equilateral” triples come from one of two rigid‐motion families:
+
+1. **“45°‐rotated” squares** (always available for any even \(d\)).  
+   Write \(D = d/2\).  Then one family is
+   \[
+     A = P,\quad
+     B = P + (D,D),\quad
+     C = P + (D,-D),
+   \]
+   or any choice of signs in the two coordinates of those two vectors.  
+   One checks
+   \[
+     \|B - A\|_1 = |D|+|D| = d,\quad
+     \|C - A\|_1 = |D|+|{-D}| = d,\quad
+     \|B - C\|_1 = |D - D| + |D - (-D)| = 2|D| = d.
+   \]
+   By switching the signs of \(\pm D\) independently in each coordinate, we get 4 possible “adjacent‐edge” pairs.
+
+2. **The “3 : 1”‐ratio family** (only if \(d\) is divisible by 4).  
+   Write \(u = d/4\).  Then set
+   \[
+     a = 3u,\quad b = u.
+   \]
+   One shows that for
+   \[
+     v_1=(\pm a,\pm b),\quad v_2=(\pm b,\pm a)
+   \]
+   *with the same sign choice in corresponding coordinates*, the three points
+   \[
+     A = P,\quad B = P+v_1,\quad C = P+v_2
+   \]
+   again satisfy 
+   \[
+     \|B-A\|_1=\|C-A\|_1=d,\quad
+     \|B-C\|_1=d.
+   \]
+   This yields 4 more “patterns” whenever \(d\equiv 0\pmod 4\).
+
+Hence our solution is:
+
+1.  Read all points and store them in a hash‐map (or `HashMap`) from the 64‐bit encoded key
+   \[
+     \Bigl(x\ll32\Bigr)\;|\;(y\;\&\;0xffffffffL)
+   \]
+   to its index \(1\ldots n\).
+
+2.  Let \(D = d/2\).  We always try **Family 1**: the four sign‐choices
+   \[
+     v_1 = (\sigma_1 D,\;\sigma_2 D),\quad
+     v_2 = (\sigma_1 D,\;-\sigma_2 D),\quad
+     \sigma_1,\sigma_2\in\{+1,-1\}.
+   \]
+   For each base‐point \(P=(x,y)\) we check whether both \(P+v_1\) and \(P+v_2\) lie in our set.
+   If yes, we output the three indices and move to the next test case.
+
+3.  If \(d\equiv0\pmod4\), also try **Family 2**.  Put \(u=d/4\), \(a=3u\), \(b=u\).  Then for
+   \(\sigma_1,\sigma_2\in\{+1,-1\}\) we let
+   \[
+     v_1=(\sigma_1 a,\;\sigma_2 b),\quad 
+     v_2=(\sigma_1 b,\;\sigma_2 a).
+   \]
+   Again we check if \(P+v_1\) and \(P+v_2\) are in our set.  If so, we report the triple and stop.
+
+4.  If no triple is ever found, we print `0 0 0`.
+
+Each point does \(O(1)\) checks — at most \(8\) hash‐lookups if \(d\not\equiv0\pmod4\), or \(16\) lookups otherwise — so overall \(O(n)\) per test case, which is plenty fast for \(\sum n\le2\cdot10^5\).
+
+Below is a complete Java implementation.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int t = Integer.parseInt(st.nextToken());
+
+        StringBuilder sb = new StringBuilder();
+        // We'll reuse one HashMap per test to avoid reallocation overhead.
+        HashMap<Long,Integer> map = new HashMap<>();
+
+        outer:
+        for (int _case = 0; _case < t; _case++) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int d = Integer.parseInt(st.nextToken());
+
+            // Read points, build map
+            map.clear();
+            int[] X = new int[n];
+            int[] Y = new int[n];
+            for (int i = 0; i < n; i++) {
+                st = new StringTokenizer(br.readLine());
+                int x = Integer.parseInt(st.nextToken());
+                int y = Integer.parseInt(st.nextToken());
+                X[i] = x;
+                Y[i] = y;
+                long key = encode(x, y);
+                map.put(key, i+1);  // store 1-based index
+            }
+
+            int D = d / 2;         // always integer because d is even
+            boolean found = false;
+            int ai=0, bi=0, ci=0;
+
+            // Precompute all 4 patterns of Family 1 (45°‐square)
+            int[][] fam1_dx = new int[4][2];
+            int[][] fam1_dy = new int[4][2];
+            int idx = 0;
+            for (int s1 = -1; s1 <= 1; s1 += 2) {
+                for (int s2 = -1; s2 <= 1; s2 += 2) {
+                    fam1_dx[idx][0] = s1 * D;  // v1.x
+                    fam1_dy[idx][0] = s2 * D;  // v1.y
+                    fam1_dx[idx][1] = s1 * D;  // v2.x
+                    fam1_dy[idx][1] = -s2 * D; // v2.y
+                    idx++;
+                }
+            }
+
+            // Precompute Family 2 (3:1) if d divisible by 4
+            boolean useFam2 = (d % 4 == 0);
+            int u = d / 4;
+            int a = 3 * u, b = u;
+            int[][] fam2_dx = null, fam2_dy = null;
+            if (useFam2) {
+                fam2_dx = new int[4][2];
+                fam2_dy = new int[4][2];
+                idx = 0;
+                for (int s1 = -1; s1 <= 1; s1 += 2) {
+                    for (int s2 = -1; s2 <= 1; s2 += 2) {
+                        fam2_dx[idx][0] = s1 * a; fam2_dy[idx][0] = s2 * b;
+                        fam2_dx[idx][1] = s1 * b; fam2_dy[idx][1] = s2 * a;
+                        idx++;
+                    }
+                }
+            }
+
+            // Try every point as the "anchor" A
+            for (int i = 0; i < n && !found; i++) {
+                int x = X[i], y = Y[i];
+                long baseKey = encode(x, y);
+
+                // Family 1
+                for (int k = 0; k < 4 && !found; k++) {
+                    int x1 = x + fam1_dx[k][0],  y1 = y + fam1_dy[k][0];
+                    int x2 = x + fam1_dx[k][1],  y2 = y + fam1_dy[k][1];
+                    long k1 = encode(x1, y1);
+                    long k2 = encode(x2, y2);
+                    Integer j = map.get(k1);
+                    Integer l = map.get(k2);
+                    if (j != null && l != null) {
+                        ai = i+1; bi = j; ci = l;
+                        found = true;
+                    }
+                }
+
+                // Family 2
+                if (!found && useFam2) {
+                    for (int k = 0; k < 4 && !found; k++) {
+                        int x1 = x + fam2_dx[k][0], y1 = y + fam2_dy[k][0];
+                        int x2 = x + fam2_dx[k][1], y2 = y + fam2_dy[k][1];
+                        long k1 = encode(x1, y1);
+                        long k2 = encode(x2, y2);
+                        Integer j = map.get(k1);
+                        Integer l = map.get(k2);
+                        if (j != null && l != null) {
+                            ai = i+1; bi = j; ci = l;
+                            found = true;
+                        }
+                    }
+                }
+            }
+
+            if (!found) {
+                sb.append("0 0 0\n");
+            } else {
+                sb.append(ai).append(' ')
+                  .append(bi).append(' ')
+                  .append(ci).append('\n');
+            }
+        }
+
+        // print all answers
+        System.out.print(sb.toString());
+    }
+
+    // encode a pair (x,y) into a single 64-bit key
+    static long encode(int x, int y) {
+        return ( (long)x << 32 ) ^ (y & 0xffffffffL);
+    }
+}
+```
+
+**Explanation of the key steps**
+
+1. **Hashing the points**  
+   We store each point \((x,y)\) in a `HashMap<Long,Integer>` where the key is a 64‐bit combine of \((x,y)\) and the value is the 1‐based index of that point.  Look‐ups in this map cost average \(O(1)\).
+
+2. **Family 1 (45°‐rotated square)**  
+   We set \(D = d/2\).  From any point \(A=(x,y)\), the other two vertices must be
+   \[
+     B = A + (\pm D,\pm D),\quad
+     C = A + (\pm D,\mp D),
+   \]
+   where the two sign‐bits \(\sigma_1,\sigma_2\) can be chosen independently.  We test all 4 sign‐choices; if both of those neighbors appear in our map, we are done.
+
+3. **Family 2 (“3:1” ratio)**  
+   Only valid if \(d\) is a multiple of 4, say \(d=4u\).  We set \(a=3u\), \(b=u\).  From any \(A\) we try
+   \[
+     v_1=(\,\pm a,\;\pm b),\quad 
+     v_2=(\,\pm b,\;\pm a),
+   \]
+   with the *same* sign combination in corresponding coordinates.  
+   Again if both \(A+v_1\) and \(A+v_2\) lie in our set, we have a perfect Manhattan‐equilateral triangle of side \(d\).
+
+4. **Complexity**  
+   Each of the \(n\) base‐points does up to 4 checks for Family 1 and (if \(d\equiv0\pmod4\)) 4 more for Family 2.  Each check is two hash‐lookups.  Thus \(O(n)\) overall per test case, well within the problem’s limits.
+
+This completes the solution in \(O(n)\) per test case and uses only \(O(n)\) extra space.

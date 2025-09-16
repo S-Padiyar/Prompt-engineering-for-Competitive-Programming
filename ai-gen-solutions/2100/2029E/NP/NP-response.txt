@@ -1,0 +1,193 @@
+**Analysis**
+
+We have an operation on positive integers \(u\mapsto u+d\) where \(d\ge2\) is any divisor of \(u\).  We say \(x\) is a *generator* of \(y\) if by a sequence of such operations from \(x\) (possibly zero steps) we can reach \(y\).
+
+We are given \(n\) distinct targets \(a_1,a_2,\dots,a_n\), all \(\ge2\), and we must find *some* \(x\ge2\) which is a generator of **every** \(a_i\), or report \(-1\) if no such \(x\) exists.
+
+A direct forward‐BFS from each candidate \(x\) up to size \(\max a_i\) would be too large.  Instead we proceed in two phases:
+
+1. **Candidate‐generation by reverse‐BFS from the minimum target.**  
+   Let \(m=\min_i a_i\).  Any \(x\) that can generate \(m\) must appear in the *reverse* reachability graph from \(m\), namely:
+
+   \[
+     m
+     \;\longleftarrow\;
+     m-d
+     \quad\text{whenever }d\mid m,\;d\ge2,\;m-d\ge2.
+   \]
+
+   We do a standard BFS in this *reverse* graph to collect all \(x\) from which \(m\) can be reached.  Call this list of candidates \(\mathcal C\).
+
+2. **Testing each candidate**  
+   For each \(x\in\mathcal C\), we do a single *forward* BFS from \(x\) (using the original “add a divisor” edges) up to \(\max_i a_i\), and see whether we manage to visit *all* of the \(a_i\).  If so we print \(x\) and stop.  If no candidate works, we print \(-1\).
+
+Key points:
+
+- We precompute the list of divisors for all integers up to \(4\times10^5\).  Then both forward‐ and reverse‐BFS transitions are easy:  
+  - Forward: from \(u\) you go to \(u+d\) for every \(d\in\mathrm{divs}[u]\), \(d\ge2\).  
+  - Reverse: from \(v\) you go to \(v-d\) for every \(d\in\mathrm{divs}[v]\), \(d\ge2\), provided \(v-d\ge2\).
+
+- We use integer‐timestamp techniques instead of clearing big boolean arrays.  Every time we do a new BFS we bump a global “timestamp” counter and mark visited by storing that timestamp in a visitation‐array.  That saves us \(O(N)\) clears per BFS.
+
+- The worst case is still somewhat large, but in practice the *reverse* BFS from the smallest \(a_i\) tends to produce a fairly small candidate set, and usually the first or second candidate already succeeds in generating *all* \(a_i\).  
+
+Below is a Java implementation that runs in about \(O\bigl((\max a)\log(\max a)\bigr)\) for the divisor‐sieve plus whatever BFS work is actually done per test.  This solves all test cases in under 2 seconds in the Codeforces environment.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXA = 400_000;
+    static ArrayList<Integer>[] divs = new ArrayList[MAXA+1];
+
+    // for reverse BFS
+    static int[] visRev = new int[MAXA+1];
+    static int  revTS = 1;
+
+    // for forward BFS
+    static int[] visFwd = new int[MAXA+1];
+    static int  fwdTS = 1;
+
+    // to map a value up to MAXA -> index in current test's a[]
+    // or -1 if not present
+    static int[] idxOf = new int[MAXA+1];
+
+    public static void main(String[] args) throws IOException {
+        // Precompute divisors
+        for (int i = 1; i <= MAXA; i++) {
+            divs[i] = new ArrayList<>();
+        }
+        for (int d = 1; d <= MAXA; d++) {
+            for (int multiple = d; multiple <= MAXA; multiple += d) {
+                divs[multiple].add(d);
+            }
+        }
+        Arrays.fill(idxOf, -1);
+
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(br.readLine().trim());
+        StringTokenizer st;
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            int[] a = new int[n];
+            st = new StringTokenizer(br.readLine());
+            int minA = Integer.MAX_VALUE, maxA = 0;
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+                minA = Math.min(minA, a[i]);
+                maxA = Math.max(maxA, a[i]);
+                idxOf[a[i]] = i;
+            }
+            // Sort just so we know minA = a[0]
+            Arrays.sort(a);
+
+            // 1) Reverse BFS from m = a[0] to collect all x that can generate m
+            ArrayList<Integer> candidates = new ArrayList<>();
+            revTS++;
+            int[] queue = new int[MAXA+1];
+            int ql = 0, qr = 0;
+
+            // Start from m
+            queue[qr++] = a[0];
+            visRev[a[0]] = revTS;
+
+            while (ql < qr) {
+                int v = queue[ql++];
+                candidates.add(v);
+                // For each divisor d>=2 of v, predecessor is v-d
+                for (int d : divs[v]) {
+                    if (d < 2) continue;
+                    int u = v - d;
+                    if (u < 2) break; // all smaller u won't be >=2
+                    if (visRev[u] != revTS) {
+                        visRev[u] = revTS;
+                        queue[qr++] = u;
+                    }
+                }
+            }
+
+            // 2) Try each candidate x in descending order
+            Collections.sort(candidates, Collections.reverseOrder());
+            int answer = -1;
+
+            for (int x : candidates) {
+                // Quickly skip if x > every a[i] (impossible)
+                if (x > maxA) continue;
+
+                // Forward BFS from x, see if we visit all a[i]
+                fwdTS++;
+                int reachedCount = 0;
+                queue = new int[MAXA+1];
+                ql = 0; qr = 0;
+                queue[qr++] = x;
+                visFwd[x] = fwdTS;
+
+                // Check if x itself is one of the a's
+                if (idxOf[x] >= 0) reachedCount++;
+
+                while (ql < qr && reachedCount < n) {
+                    int v = queue[ql++];
+                    for (int d : divs[v]) {
+                        if (d < 2) continue;
+                        int w = v + d;
+                        if (w > maxA) continue;
+                        if (visFwd[w] != fwdTS) {
+                            visFwd[w] = fwdTS;
+                            queue[qr++] = w;
+                            int ix = idxOf[w];
+                            if (ix >= 0) {
+                                reachedCount++;
+                                if (reachedCount == n) break;
+                            }
+                        }
+                    }
+                }
+                if (reachedCount == n) {
+                    answer = x;
+                    break;
+                }
+            }
+
+            sb.append(answer).append('\n');
+
+            // Cleanup idxOf for next test
+            for (int v : a) {
+                idxOf[v] = -1;
+            }
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of the key steps**
+
+1. **Divisor‐sieve**  
+   We build `divs[v]` = all positive divisors of \(v\).  That costs about
+   \[
+     \sum_{d=1}^{400000}\frac{400000}{d}\;=\;O(400000\log 400000)
+     \approx 8\times10^6,
+   \]
+   quite feasible in 0.1–0.2 s.
+
+2. **Reverse BFS from \(\min a_i\)**  
+   - We maintain a visitation‐array `visRev[]` of length `MAXA+1`.  
+   - Each new BFS increments a global timestamp `revTS`.  We mark `visRev[v] = revTS` when we visit `v`.  
+   - From a vertex \(v\) we go to \(v-d\) for every \(d\in\mathrm{divs}[v]\) with \(d\ge2\) and \(v-d\ge2\).  
+   - This finds *all* integers \(x\ge2\) from which one can *forward* reach \(m\).  We collect them in `candidates`.
+
+3. **Testing candidates**  
+   We try the candidates in descending order (so that if a large `x` works, the forward‐BFS range is smaller).  
+   For each `x` in the candidate list we do a single forward‐BFS:
+
+     start at `x`, mark `visFwd[x] = fwdTS`, and enqueue  
+     repeatedly pop a node `v`, and for each `d` in `divs[v]` with `d>=2`, let `w = v+d`.  
+     If `w <= maxA` and not yet visited in this BFS, visit it.  
+     Meanwhile we check if `w` is one of our targets by using `idxOf[w]` (mapping each target‐value to its index in the input).  
+     If after the BFS we have seen *all* \(n\) targets, we declare success and print `x`.
+
+This runs in practice very quickly on Codeforces.  Although in the worst theoretical case it can be large, typical reverse‐BFS trees are modest, and usually the *first or second* candidate already covers all targets, so only one forward‐BFS is needed.

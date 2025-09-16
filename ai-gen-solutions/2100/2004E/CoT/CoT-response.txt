@@ -1,0 +1,151 @@
+**Analysis**
+
+We have \(n\) piles of stones, the \(i\)th pile containing \(a_i\) stones.  A move consists of choosing a pile with \(x\) stones and removing any positive \(y\le x\) stones such that \(\gcd(x,y)=1\).  The player who cannot move loses.
+
+By the Sprague–Grundy theorem, the whole position is the XOR of the Grundy-values (SG-values) of the individual piles.  Hence Alice (the first player) wins if and only if the XOR of all pile‐Grundy‐values is non‐zero.
+
+One can show (and verify on small \(x\)) that
+
+ 1.  If \(x\) is even, its Grundy is \(0\).
+ 2.  If \(x=1\), its Grundy is \(1\).
+ 3.  If \(x>1\) is odd, let \(p\) be its _smallest_ odd prime divisor; then
+     
+     \[
+       \mathrm{SG}(x)\;=\;\text{(the index of \(p\) in the ordered list of primes \(2,3,5,7,\dots\))}\,.
+     \]
+     
+     (Here prime `2` is at index 1, prime `3` at index 2, prime `5` at index 3, etc.)
+
+In particular:
+
+- Every even \(x\) contributes \(0\) to the XOR.
+- \(x=1\) contributes XOR–value \(1\).
+- An odd \(x>1\) contributes the index of its smallest odd prime factor.
+
+Thus the solution is:
+
+1.  Read all the input piles, remember the maximum \(a_i\) we ever see.
+2.  Precompute a “smallest‐prime‐factor” array `spf[]` up to that maximum.
+3.  Also build an array `primeIndex[]` so that for each prime \(p\), `primeIndex[p]` is the 1-based index of \(p\) in the ordered prime sequence \(2,3,5,7,\dots\).
+4.  For each test‐case, compute
+     
+     \[
+       G \;=\; \bigoplus_{i=1}^n 
+          \begin{cases}
+            0, & a_i\text{ even},\\
+            1, & a_i=1,\\
+            \text{primeIndex}[\text{spf}[a_i]], & \text{otherwise (odd }a_i>1).
+          \end{cases}
+     \]
+     
+5.  If \(G\neq 0\), Alice wins; else Bob wins.
+
+This runs in \(O(M\log\log M)\) for the sieve (where \(M=\max a_i\)), plus \(O(\sum n)\) to process the piles.  With \(M\le 10^7\) and \(\sum n\le 3\cdot 10^5\), it is efficient enough in 2 s and uses under 100 MB of memory.
+
+---
+
+```java
+import java.io.*;
+import java.util.StringTokenizer;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader  br = new BufferedReader(new InputStreamReader(System.in));
+        BufferedWriter  bw = new BufferedWriter(new OutputStreamWriter(System.out));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine());
+        int[] ns = new int[t];
+        int[][] allA = new int[t][];
+        int maxA = 1;
+
+        // Read input, remember max(a_i)
+        for (int i = 0; i < t; i++) {
+            ns[i] = Integer.parseInt(br.readLine());
+            allA[i] = new int[ns[i]];
+            st = new StringTokenizer(br.readLine());
+            for (int j = 0; j < ns[i]; j++) {
+                allA[i][j] = Integer.parseInt(st.nextToken());
+                if (allA[i][j] > maxA) {
+                    maxA = allA[i][j];
+                }
+            }
+        }
+
+        // Sieve up to maxA to find smallest prime factor (spf)
+        int M = maxA;
+        int[] spf = new int[M + 1]; // spf[x] = smallest prime factor of x
+        // Standard sieve for spf
+        for (int i = 2; i <= M; i++) {
+            if (spf[i] == 0) {
+                spf[i] = i;  // i is prime
+                if ((long) i * i <= M) {
+                    for (int j = i * i; j <= M; j += i) {
+                        if (spf[j] == 0) {
+                            spf[j] = i;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Build an array primeIndex[p] = 1-based index of prime p in (2,3,5,7,...)
+        int[] primeIndex = new int[M + 1];
+        int idx = 0;
+        for (int i = 2; i <= M; i++) {
+            if (spf[i] == i) {
+                // i is prime
+                primeIndex[i] = ++idx;
+            }
+        }
+
+        // Process each test case
+        for (int ti = 0; ti < t; ti++) {
+            int xorSum = 0;
+            for (int x : allA[ti]) {
+                if (x == 1) {
+                    xorSum ^= 1;
+                } else if ((x & 1) == 0) {
+                    // even => Grundy = 0
+                } else {
+                    // odd > 1 => Grundy = index of smallest prime factor
+                    int p = spf[x];
+                    xorSum ^= primeIndex[p];
+                }
+            }
+            // If xorSum != 0, Alice wins; otherwise Bob
+            bw.write((xorSum != 0 ? "Alice" : "Bob") + "\n");
+        }
+
+        bw.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1.  **Grundy Numbers**  
+    One can tabulate small values of
+    \[
+      g(x) \;=\; \mathrm{mex}\bigl\{\,g(x-y)\mid 1\le y\le x,\;\gcd(x,y)=1\bigr\},
+    \]
+    and observe the pattern:
+    -   \(g(x)=0\) for every even \(x\).
+    -   \(g(1)=1\).
+    -   For odd \(x>1\), \(g(x)\) equals the index of the smallest prime factor of \(x\) in the prime sequence \(2,3,5,\dots\).  
+    (One checks by hand up to a few dozen that this holds, and in particular that composite odd numbers pick up the index of their _smallest_ prime divisor, and prime powers behave like their prime itself.)
+
+2.  **Reducing to XOR**  
+    Since each pile is an impartial subgame, the overall position’s Grundy is the XOR of the pile‐Grundies.  A nonzero XOR means the first player (Alice) has a winning strategy.
+
+3.  **Implementation Details**  
+    -   We first read all piles, record the maximum stone‐count `maxA`.
+    -   We build a smallest‐prime‐factor array `spf` in \(O(\maxA\log\log\maxA)\) by a standard sieve.
+    -   We then scan `spf` to assign to each prime `p` its `primeIndex[p]` = 1,2,3,… in ascending prime order.
+    -   Finally we re‐walk the input: for each pile \(x\),
+        - if \(x\) is even, its Grundy is 0,
+        - if \(x=1\), Grundy is 1,
+        - otherwise \(x\) is odd >1, let \(p=\mathrm{spf}[x]\), Grundy = `primeIndex[p]`.
+      We XOR them all, and print “Alice” if the result is non-zero, else “Bob”.
+
+This runs in time dominated by the sieve up to \(10^7\), which is comfortably under 2 s in optimized Java, and uses well under the 512 MB memory limit.

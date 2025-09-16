@@ -1,0 +1,234 @@
+**Analysis**
+
+We have \(n\) points labelled \(1\) through \(n\) on a line (we will internally re-index them \(0\) through \(n-1\)).  We perform \(m\) operations of the form
+
+  “Pick \(a_i,d_i,k_i\).  Consider the arithmetic progression
+\[
+a_i,\,a_i+d_i,\,a_i+2d_i,\dots,a_i + k_i d_i.
+\]
+Connect *every* pair of those points with an arc.”
+
+Fully connecting a set of \(k_i+1\) points is equivalent (for connectivity) to simply union-ing them in a chain:
+\[
+(a_i)\;-\;(a_i+d_i)\;-\;(a_i+2d_i)\;-\;\dots\;-\;(a_i + k_i d_i).
+\]
+Hence within such an operation one only needs to union the consecutive neighbors
+\[
+a_i \longleftrightarrow a_i + d_i,\quad
+a_i + d_i \longleftrightarrow a_i + 2d_i,
+\quad\dots,
+\quad
+a_i + (k_i-1)d_i\longleftrightarrow a_i + k_i d_i.
+\]
+
+If we did that naively, summing all \(k_i\) over all operations could be up to \(O(nm)\), far too big (up to \(4\cdot10^{10}\) in the worst case).  However \(d_i\le10\).  For each fixed \(d\in\{1,2,\dots,10\}\) and each residue class
+\[
+r=0,1,\dots,d-1
+\]
+modulo \(d\), the points congruent to \(r\pmod d\) form a *chain* of length roughly \(\lfloor(n-1-r)/d\rfloor +1\).  Any arithmetic progression
+\(\{a_i + t\cdot d\}\) with \(t=0\ldots k_i\) lands entirely inside exactly one such chain.  We must union all adjacent edges in the interval of indices
+\(\bigl[t_0,t_0+k_i-1\bigr]\) of that chain.
+
+We can maintain a small “skip-list” or union-find over the **edges** of each chain so that we only union each edge *once*.  Concretely:
+
+1.  **Node­-DSU** on the \(n\) points \(0,1,\dots,n-1\).  Initially each point is its own component.  A union of two points (if they were in different components) reduces the total component count by one.
+
+2.  For each \(d=1\ldots 10\) and each residue \(r=0\ldots d-1\), consider the chain of points
+   \[
+     C_{d,r} = \bigl\{\,r,\,r+d,\,r+2d,\,\dots \le n-1\bigr\}.
+   \]
+   Let its length be \(\ell = \lfloor\frac{n-1-r}{d}\rfloor + 1\).  There are \(\ell-1\) *adjacent edges* in that chain.  We build a small DSU “edge‐finder” of size \(\ell\); we treat indexes
+   \[
+   0,1,2,\dots,\ell-1
+   \]
+   where an “edge” between chain‐nodes \(t\) and \(t+1\) is labeled \(t\).  Whenever we process that edge \(t\), we merge it in the edge‐DSU to point to \((t+1)\).  A `find_edge(t)` now returns the first *still‐unprocessed* edge index \(\ge t\).  
+
+   Thus for an operation on \((a,d,k)\):  
+   - Convert \(a\) to zero‐based, say \(a_0=a-1\).  
+   - Find \(r = a_0 \bmod d\).  
+   - The index in chain \(C_{d,r}\) of the point \(a_0\) is  
+     \[
+       t_0 = \frac{a_0 - r}{d}.
+     \]  
+   - We must union the edges \(t_0, t_0+1, \dots, t_0 + k -1\) in that chain.  We do:
+     ```
+     t_end = t_0 + k
+     while true:
+       u = find_edge(t_0)
+       if u >= t_end: break
+       // u is the next unprocessed edge
+       x = r + u*d
+       y = x + d
+       union_node(x, y)
+       union_edge(u, u+1)
+     ```
+   Each edge DSU and each node DSU uses union‐by‐size (or rank) + path compression.  
+
+Complexities:
+
+– The sum of all chain‐lengths over \(d=1\ldots10\) is \(\sum_{d=1}^{10} d\cdot\bigl\lfloor\frac{n}{d}\bigr\rfloor\;\approx 10n\).  
+– Each arithmetic progression edge is merged *once* in its chain‐DSU, so the total edge‐DSU unions over all operations is \(O(10n)\).  
+– Each such edge union does one node‐DSU union (if they were not already connected).  So total node‐DSU unions also \(O(n)\).  
+– Path‐compression + union‐by‐rank on up to \(O(n)\) nodes and \(O(n)\) edges is effectively \(O(n\alpha(n))\), very fast for \(n\le2\times10^5\).  
+
+We keep a running counter `components = n` and decrement it whenever two node‐DSU roots actually merge.  At the end we output that counter.
+
+Below is a Java implementation using a fast `BufferedReader`/`StringTokenizer` for input and a single `StringBuilder` to accumulate output.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder   sb = new StringBuilder();
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int t = Integer.parseInt(st.nextToken());
+
+        // Process each test case
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+
+            // --- 1) Prepare the Node‐DSU for 0..n-1
+            int[] parent = new int[n], rank = new int[n];
+            for (int i = 0; i < n; i++) {
+                parent[i] = i;
+                rank[i] = 0;
+            }
+            int components = n;
+
+            // --- 2) Prepare the Edge‐DSU for each (d, r)
+            //     parentEdge[d][r] is an int[] of length L(d,r),
+            //     which merges edges in the chain of points {r, r+d, r+2d, ...}.
+            //     L(d,r) = floor((n-1 - r)/d) + 1.
+            int[][][] parentEdge = new int[11][][]; // d = 1..10
+            for (int d = 1; d <= 10; d++) {
+                parentEdge[d] = new int[d][];
+                for (int r = 0; r < d; r++) {
+                    if (r >= n) {
+                        parentEdge[d][r] = new int[0];
+                    } else {
+                        int len = ((n - 1 - r) / d) + 1;  // number of points in chain
+                        parentEdge[d][r] = new int[len];
+                        for (int i = 0; i < len; i++) {
+                            parentEdge[d][r][i] = i;
+                        }
+                    }
+                }
+            }
+
+            // DSU-find for nodes (with path‐compression)
+            final class NodeDSU {
+                int find(int x) {
+                    while (parent[x] != x) {
+                        parent[x] = parent[parent[x]];
+                        x = parent[x];
+                    }
+                    return x;
+                }
+                boolean union(int x, int y) {
+                    int rx = find(x), ry = find(y);
+                    if (rx == ry) return false;
+                    if (rank[rx] < rank[ry]) {
+                        parent[rx] = ry;
+                    } else if (rank[ry] < rank[rx]) {
+                        parent[ry] = rx;
+                    } else {
+                        parent[ry] = rx;
+                        rank[rx]++;
+                    }
+                    return true;
+                }
+            }
+            NodeDSU nodeDSU = new NodeDSU();
+
+            // DSU-find for edges in a single chain (iterative + path‐compression)
+            // We will write a helper that closes over parentEdge[d][r].
+            // findEdge returns the smallest "edge index" >= x that is still its own parent.
+            class EdgeDSU {
+                int[] p;
+                EdgeDSU(int[] arr) { p = arr; }
+                int find(int x) {
+                    int root = x;
+                    while (p[root] != root) {
+                        root = p[root];
+                    }
+                    // path-compress
+                    int cur = x;
+                    while (p[cur] != cur) {
+                        int nxt = p[cur];
+                        p[cur] = root;
+                        cur = nxt;
+                    }
+                    return root;
+                }
+                void unite(int x, int y) {
+                    int rx = find(x), ry = find(y);
+                    p[rx] = ry;
+                }
+            }
+
+            // --- 3) Process the m operations
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                int a = Integer.parseInt(st.nextToken()) - 1;  // 0-based
+                int d = Integer.parseInt(st.nextToken());
+                int k = Integer.parseInt(st.nextToken());
+
+                int r   = a % d;        // which chain
+                int t0  = (a - r) / d;  // starting index in that chain
+                int tEnd = t0 + k;      // we need edges t0..tEnd-1
+
+                int[]    edgeArr = parentEdge[d][r];
+                EdgeDSU  edgeDSU = new EdgeDSU(edgeArr);
+
+                while (true) {
+                    int u = edgeDSU.find(t0);
+                    if (u >= tEnd) break;
+                    // edge u in the chain joins pointAt(u) with pointAt(u+1)
+                    int x = r + u*d;
+                    int y = x + d;
+                    if (nodeDSU.union(x, y)) {
+                        components--;
+                    }
+                    // mark edge u as processed by unioning it with u+1
+                    edgeDSU.unite(u, u+1);
+                }
+            }
+
+            sb.append(components).append('\n');
+        }
+
+        // print all results
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of key parts**
+
+1. **Node DSU** (`parent`/`rank` arrays) over the \(n\) points.  We keep a running `components` counter which starts at \(n\).  Every time two different roots merge, we decrement it.  That ends up being the answer.
+
+2. **Edge DSUs** for each pair \((d,r)\).  
+   – There are at most \(\sum_{d=1}^{10}d=55\) such chains.  
+   – Each chain has length \(\ell = \lfloor (n-1-r)/d\rfloor + 1\), so \(\ell-1\) edges.  We actually allocate an array of length \(\ell\) so that we can do “union(u, u+1)” even when \(u=\ell-2\).  
+
+   An edge DSU `find(u)` returns the smallest unprocessed edge index \(\ge u\).  
+   - Initially every edge index \(i\) is its own parent.  
+   - Once we “use” edge \(i\), we do `unite(i, i+1)`, so now in the DSU the representative of \(i\) will skip to somewhere \(\ge i+1\).  
+
+   Thus in the loop for each operation \((a,d,k)\) we do
+   ```
+   u = find(t0);
+   if (u >= t0 + k) break;
+   // union the two points in the node DSU that this edge connects
+   union(nodeAtChainIndex(u), nodeAtChainIndex(u+1));
+   // mark this edge done
+   unite(u, u+1);
+   ```
+   so each edge across all operations is “used” at most once.
+
+This runs in \(O(n\alpha(n) + m)\) time, which is more than fast enough for \(n,m\le2\cdot10^5\) and \(d_i\le10\).

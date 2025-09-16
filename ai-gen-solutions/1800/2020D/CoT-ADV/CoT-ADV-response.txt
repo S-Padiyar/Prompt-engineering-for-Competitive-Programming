@@ -1,0 +1,166 @@
+The problem asks us to maintain an initially empty undirected graph on n labeled vertices (points 1 through n), then process m “clique‐on‐AP” operations, each of which picks three integers (a, d, k), considers the arithmetic progression
+
+  a, a+d, a+2d, …, a+k·d
+
+and fully connects (i.e., makes a clique among) these k+1 points.  Finally, we must print the number of connected components in the resulting graph.
+
+Naively, one could union‐find over the n points, and for each operation perform all k unions of consecutive AP‐neighbors (that already suffices to link the whole clique by transitivity).  But since k can be as large as O(n)=2⋅10^5 and there may be O(2⋅10^5) operations, doing ∑ k unions explicitly could be quadratic in n in the worst case.
+
+We exploit two facts:
+
+1. The number of distinct d’s is at most 10 (d∈[1…10]).  
+2. Across all operations with the same d, each potential edge (x, x+d) between a vertex x and x+d can only ever need to be added once.  Once we add it, every future “clique‐on‐AP” operation with the same d will find it already present and skip it.
+
+We implement one Disjoint‐Set-Union (DSU) over vertices [1…n] to maintain connectivity, plus a “next‐pointer” trick for each d∈[1…10]:
+
+— We allocate an array next[d][1…n+1], initialized so next[d][i]=i for all i.  
+— To “remove” (mark processed) the edge‐start i (meaning we unite i and i+d), we do
+
+  next[d][i] = FindNext(d, i+d)
+
+so that future searches for the “next unprocessed start ≥ i” will jump to i+d (or beyond, if that too has been processed).
+
+— FindNext(d,x) walks up next[d] pointers (with path compression) to return the smallest y ≥ x for which next[d][y]=y (i.e. y is still unprocessed).
+
+When we handle an operation (a,d,k), its APSegment is a + j·d for j=0…k.  The edges we need are precisely the (k) edges  
+(a, a+d), (a+d, a+2d), …, (a+(k−1)d, a+k·d).  
+We loop:
+
+  x = FindNext(d,a);  
+  while(x + d ≤ a + k·d) {  
+     DSU.union(x, x+d);             // merge these two points
+     next[d][x] = FindNext(d, x+d); // mark edge(x,x+d) done
+     x = next[d][x];                // jump to next start ≥ x
+  }
+
+Each edge‐start i (i.e. potential edge (i, i+d)) is ever removed at most once, so overall we do O(n·10) = O(n) DSU‐unions and pointer‐hops across all operations.  Since ∑n, ∑m ≤2·10^5, this runs in softly linear time.
+
+Below is a self‐contained Java implementation using BufferedReader for fast I/O.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class DSU {
+        int[] parent, rank;
+        int count;
+        DSU(int n) {
+            parent = new int[n+1];
+            rank   = new int[n+1];
+            for (int i = 1; i <= n; i++) {
+                parent[i] = i;
+                rank[i] = 0;
+            }
+            count = n;
+        }
+        int find(int x) {
+            // iterative find with path‐compression
+            int root = x;
+            while (parent[root] != root) {
+                root = parent[root];
+            }
+            while (parent[x] != x) {
+                int p = parent[x];
+                parent[x] = root;
+                x = p;
+            }
+            return root;
+        }
+        void union(int a, int b) {
+            int ra = find(a), rb = find(b);
+            if (ra == rb) return;
+            // union by rank
+            if (rank[ra] < rank[rb]) {
+                parent[ra] = rb;
+            } else if (rank[ra] > rank[rb]) {
+                parent[rb] = ra;
+            } else {
+                parent[rb] = ra;
+                rank[ra]++;
+            }
+            count--;
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+
+            // Initialize DSU for the n points:
+            DSU dsu = new DSU(n);
+
+            // nextEdge[d][i] = the smallest j >= i such that edge (j, j+d) is still unprocessed.
+            // We'll keep it of size (n+2), 1-based.
+            int[][] nextEdge = new int[11][n+2];
+            for (int d = 1; d <= 10; d++) {
+                for (int i = 1; i <= n+1; i++) {
+                    nextEdge[d][i] = i;
+                }
+            }
+
+            // Helper to find next unprocessed start >= x for difference d
+            // with path compression:
+            class Finder {
+                int findNext(int d, int x) {
+                    int r = x;
+                    while (r <= n && nextEdge[d][r] != r) {
+                        r = nextEdge[d][r];
+                    }
+                    // path-compress
+                    int cur = x;
+                    while (cur <= n && nextEdge[d][cur] != cur) {
+                        int tmp = nextEdge[d][cur];
+                        nextEdge[d][cur] = r;
+                        cur = tmp;
+                    }
+                    return r;
+                }
+            }
+            Finder finder = new Finder();
+
+            // Process m operations
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                int a = Integer.parseInt(st.nextToken());
+                int d = Integer.parseInt(st.nextToken());
+                int k = Integer.parseInt(st.nextToken());
+                int last = a + k*d;
+
+                // We want to add edges (x, x+d) for x = a, a+d, ... , a+(k-1)*d
+                // but skip any already done.
+                int x = finder.findNext(d, a);
+                while (x + d <= last) {
+                    dsu.union(x, x + d);
+                    // mark this x as done, by pointing it forward
+                    int nx = finder.findNext(d, x + d);
+                    nextEdge[d][x] = nx;
+                    x = nx;
+                }
+            }
+
+            // The DSU.count field is the number of connected components.
+            sb.append(dsu.count).append('\n');
+        }
+        System.out.print(sb);
+    }
+}
+```
+
+Explanation of the main ideas:
+
+1. We only ever need to link each potential edge \((i,i+d)\) once.  
+2. For fixed \(d\in[1..10]\), we keep an array `nextEdge[d]` of size \(\le n+1\).  Initially `nextEdge[d][i]=i`.  
+3. Whenever we process and add the edge \((i,i+d)\), we “remove” index \(i\) by setting  
+       nextEdge[d][i] = FindNext(d, i+d),  
+   so that future searches for “the next unprocessed start ≥ i” skip over it in \(O(\alpha(n))\) amortized time.  
+4. Summed across all operations, there are at most \(\sum_{d=1}^{10}(n-d)=O(n)\) such distinct edges, so we do only \(O(n)\) DSU unions in total.  
+5. Remaining DSU operations (finds, path compressions) also stay in \(O(n\alpha(n))\).  
+
+Thus the overall complexity is \(O((n+m)\,\alpha(n))\) per test, comfortably within the \(n,m\le2\cdot10^5\) limits.

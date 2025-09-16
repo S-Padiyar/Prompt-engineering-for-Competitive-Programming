@@ -1,0 +1,257 @@
+**Analysis**
+
+We have an \(n\times m\) grid of `.` and `#`.  A connected component of `#`‐cells is the usual 4‐neighbor connectivity, and its size is the number of `#`‐cells in it.
+
+We are allowed at most one operation: pick a row or a column and turn *all* its cells into `#`.  After that operation (or doing nothing), we want the size of the largest connected component of `#`‐cells.
+
+Let us call the original largest component size \(M_0\).  Then we compare three possibilities:
+
+1.  **No operation** → answer = \(M_0\).
+
+2.  **Fill some row \(r\)**.  
+    After filling row \(r\), that row becomes entirely `#` (contributing \(m\) cells).  It will connect to any original components that touch that row (either by overlapping it originally, or by being right above or below it).  By connecting we absorb *all* of each such original component.  
+    One must be careful not to double–count cells of components that already lay partly in row \(r\).  
+
+    A clean way to see the new merged component size is:
+    
+    \[
+      \bigl|\{\text{cells in row }r\}\bigr|
+      \;+\;
+      \bigl|\{\text{all cells of the original components that touch row }r\}\bigr|
+      \;-\;
+      \bigl|\{\text{old `#' cells in row }r\}\bigr|.
+    \]
+    
+    But \(|\{\text{cells in row }r\}| = m\), and \(|\{\text{old `#' in row }r\}|=\) the count of `#' in row \(r\).  
+    So if we let
+      - \(\mathrm{origHashRow}[r]\) = number of `#' in row \(r\),
+      - \(\mathcal C(r)\) = the set of indices of *all* original components that have at least one cell in row \(r-1\), \(r\), or \(r+1\),
+      - \(\mathrm{size}[c]\) = size of component \(c\),  
+    then the merged size by filling row \(r\) is
+    \[
+      m \;-\;\mathrm{origHashRow}[r]\;+\;\sum_{c\in \mathcal C(r)}\mathrm{size}[c].
+    \]
+    We compute that for every \(r\).
+
+3.  **Fill some column \(c\)** similarly gives
+    \[
+      n\;-\;\mathrm{origHashCol}[c]\;+\;\sum_{c\in \mathcal D(c)}\mathrm{size}[c],
+    \]
+    where \(\mathrm{origHashCol}[c]\) = number of `#' in column \(c\), and \(\mathcal D(c)\) = set of original components touching column \(c-1\), \(c\), or \(c+1\).
+
+We take the maximum of
+\[
+  M_0,\quad
+  \max_{0\le r<n}\bigl[m - \mathrm{origHashRow}[r] + \sum_{c\in\mathcal C(r)}\mathrm{size}[c]\bigr],
+  \quad
+  \max_{0\le c<m}\bigl[n - \mathrm{origHashCol}[c] + \sum_{c\in\mathcal D(c)}\mathrm{size}[c]\bigr].
+\]
+
+Implementation details:
+
+-  First, we label every original `#`‐component by a single integer id (0,1,2,…), via a BFS over all `#` cells.  We store in an array `comp[i]` the component‐id of cell index `i`, or −1 if it was `.`.
+
+-  While labeling each component we record its size in an array `compSize[id]`.  We also keep track of `origHashRow[r]` and `origHashCol[c]` simply by counting `#`s in each row/column as we read the grid.
+
+-  After labeling, let `M0 =` the maximum over all `compSize[id]`.
+
+-  To compute the row‐fill merges efficiently, we do the following for each row `r`:
+
+   1.  We want to sum `compSize[id]` over all *distinct* component‐ids appearing in rows `r-1`, `r`, or `r+1`.  
+   2.  We scan those three rows cell by cell.  Whenever we see a `#` whose component‐id is `cid`, we add `compSize[cid]` *once* into our running sum, using a small “last‐seen” array to ensure we do not double‐count the same `cid`.  
+   3.  After gathering that sum, we compute
+      \[
+        \mathrm{mergeRow}(r)= 
+        m - \mathrm{origHashRow}[r] \;+\;\bigl(\text{summed component sizes}\bigr).
+      \]
+   4.  We take the maximum over all `r`.
+
+-  We do an entirely analogous pass over columns.
+
+-  Finally, the answer for the test case is
+  \[
+    \max\bigl(M_0,\;\max_r\mathrm{mergeRow}(r),\;\max_c\mathrm{mergeCol}(c)\bigr).
+  \]
+
+Each test runs in \(O(nm)\):  
+  - one BFS pass to label components,  
+  - one pass to count `#` per row/column,  
+  - one \(O(n\cdot 3m)\) scan for row‐fills,  
+  - one \(O(m\cdot 3n)\) scan for column‐fills.  
+
+Since the sum of \(n\!\times\!m\) over all tests is up to \(10^6\), this easily fits in time.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            String[] nm = br.readLine().trim().split(" ");
+            int n = Integer.parseInt(nm[0]);
+            int m = Integer.parseInt(nm[1]);
+            int N = n * m;
+
+            // Read grid into a flat array
+            char[] grid = new char[N];
+            int[] origHashRow = new int[n];
+            int[] origHashCol = new int[m];
+            for (int i = 0; i < n; i++) {
+                String line = br.readLine();
+                for (int j = 0; j < m; j++) {
+                    char c = line.charAt(j);
+                    grid[i*m + j] = c;
+                    if (c == '#') {
+                        origHashRow[i]++;
+                        origHashCol[j]++;
+                    }
+                }
+            }
+
+            // comp[idx] = component-id of cell idx, or -1 if '.'
+            int[] comp = new int[N];
+            Arrays.fill(comp, -1);
+
+            // We will store sizes of each component in compSize[]
+            // We don't yet know how many components, but at most N.
+            int[] compSize = new int[N];
+            int compCount = 0;
+            int initialMax = 0;
+
+            // BFS queue
+            int[] queue = new int[N];
+
+            // Label components by BFS
+            for (int start = 0; start < N; start++) {
+                if (grid[start] == '#' && comp[start] < 0) {
+                    // New component
+                    int head = 0, tail = 0;
+                    queue[tail++] = start;
+                    comp[start] = compCount;
+                    int sizeC = 1;
+
+                    while (head < tail) {
+                        int cur = queue[head++];
+                        int r = cur / m, c = cur % m;
+
+                        // Up
+                        if (r > 0) {
+                            int nb = cur - m;
+                            if (grid[nb] == '#' && comp[nb] < 0) {
+                                comp[nb] = compCount;
+                                queue[tail++] = nb;
+                                sizeC++;
+                            }
+                        }
+                        // Down
+                        if (r < n - 1) {
+                            int nb = cur + m;
+                            if (grid[nb] == '#' && comp[nb] < 0) {
+                                comp[nb] = compCount;
+                                queue[tail++] = nb;
+                                sizeC++;
+                            }
+                        }
+                        // Left
+                        if (c > 0) {
+                            int nb = cur - 1;
+                            if (grid[nb] == '#' && comp[nb] < 0) {
+                                comp[nb] = compCount;
+                                queue[tail++] = nb;
+                                sizeC++;
+                            }
+                        }
+                        // Right
+                        if (c < m - 1) {
+                            int nb = cur + 1;
+                            if (grid[nb] == '#' && comp[nb] < 0) {
+                                comp[nb] = compCount;
+                                queue[tail++] = nb;
+                                sizeC++;
+                            }
+                        }
+                    }
+
+                    compSize[compCount] = sizeC;
+                    if (sizeC > initialMax) {
+                        initialMax = sizeC;
+                    }
+                    compCount++;
+                }
+            }
+
+            // lastSeen[cid] helps us sum each component-size at most once per row/column pass
+            int[] lastSeen = new int[compCount];
+            int stamp = 1;
+            int answer = initialMax;
+
+            // Try filling each row r
+            for (int r = 0; r < n; r++) {
+                stamp++;
+                int sumSizes = 0;
+                // look at rows r-1, r, r+1
+                for (int dr = -1; dr <= 1; dr++) {
+                    int rr = r + dr;
+                    if (rr < 0 || rr >= n) continue;
+                    int base = rr * m;
+                    for (int j = 0; j < m; j++) {
+                        int idx = base + j;
+                        int cid = comp[idx];
+                        if (cid >= 0 && lastSeen[cid] != stamp) {
+                            lastSeen[cid] = stamp;
+                            sumSizes += compSize[cid];
+                        }
+                    }
+                }
+                int merged = m - origHashRow[r] + sumSizes;
+                if (merged > answer) answer = merged;
+            }
+
+            // Try filling each column c
+            for (int c = 0; c < m; c++) {
+                stamp++;
+                int sumSizes = 0;
+                // look at columns c-1, c, c+1
+                for (int dc = -1; dc <= 1; dc++) {
+                    int cc = c + dc;
+                    if (cc < 0 || cc >= m) continue;
+                    for (int i = 0; i < n; i++) {
+                        int idx = i*m + cc;
+                        int cid = comp[idx];
+                        if (cid >= 0 && lastSeen[cid] != stamp) {
+                            lastSeen[cid] = stamp;
+                            sumSizes += compSize[cid];
+                        }
+                    }
+                }
+                int merged = n - origHashCol[c] + sumSizes;
+                if (merged > answer) answer = merged;
+            }
+
+            out.println(answer);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Component–labelling**  
+   We scan the entire grid and whenever we see an unvisited `#` we start a BFS, marking all reachable `#`‐cells with the same component‐id and counting their number.  This lets us later refer to each component by a small integer \(0\ldots(\text{compCount}-1)\) and know its size in \(O(1)\).
+
+2. **Initial maximum**  
+   As we label each component we track the maximum size seen so far.  This covers the “no operation” answer.
+
+3. **Row/Column fills**  
+   When we fill row \(r\), we add \(m\) new `#`‐cells.  We must also absorb every original component that is *adjacent* to the filled row—i.e.\ any component having a cell in row \(r\), or row \(r-1\), or row \(r+1\).  We sum their sizes but must *not* double–count the same component if it appears more than once.  We do a quick “lastSeen” trick: for each component‐id we keep a small array `lastSeen` of length = number of components; every time we start filling a new row we increment a global `stamp`, and whenever we first see a component‐id in our scan we check if `lastSeen[id] != stamp`; if so, we add its size and write `lastSeen[id] = stamp`.  That way each component contributes only once.
+
+4.  Finally, we do the exact same logic for columns, and take the global maximum of all three cases.
+
+Overall time per test is \(O(nm)\), which is fine because the sum of \(n\!\times\!m\) over all tests is up to \(10^6\).

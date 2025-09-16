@@ -1,0 +1,131 @@
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        int t = in.nextInt();
+        
+        // Maximum total piles ≤ 300_000
+        final int MAX_PILES = 300_000;
+        int[] ns = new int[t];
+        int[] offsets = new int[t];
+        int[] data = new int[MAX_PILES];
+        
+        int idx = 0;
+        int maxA = 0;
+        
+        // Read all test cases in one pass, flatten piles into data[]
+        for (int ti = 0; ti < t; ti++) {
+            int n = in.nextInt();
+            ns[ti] = n;
+            offsets[ti] = idx;
+            for (int j = 0; j < n; j++) {
+                int a = in.nextInt();
+                data[idx++] = a;
+                if (a > maxA) maxA = a;
+            }
+        }
+        int totalPiles = idx;  // actual number of piles read
+        
+        // Build spf[] (smallest prime factor) and pi[] (prime count ≤ x)
+        int N = Math.max(1, maxA);
+        int[] spf = new int[N + 1];
+        int[] pi  = new int[N + 1];
+        ArrayList<Integer> primes = new ArrayList<>();
+        
+        pi[0] = 0;
+        if (N >= 1) pi[1] = 0;
+        for (int i = 2; i <= N; i++) {
+            if (spf[i] == 0) {
+                spf[i] = i;
+                primes.add(i);
+            }
+            // pi[i] = pi[i-1] + (is i prime ? 1 : 0)
+            pi[i] = pi[i - 1] + (spf[i] == i ? 1 : 0);
+            
+            for (int p : primes) {
+                long ip = (long)i * p;
+                if (p > spf[i] || ip > N) break;
+                spf[(int)ip] = p;
+            }
+        }
+        // By convention:
+        if (N >= 1) spf[1] = 1;
+        
+        // Process each test case: compute XOR of Grundy values
+        StringBuilder sb = new StringBuilder();
+        idx = 0;
+        for (int ti = 0; ti < t; ti++) {
+            int xorsum = 0;
+            int n = ns[ti];
+            for (int j = 0; j < n; j++, idx++) {
+                int a = data[idx];
+                int g;
+                if (a == 1) {
+                    g = 1;
+                } else if ((a & 1) == 0) {
+                    // even numbers ≥2 have Grundy 0
+                    g = 0;
+                } else {
+                    // odd > 1: Grundy = π( spf[a] )
+                    g = pi[ spf[a] ];
+                }
+                xorsum ^= g;
+            }
+            sb.append( xorsum != 0 ? "Alice\n" : "Bob\n" );
+        }
+        
+        // Output all answers at once
+        System.out.print(sb);
+    }
+    
+    // Fast input reader
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader() {
+            br = new BufferedReader(new InputStreamReader(System.in));
+        }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens()) {
+                String line = br.readLine();
+                if (line == null) return null;
+                st = new StringTokenizer(line);
+            }
+            return st.nextToken();
+        }
+        int nextInt() throws IOException {
+            return Integer.parseInt(next());
+        }
+    }
+}
+```
+
+Explanation of the solution:
+
+1. **Flattening input in one pass**  
+   We allocate a fixed array `data[300000]` (the sum of all piles does not exceed \(3\cdot10^5\)).  As we read each test’s \(n\) and then its \(n\) pile‐sizes, we append them into `data[]` at position `idx`, tracking `offsets[ti]` and `ns[ti]`.
+
+2. **Tracking `maxA`**  
+   While reading each pile size `a`, we update `maxA = max(maxA, a)`.  After input, `maxA` is the largest pile size.
+
+3. **Linear sieve for `spf[]` and prime counts `pi[]`**  
+   We run a classic linear sieve up to `N = maxA`.  For each `i`:
+   - If `spf[i] == 0`, then `i` is prime, so we set `spf[i]=i` and append `i` to the `primes` list.
+   - We set `pi[i] = pi[i-1] + (spf[i]==i ? 1 : 0)`, so `pi[x]` becomes the number of primes \(\le x\).
+   - Then for each prime `p` in `primes` (in ascending order), we break if `p > spf[i]` or `i*p > N`; otherwise we set `spf[i*p] = p`.  
+
+   This runs in \(O(N)\) time.
+
+4. **Computing each pile’s Grundy in O(1)**  
+   By the known result:
+   - `G(1) = 1`,
+   - `G(a) = 0` if `a` is even \(\ge2\),
+   - `G(a) = pi[ spf[a] ]` if `a` is odd and \(>1\).
+
+5. **Nim‐XOR and output**  
+   For each test, we XOR all its piles’ Grundy values.  If the XOR is nonzero, Alice wins; otherwise Bob wins.  We accumulate the answers in a `StringBuilder` and print them at the end for fast I/O.
+
+This solution is \(O(\max A + \sum n)\) time and \(O(\max A + \sum n)\) memory, easily fitting within the problem limits.

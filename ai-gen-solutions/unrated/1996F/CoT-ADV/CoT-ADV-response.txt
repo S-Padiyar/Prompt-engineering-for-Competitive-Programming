@@ -1,0 +1,221 @@
+**Problem Restatement**
+
+We have \(n\) piles, each pile \(i\) characterized by two positive integers \(a_i\) (its current “value”) and \(b_i\) (how much the value decreases each time we pick from that pile). We start with a total score of 0 and we are allowed exactly \(k\) picks. In each pick we:
+
+1. Choose a pile \(i\).
+2. Add its current value \(a_i\) to our total score.
+3. Decrease \(a_i \leftarrow \max(0,\,a_i - b_i)\).
+
+We want to maximize our total score after exactly \(k\) picks. Even if a pile’s value becomes zero, we can keep picking it (contributing \(0\) each time), but of course that never increases the score.
+
+**Input**
+
+- The first line: \(t\), number of test cases.
+- Each test case consists of:
+  - A line with \(n\) and \(k\).
+  - A line with \(a_1,a_2,\dots,a_n\).
+  - A line with \(b_1,b_2,\dots,b_n\).
+
+Constraints:
+
+- \(1\le t\le 1000\).
+- Sum of all \(n\) across test cases \(\le 2\cdot10^5\).
+- \(1\le n\le 2\cdot 10^5\), \(1\le k\le 10^9\).
+- \(1\le a_i,b_i\le 10^9\).
+
+**Output**
+
+For each test case, print the maximum total score achievable after \(k\) picks.
+
+---
+
+**Key Observations and Solution Outline**
+
+1. **Finite positive contributions.**  
+   Each pile \(i\) yields a decreasing arithmetic sequence until it hits 0:
+   \[
+     a_i,\;(a_i - b_i),\;(a_i - 2b_i),\;\dots
+   \]
+   The number of strictly positive terms from pile \(i\) is 
+   \[
+     L_i = \left\lceil \frac{a_i}{b_i}\right\rceil,
+   \]
+   after which all picks from that pile contribute zero.
+
+2. **We only really care about the top \(k\) values** among all these sequences (padding with zeros thereafter if \(k\) exceeds the total number of positive terms).
+
+3. **Binary search on the “value threshold” \(v\).**  
+   Define
+   \[
+     C(x) = \sum_{i=1}^n \Bigl[\max(0,\;\lfloor (a_i - x)/b_i\rfloor + 1)\Bigr]
+   \]
+   which is the count of all terms in all piles that are \(\ge x\).  Notice:
+   - If \(C(x) \ge k,\) then there are at least \(k\) picks of value \(\ge x\).
+   - If \(C(x) < k,\) there are fewer than \(k\) picks of value \(\ge x\).
+
+   We binary‐search for the largest \(v\) such that \(C(v)\ge k\).  Call that \(v^*\).
+
+4. **Splitting the picks**  
+   - Let
+     \[
+       \text{cnt\_gt} = C(v^* + 1)
+     \]
+     = number of picks strictly greater than \(v^*\).
+   - Then we will take exactly \(\text{cnt\_gt}\) picks all of which exceed \(v^*\), and the remaining \(k - \text{cnt\_gt}\) picks will each be exactly \(v^*\).
+
+5. **Compute the sum of the “> \(v^*\)” picks** efficiently:
+   For each pile \(i\), let
+   \[
+     c_i = \max\bigl(0,\;\lfloor (a_i - (v^*+1))/b_i\rfloor + 1\bigr).
+   \]
+   Those \(c_i\) picks from pile \(i\) are exactly the terms
+   \[
+     a_i,\;a_i - b_i,\;a_i - 2b_i,\;\dots,\;a_i - (c_i-1)b_i,
+   \]
+   all of which are \(> v^*\).  Their sum is
+   \[
+     c_i\cdot a_i \;-\; b_i\,\frac{c_i(c_i-1)}{2}.
+   \]
+   Sum these over all \(i\) to get the total of the “> \(v^*\)” picks.
+
+6. **Final answer**  
+   \[
+     \text{answer} = \sum_{i=1}^n\Bigl[c_i\,a_i \;-\; b_i\,\tfrac{c_i(c_i-1)}{2}\Bigr]
+                     \;+\;(k - \text{cnt\_gt})\,v^*.
+   \]
+
+7. **Edge case**  
+   If the total positive terms \(\sum L_i \le k\), then we simply take *all* positive arithmetic terms and then the rest are zeros.  We can sum each pile’s arithmetic sum in closed‐form:
+   \[
+     \sum_{j=0}^{L_i-1} \bigl(a_i - jb_i\bigr)
+     \;=\; L_i\cdot\frac{a_i + \bigl(a_i - (L_i-1)b_i\bigr)}{2}.
+   \]
+
+**Time Complexity**
+
+- Each test:
+  - Precompute \(L_i\) and total positive terms in \(O(n)\).
+  - Possibly do one binary‐search over values \(1\ldots \max a_i\) (about 30 steps), each step computing \(C(\cdot)\) in \(O(n)\).  So \(O(n\log(\max a_i))\).
+  - Then one more pass \(O(n)\) to compute the final sum.  
+- Overall, since \(\sum n \le 2\cdot10^5\), this runs in about \(2\times10^5\cdot 32\approx 6.4\times10^6\) operations plus overhead, easily within the time limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.StringTokenizer;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        // Fast input/output
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+        int t = Integer.parseInt(br.readLine().trim());
+
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+
+            long[] a = new long[n], b = new long[n];
+            st = new StringTokenizer(br.readLine());
+            long maxA = 0;
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+                if (a[i] > maxA) maxA = a[i];
+            }
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                b[i] = Long.parseLong(st.nextToken());
+            }
+
+            // 1) Compute total strictly positive picks: L_i = ceil(a_i/b_i).
+            long totalPositivePicks = 0;
+            long sumAllPositive = 0;
+            for (int i = 0; i < n; i++) {
+                long Li = (a[i] + b[i] - 1) / b[i]; // ceil(a_i / b_i)
+                totalPositivePicks += Li;
+                // Sum of that arithmetic sequence:
+                // first = a[i], last = a[i] - (Li-1)*b[i], count = Li
+                long lastVal = a[i] - (Li - 1) * b[i];
+                sumAllPositive += Li * (a[i] + lastVal) / 2;
+            }
+
+            // If k is larger or equal, we take all positive picks + zeros
+            if (totalPositivePicks <= k) {
+                out.println(sumAllPositive);
+                continue;
+            }
+
+            // 2) Binary search for threshold v such that C(v) >= k > C(v+1)
+            long lo = 1, hi = maxA;
+            while (lo < hi) {
+                long mid = lo + (hi - lo + 1) / 2;
+                if (countAtLeast(mid, a, b) >= k) {
+                    lo = mid;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            long v = lo;
+
+            // 3) Count how many picks strictly greater than v
+            long cntGreater = countAtLeast(v + 1, a, b);
+
+            // 4) Compute sum of all picks > v
+            //    For each i, we take c_i = countAtLeast(v+1) from pile i.
+            //    Their sum is c_i*a[i] - b[i]*c_i*(c_i-1)/2
+            long sumGreater = 0;
+            for (int i = 0; i < n; i++) {
+                if (a[i] > v) {
+                    long ci = (a[i] - (v + 1)) / b[i] + 1;
+                    // sum of ci terms: a[i], a[i]-b[i], ..., a[i]-(ci-1)*b[i]
+                    sumGreater += ci * a[i] - b[i] * (ci * (ci - 1) / 2);
+                }
+            }
+
+            // 5) The remaining (k - cntGreater) picks each contribute exactly v
+            long remaining = k - cntGreater;
+            long answer = sumGreater + remaining * v;
+
+            out.println(answer);
+        }
+        out.flush();
+        out.close();
+    }
+
+    /**
+     * Count how many terms across all piles are >= x.
+     * That is, for each i, if a[i] < x => 0. Else floor((a[i]-x)/b[i]) + 1.
+     */
+    private static long countAtLeast(long x, long[] a, long[] b) {
+        long cnt = 0;
+        for (int i = 0; i < a.length; i++) {
+            if (a[i] >= x) {
+                cnt += (a[i] - x) / b[i] + 1;
+            }
+        }
+        return cnt;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. We first check if we can exhaust all *positive* contributions in ≤ \(k\) picks (i.e.\ \(\sum L_i \le k\)).  If so, the answer is just the sum of all these positive arithmetic sequences.
+
+2. Otherwise, we binary‐search the *value threshold* \(v\) such that there are at least \(k\) picks of value \(\ge v\), but fewer than \(k\) picks of value \(\ge v+1\).
+
+3. Let \(\text{cntGreater} = C(v+1)\), the count of strictly better picks (> \(v\)).  We take them all.  The remainder \((k - \text{cntGreater})\) picks must all have value exactly \(v\), by definition of \(v\).
+
+4. We sum the “> \(v\)” picks by, for each pile \(i\), taking the first 
+   \[
+     c_i = \bigl\lfloor (a_i - (v+1))/b_i\bigr\rfloor + 1
+   \]
+   terms, whose closed‐form sum of an arithmetic progression is
+   \[
+     c_i\,a_i \;-\; b_i\,\frac{c_i(c_i-1)}{2}.
+   \]
+   Then add \((k - \text{cntGreater}) \times v\).
+
+This runs in \(O\bigl(n\log(\max a_i)\bigr)\) per test, which is efficient for \(\sum n \le 2\cdot 10^5\).

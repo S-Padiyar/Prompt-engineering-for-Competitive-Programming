@@ -1,0 +1,172 @@
+**Analysis**
+
+We have an array **a** which, in the statement, is actually a permutation of \(\{1,2,\dots,n\}\).  We must sum over **all** subsets \(S\subseteq \{1,2,\dots,n\}\) the quantity
+
+\[
+  \mathrm{MEX}(S,\,|S|+1),
+\]
+
+where \(\mathrm{MEX}(S,k)\) is the \(k\)-th smallest positive integer not in the set \(S\).
+
+Let \(|S|=m\).  We want
+\[
+  \sum_{S:|S|=m}\mathrm{MEX}(S,\,m+1),
+  \quad m=0,1,2,\dots,n.
+\]
+Finally we sum those for \(m=0\) to \(n\).
+
+---
+
+### 1.  Splitting into two regimes
+
+1.  **Small** \(m\), namely \(m\le t\) where \(t=\lfloor (n-1)/2\rfloor\).  
+    In that range one can show the \((m+1)\)-th missing integer falls **still** within \(\{1,2,\dots,n\}\).  A direct combinatorial count yields the contribution
+    \[
+      \sum_{m=0}^{t}
+      \sum_{v=m+1}^{2m+1}
+        v \,\binom{v-1}{m}\,\binom{\,n-v\,}{\,2m+1-v\,}.
+    \]
+    Here \(v\) is the actual value of that \((m+1)\)-th missing integer, and the binomial factors count how to choose the subset so that exactly \(m\) of the numbers below \(v\) are missing, \(v\) itself is missing, and the remainder of the subset lives above \(v\).
+
+2.  **Large** \(m\), namely \(m>t\).  
+    One shows in this case the \((m+1)\)-th missing integer is simply \(\;2m+1\;\) (it “escapes” beyond \(n\)).  There are \(\binom{n}{m}\) subsets of size \(m\), so the total from these sizes is
+    \[
+      \sum_{m=t+1}^{n}\binom{n}{m}\,(2m+1).
+    \]
+
+Hence
+\[
+  \mathrm{MEOW}(a)
+  = \underbrace{
+    \sum_{m=0}^{t}\,
+    \sum_{v=m+1}^{2m+1}
+      v\,\binom{v-1}{m}\,\binom{n-v}{2m+1-v}
+  }_{\text{small }m}
+  \;+\;
+  \underbrace{
+    \sum_{m=t+1}^{n}\binom{n}{m}\,(2m+1)
+  }_{\text{large }m}\,.
+\]
+
+All arithmetic is done modulo \(10^9+7\).  We precompute factorials and inverse‐factorials up to \(n_{\max}=5000\) so that each binomial \(\binom{x}{y}\) can be computed in \(O(1)\).  The total time per test is
+\[
+  \sum_{m=0}^t O(m)
+  \;+\;
+  \sum_{m=t+1}^n O(1)
+  \;=\;
+  O\!\bigl(t^2 + (n-t)\bigr)
+  = O(n^2)\,,
+\]
+which is fine under the constraint \(\sum n^2\le2.5\times10^7\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+    static int[] fact, invFact;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(br.readLine().trim());
+        int[] ns = new int[t];
+        int maxN = 0;
+        for (int i = 0; i < t; i++) {
+            ns[i] = Integer.parseInt(br.readLine().trim());
+            if (ns[i] > maxN) maxN = ns[i];
+        }
+
+        // Precompute factorials and inverse factorials up to maxN
+        fact = new int[maxN + 1];
+        invFact = new int[maxN + 1];
+        fact[0] = 1;
+        for (int i = 1; i <= maxN; i++) {
+            fact[i] = (int)((long)fact[i - 1] * i % MOD);
+        }
+        invFact[maxN] = modPow(fact[maxN], MOD - 2);
+        for (int i = maxN; i >= 1; i--) {
+            invFact[i - 1] = (int)((long)invFact[i] * i % MOD);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (int n : ns) {
+            sb.append(computeMEOW(n)).append('\n');
+        }
+        System.out.print(sb);
+    }
+
+    /**
+     * Compute MEOW for a permutation of size n.
+     */
+    static int computeMEOW(int n) {
+        long ans = 0;
+        int t = (n - 1) / 2;  // floor((n-1)/2)
+
+        // 1) small m part
+        for (int m = 0; m <= t; m++) {
+            // v runs from m+1 to 2m+1
+            for (int v = m + 1; v <= 2 * m + 1; v++) {
+                // term = v * C(v-1, m) * C(n-v, 2m+1-v)
+                long c1 = binom(v - 1, m);
+                long c2 = binom(n - v, 2 * m + 1 - v);
+                long term = v;
+                term = (term * c1) % MOD;
+                term = (term * c2) % MOD;
+                ans = (ans + term) % MOD;
+            }
+        }
+
+        // 2) large m part
+        for (int m = t + 1; m <= n; m++) {
+            long c = binom(n, m);
+            long term = c * (2L * m + 1) % MOD;
+            ans = (ans + term) % MOD;
+        }
+
+        return (int) ans;
+    }
+
+    /**
+     * Fast binomial coefficient nCk modulo MOD.
+     * Returns 0 if k<0 or k>n.
+     */
+    static long binom(int n, int k) {
+        if (k < 0 || k > n) return 0;
+        return ((long)fact[n] * invFact[k] % MOD) * invFact[n - k] % MOD;
+    }
+
+    /**
+     * Fast exponentiation: a^e % MOD.
+     */
+    static int modPow(long a, long e) {
+        long res = 1, base = a % MOD;
+        while (e > 0) {
+            if ((e & 1) != 0) res = (res * base) % MOD;
+            base = (base * base) % MOD;
+            e >>= 1;
+        }
+        return (int) res;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Factorials & Inverses**  
+   We build `fact[i] = i! % MOD` for \(0\le i\le n_{\max}\).  
+   Then `invFact[n] = (n!)^{-1} mod` is computed via Fermat’s little‐theorem, and we fill the rest downward by  
+   \[
+     \mathrm{invFact}[i-1] = \mathrm{invFact}[i]\times i \mod.
+   \]
+
+2. **Summation Split**  
+   - For \(m\le t=\lfloor(n-1)/2\rfloor\), the \((m+1)\)-th missing integer still lies in \(\{1,\dots,n\}\).  We count exactly how many subsets of size \(m\) have that missing integer equal to \(v\), multiply by \(v\), and sum \(v\) from \(m+1\) to \(2m+1\).  
+   - For \(m>t\), it can be shown the \((m+1)\)-th missing integer is simply \(2m+1\), so each subset of size \(m\) contributes \(2m+1\), and there are \(\binom{n}{m}\) such subsets.
+
+3. **Complexity**  
+   Each test runs in \(O(n^2)\).  Since \(\sum n^2\le2.5\times10^7\), it fits the time limit.
+
+This solves “Ultra-Meow” in \(O(n^2)\) time per test, with all output taken modulo \(10^9+7\).

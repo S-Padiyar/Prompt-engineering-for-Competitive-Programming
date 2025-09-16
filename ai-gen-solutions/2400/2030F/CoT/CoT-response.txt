@@ -1,0 +1,213 @@
+**Analysis**
+
+We have an array \(a[1..n]\) and many queries of the form “is the subarray \(a[\ell..r]\) ‘orangutan‐approved’”?  One can show (and the CF editorial does) that being “orangutan‐approved” is *equivalent* to the condition that in that subarray, if you look at each value \(x\) that appears, its first and last occurrences in the subarray define an interval \([f_x,\;L_x]\), and *no two of these intervals may cross*.  In interval‐language, “crossing” means
+
+```
+f_x < f_y ≤ L_x < L_y
+```
+
+for two distinct values \(x\neq y\).  Equivalently, the family of intervals must be *laminar* (they must be either disjoint or one contained in the other).
+
+Thus each subarray is good if and only if the intervals \(\{[f_x,L_x]\}\) are laminar.  Equivalently, there is *no* pair of intervals that cross.
+
+We must answer up to \(2\cdot10^5\) queries on up to \(2\cdot10^5\) elements in total over all tests, so we need something close to \(O((n+q)\log n)\).  A neat way is:
+
+ 1.  **Two‐pointer sweep** to compute, for every starting index \(\ell\), the minimal “bad” right endpoint:  
+    Let \(\mathrm{badR}[\ell]\) be the smallest \(r\) such that \([\ell..r]\) *is not* laminar (i.e.\ has a crossing).  If no such \(r\le n\) exists, set \(\mathrm{badR}[\ell]=n+1\).
+
+ 2.  Once we have \(\mathrm{badR}[\ell]\), any query \([\ell..r]\) is good iff
+     
+     \[
+       r < \mathrm{badR}[\ell].
+     \]
+
+To do (1) in \(O(n\log n)\) we maintain a sliding window \([\ell..r]\) with \(\ell\) going from \(1\) to \(n\) and \(r\) monotonically increasing.  We keep a balanced‐BST (in Java, a `TreeMap`) of all *current* intervals \([f_x,L_x]\) for the values \(x\) that appear in the window.  We also keep, for each value \(x\), an ordered set of its positions in the window (so we can recompute \(f_x\) and \(L_x\) in \(O(\log n)\)).
+
+-  **Adding** one more element at position \(r+1\):  we figure out how the interval for its value \(x\) would change from \([f_x,L_x]\) to \([\min(f_x,r+1),\,\max(L_x,r+1)]\).  
+   We remove the old interval (if any), check *just* its two neighbors in the `TreeMap` to see whether the *new* interval would cross either neighbor.  
+   -  If there *is* a crossing, we roll back and refuse to increment \(r\), so we stop and set `badR[ℓ] = r+1`.  
+   -  Otherwise we commit the new interval, insert it in the `TreeMap`, and actually increment \(r\).
+
+-  **Removing** the left end \(\ell\) (when we move \(\ell\to \ell+1\)):  we simply remove \(\ell\) from the position‐set of its value, recompute that value’s new \([f_x,L_x]\), delete the old interval and insert the (possibly smaller) new one.  *Deletions cannot create a new crossing* once the window was clean, so we do **not** re‐check for crossing on removals.
+
+Since \(r\) only moves from \(1\) to \(n\) one way, and \(\ell\) also only moves one way, there are \(O(n)\) additions and \(O(n)\) deletions.  Each update uses an \(O(\log n)\) map or tree‐set operation, for an overall \(O(n\log n)\).  Then each query is answered in \(O(1)\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int INF = 1_000_000_000;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        BufferedWriter out = new BufferedWriter(new OutputStreamWriter(System.out));
+        StringTokenizer tok = new StringTokenizer(in.readLine());
+        int t = Integer.parseInt(tok.nextToken());
+
+        while (t-- > 0) {
+            tok = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(tok.nextToken());
+            int q = Integer.parseInt(tok.nextToken());
+
+            int[] a = new int[n+1];
+            tok = new StringTokenizer(in.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Integer.parseInt(tok.nextToken());
+            }
+
+            // We will compute badR[ℓ] = smallest r where [ℓ..r] has a crossing,
+            // or n+1 if none.
+            int[] badR = new int[n+2];
+
+            // For each value x in [1..n], we keep a TreeSet of its positions
+            // currently in the window [ℓ..r].
+            @SuppressWarnings("unchecked")
+            TreeSet<Integer>[] pos = new TreeSet[n+1];
+            for (int i = 1; i <= n; i++) {
+                pos[i] = new TreeSet<>();
+            }
+
+            // fPos[x], lPos[x] = first and last positions of x in the window,
+            // or 0 if x is not present.
+            int[] fPos = new int[n+1], lPos = new int[n+1];
+
+            // A map from interval‐start → interval‐end, for all x in window.
+            // Holds all [fPos[x]..lPos[x]].
+            TreeMap<Integer,Integer> intervals = new TreeMap<>();
+
+            // A small helper to detect a “crossing” of two intervals.
+            // [f1..l1] crosses [f2..l2] iff
+            //   f1 < f2 <= l1 < l2.
+            BiPredicate<int[], int[]> cross = (i1, i2) -> 
+                      i1[0] < i2[0] && i2[0] <= i1[1] && i1[1] < i2[1];
+
+            int r = 0;
+            // Slide ℓ from 1..n
+            for (int ℓ = 1; ℓ <= n; ℓ++) {
+                // Try to expand r as far as we can while keeping the window
+                // [ℓ..r+1] laminar.
+                while (r < n) {
+                    int p = r + 1;
+                    int x = a[p];
+
+                    // old interval of x:
+                    int oldCount = pos[x].size();
+                    int oldF = fPos[x], oldL = lPos[x];
+
+                    // new count, new interval if we insert p:
+                    int newF = oldCount == 0 ? p : Math.min(oldF, p);
+                    int newL = oldCount == 0 ? p : Math.max(oldL, p);
+
+                    // remove the old interval of x (if any)
+                    if (oldCount > 0) {
+                        intervals.remove(oldF);
+                    }
+
+                    // check crossing with neighbors
+                    boolean conflict = false;
+                    // check next
+                    Map.Entry<Integer,Integer> nxt = intervals.ceilingEntry(newF);
+                    if (nxt != null) {
+                        int[] Inew = {newF, newL};
+                        int[] Inxt = {nxt.getKey(), nxt.getValue()};
+                        if (cross.test(Inew, Inxt)) {
+                            conflict = true;
+                        }
+                    }
+                    // check previous
+                    if (!conflict) {
+                        Map.Entry<Integer,Integer> prv = intervals.lowerEntry(newF);
+                        if (prv != null) {
+                            int[] Inew = {newF, newL};
+                            int[] Iprv = {prv.getKey(), prv.getValue()};
+                            if (cross.test(Iprv, Inew)) {
+                                conflict = true;
+                            }
+                        }
+                    }
+
+                    if (conflict) {
+                        // roll back removing the old interval
+                        if (oldCount > 0) {
+                            intervals.put(oldF, oldL);
+                        }
+                        break;
+                    }
+
+                    // commit: insert the new interval
+                    intervals.put(newF, newL);
+                    pos[x].add(p);
+                    fPos[x] = newF;
+                    lPos[x] = newL;
+                    r++;
+                }
+
+                // at this point [ℓ..r] is laminar but [ℓ..(r+1)] is not (or r=n).
+                badR[ℓ] = r + 1;
+
+                // now remove ℓ from the window to move ℓ→ℓ+1
+                {
+                    int x = a[ℓ];
+                    int oldCount = pos[x].size();
+                    int oldF = fPos[x], oldL = lPos[x];
+
+                    // remove old interval
+                    if (oldCount > 0) {
+                        intervals.remove(oldF);
+                    }
+                    // remove the position ℓ
+                    pos[x].remove(ℓ);
+
+                    // recompute the new interval of x
+                    int newCount = oldCount - 1;
+                    if (newCount == 0) {
+                        fPos[x] = lPos[x] = 0;
+                    } else {
+                        int nf = pos[x].first();
+                        int nl = pos[x].last();
+                        fPos[x] = nf;
+                        lPos[x] = nl;
+                        intervals.put(nf, nl);
+                    }
+                }
+            }
+
+            // answer queries in O(1) each
+            for (int i = 0; i < q; i++) {
+                tok = new StringTokenizer(in.readLine());
+                int L = Integer.parseInt(tok.nextToken());
+                int R = Integer.parseInt(tok.nextToken());
+                // good iff R < badR[L]
+                out.write((R < badR[L]) ? "YES\n" : "NO\n");
+            }
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of the core ideas**
+
+1.  A subarray is orangutan‐approved *if and only if* the intervals  
+    \[
+      [f_x,\,L_x]\quad\bigl( x\in S \bigr)
+    \]
+    (where \(f_x\), \(L_x\) are the first and last occurrence of value \(x\) in the subarray)  
+    form a *laminar family* (i.e.\ no two of these intervals “cross”: one starts inside the other but finishes outside it).
+
+2.  We precompute for **every** starting index \(\ell\) the *smallest* \(r\) (call it `badR[ℓ]`) for which \([\ell..r]\) *fails* laminarity.  
+    -  If none fails for \(r\le n\), we set `badR[ℓ] = n+1`.  
+
+3.  Then each query \([\ell..r]\) is “YES”⇔ \(r < \mathrm{badR}[\ell]\).
+
+4.  To build `badR[⋅]` in \(O(n\log n)\), we use the classic two‐pointer (sliding window) trick:
+    -  We maintain a window \([\ell..r]\) that is always laminar.
+    -  We try to **increment** \(r\) as far as we can until adding \(a[r+1]\) would *cross* an existing interval.
+    -  Checking for a new crossing requires only comparing the *one* new interval with its two neighbours in the map of intervals (a constant number of checks), each in \(O(\log n)\).
+    -  Then we record `badR[ℓ] = r+1`, remove index \(\ell\) from the window (updates in \(O(\log n)\) too), and advance \(\ell\).
+
+Since each index enters and leaves the window exactly once, the total number of interval‐insert/delete operations is \(O(n)\), each costing \(O(\log n)\).  Hence we get \(O(n\log n + q)\) overall, which is fast enough for \(n,q\le2\cdot10^5\).

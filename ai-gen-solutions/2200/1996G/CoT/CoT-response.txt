@@ -1,0 +1,225 @@
+**Analysis**
+
+We have \(n\) houses arranged in a cycle (house \(1\) adjacent to \(2\), \(2\) to \(3\), …, \(n-1\) to \(n\), and \(n\) back to \(1\)).  We choose a subset of those cycle‐edges to “maintain.”  There are \(m\) friendship‐pairs \((a,b)\).  For each friendship, the two houses \(a,b\) must remain connected in the subgraph of maintained edges.
+
+Because we only need each friendship‐component to be internally connected (we do **not** need the *entire* graph to be connected), each connected component of the friendship‐graph can be treated separately.  Let one friendship‐component span the set of vertices
+\[
+\{v_1,v_2,\dots,v_k\}
+\]
+(in sorted order around the cycle).  To keep those \(k\) vertices connected on the cycle, one can pick a minimal contiguous arc of cycle‐edges that covers all of them.  Concretely:
+
+1.  Sort the vertices \(v_1< v_2<\cdots<v_k\).
+2.  Form the \(k\) gaps (along the cycle)  
+   \[
+     d_i = v_{i+1}-v_i\quad (i=1\ldots k-1), 
+     \quad d_k = (v_1 + n) - v_k
+   \]
+   (the last one wraps from \(v_k\) back to \(v_1\)).
+3.  Let \(d_{\rm max}\) be the largest of these \(k\) gaps.  Then the *complementary* arc (the cycle minus that largest gap) is the minimal contiguous set of edges connecting all \(v_i\).  Its size is
+   \[
+      n - d_{\rm max}.
+   \]
+   We also record where that arc *starts* on the cycle so that we can later take the union across different components.
+
+Thus each friendship‐component yields one (possibly wrapping) interval of cycle‐edges of length \(n-d_{\max}\).  Since distinct friendship‐components do not need paths between them, we simply take the union of those arcs (over all components) and count how many distinct edges appear in that union.
+
+The union of intervals on a cycle is handled by breaking any wrapping interval into two intervals on \([1\ldots n]\) (one at the high end, one at the low end), collecting *all* these intervals, sorting by start, and then sweeping to compute the total covered length.
+
+Overall complexity:
+– Building DSU and unioning \(m\) pairs:  \(O(m\alpha(n))\)  
+– For each node (there are \(\le n\) nodes in friendships) finding its root and gathering it: \(O(n\alpha(n))\)  
+– For each component sorting its \(k\) nodes: sum of all \(k\) is \(\le 2m\), so \(O(m\log m)\) in the worst case  
+– Collecting up to \(2\) intervals per component \(\implies O(m)\)  
+– Sorting all intervals \(\implies O(m\log m)\)  
+– Final union‐length sweep \(\implies O(m)\)
+
+Since \(\sum n,\sum m\le2\cdot10^5\) over all test cases, this runs easily in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class DSU {
+        int[] p, r;
+        DSU(int n) {
+            p = new int[n+1];
+            r = new int[n+1];
+            for(int i = 1; i <= n; i++) {
+                p[i] = i;
+                r[i] = 0;
+            }
+        }
+        int find(int x) {
+            if (p[x] == x) return x;
+            return p[x] = find(p[x]);
+        }
+        boolean union(int a, int b) {
+            a = find(a);
+            b = find(b);
+            if (a == b) return false;
+            if (r[a] < r[b]) {
+                p[a] = b;
+            } else if (r[b] < r[a]) {
+                p[b] = a;
+            } else {
+                p[b] = a;
+                r[a]++;
+            }
+            return true;
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(br.readLine().trim());
+        StringTokenizer st;
+
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+
+            DSU dsu = new DSU(n);
+            boolean[] involved = new boolean[n+1];
+
+            // Read friendships and union in DSU
+            List<int[]> edges = new ArrayList<>(m);
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                int a = Integer.parseInt(st.nextToken());
+                int b = Integer.parseInt(st.nextToken());
+                dsu.union(a, b);
+                involved[a] = true;
+                involved[b] = true;
+                edges.add(new int[]{a, b});
+            }
+
+            // Gather vertices of each DSU component
+            List<List<Integer>> comp = new ArrayList<>(n+1);
+            for(int i = 0; i <= n; i++) {
+                comp.add(new ArrayList<>());
+            }
+            for (int v = 1; v <= n; v++) {
+                if (!involved[v]) continue;
+                int r = dsu.find(v);
+                comp.get(r).add(v);
+            }
+
+            // Build the list of edge-intervals on the cycle we must keep
+            List<int[]> intervals = new ArrayList<>();
+
+            for (int root = 1; root <= n; root++) {
+                List<Integer> verts = comp.get(root);
+                if (verts.size() < 2) continue; // no friendships in this component
+
+                Collections.sort(verts);
+                int k = verts.size();
+
+                // Compute the k gaps around the cycle
+                int maxGap = -1, maxIdx = -1;
+                for (int i = 0; i < k-1; i++) {
+                    int gap = verts.get(i+1) - verts.get(i);
+                    if (gap > maxGap) {
+                        maxGap = gap;
+                        maxIdx = i;
+                    }
+                }
+                // wrapping gap from last back to first
+                int wrapGap = (verts.get(0) + n) - verts.get(k-1);
+                if (wrapGap > maxGap) {
+                    maxGap = wrapGap;
+                    maxIdx = k-1;
+                }
+
+                // The minimal connecting arc is the complement of that largest gap:
+                // it starts at verts[(maxIdx+1)%k], ends at verts[maxIdx], length = n - maxGap
+                int startVertex = verts.get((maxIdx+1) % k);
+                int endVertex   = verts.get(maxIdx);
+                int length = (endVertex - startVertex + n) % n;
+                if (length == 0) {
+                    // Actually for a component of size >=2, length must >=1
+                    continue;
+                }
+                // The edges in that arc are numbered startEdge..(startEdge+length-1) mod n,
+                // where edge i is between i and i+1 (and edge n is between n and 1).
+                int startEdge = startVertex;
+                int endEdge   = (startEdge + length - 1) % n;
+                if (endEdge == 0) endEdge = n;
+
+                // If this interval wraps, split it into two
+                if (startEdge <= endEdge) {
+                    intervals.add(new int[]{startEdge, endEdge});
+                } else {
+                    intervals.add(new int[]{startEdge, n});
+                    intervals.add(new int[]{1, endEdge});
+                }
+            }
+
+            // Sort all intervals by their left endpoint
+            intervals.sort(Comparator.comparingInt(a -> a[0]));
+
+            // Sweep to compute the total union length
+            long ans = 0;
+            int curL = -1, curR = -1;
+            for (int[] iv : intervals) {
+                int L = iv[0], R = iv[1];
+                if (curR < 0) {
+                    // first interval
+                    curL = L;
+                    curR = R;
+                    ans += (R - L + 1);
+                } else if (L > curR + 1) {
+                    // disjoint
+                    curL = L;
+                    curR = R;
+                    ans += (R - L + 1);
+                } else {
+                    // overlapping or just touching
+                    if (R > curR) {
+                        ans += (R - curR);
+                        curR = R;
+                    }
+                }
+            }
+
+            System.out.println(ans);
+        }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1.  **DSU (Union‐Find)**  
+    We union each friendship \((a,b)\).  After that, each DSU “root” represents one connected component of the friendship graph.
+
+2.  **Gather vertices per component**  
+    We only care about vertices that appear in some friendship.  We loop over \(v=1\ldots n\), and if `involved[v]` is `true`, we push \(v\) into a list for its DSU root.
+
+3.  **Minimal arc for each component**  
+    Suppose a component’s vertices (on the cycle) are
+    \[
+       v_1 < v_2 < \cdots < v_k.
+    \]
+    The gaps along the cycle are
+    \[
+       d_i = v_{i+1}-v_i \quad (i=1\ldots k-1),
+       \quad
+       d_k = (v_1 + n) - v_k.
+    \]
+    The largest gap \(d_{\max}\) we *omit*, and keep the *complementary* arc of length
+    \[
+       n - d_{\max}.
+    \]
+    That complementary arc is a contiguous block of edges on the cycle connecting all \(v_i\).  
+
+4.  **Splitting wrap‐around**  
+    If that chosen arc wraps past edge \(n\) back to \(1\), we split it into two intervals \([s,n]\) and \([1,e]\).  Otherwise we record a single interval \([s,e]\).
+
+5.  **Union of all intervals**  
+    Finally we have up to \(2\) intervals per friendship‐component.  We sort them by left endpoint, sweep them to compute the union length in \(O(M\log M)\), where \(M\) is the total number of intervals (at most \(2m\)).  
+
+The total number of kept edges is exactly the size of this union.

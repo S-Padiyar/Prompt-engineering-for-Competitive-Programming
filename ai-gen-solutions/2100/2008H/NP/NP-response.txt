@@ -1,0 +1,210 @@
+**Analysis**
+
+We have an array a of size n, and many queries, each gives an integer x.  In one query we are allowed to repeatedly subtract x from any element that is at least x;  in effect each element \(a_i\) can end up anywhere in the set
+\[
+\{\,a_i - kx\mid k=0,1,2,\dots,\lfloor a_i/x\rfloor\}.
+\]
+In particular the _minimum_ value to which \(a_i\) can be driven is
+\[
+a_i\bmod x.
+\]
+Since we want to **minimize the median** of the final array, it is always optimal to reduce every element as far as possible.  Hence the resulting array will be
+\[
+\bigl(a_1\bmod x,\;a_2\bmod x,\;\dots,\;a_n\bmod x\bigr),
+\]
+and the answer to the query is simply the median of those remainders.  (Here the median is the \(\lfloor(n+2)/2\rfloor\)-th smallest if we index from 1.)
+
+A brute force solution for each query \(x\) would recompute all \(a_i\bmod x\) and then select the median, costing \(O(n)\) per query.  With up to \(10^5\) queries and \(n\) up to \(10^5\), this is too slow (\(10^{10}\) operations in the worst case).
+
+Instead we split the queries into
+
+ 1. **“Small”** \(x\), say \(x\le T\),  
+ 2. **“Large”** \(x\), \(x>T\),
+
+where \(T\) is chosen around \(\sqrt n\) (in the final code we use \(T=1200\)).
+
+–  For small \(x\), there are at most \(T\) distinct such queries.  We precompute
+   \[
+   f_r \;=\;\#\{\,i : a_i \bmod x = r\},\quad r=0,1,2,\dots,x-1,
+   \]
+   by a single pass over the _unique_ values of \(a_i\).  That costs \(O(n)\) per small \(x\), and since there are at most \(T\) of them, the total is \(O(Tn)\).
+
+–  For large \(x\), the division into classes modulo \(x\) has very few “blocks,” namely 
+   \(\lfloor\max(a_i)/x\rfloor+1 \le n/x +1\approx n/T\).  We do a small binary–search on the remainder
+   \(r\in[0,x-1]\) to find the smallest \(r\) whose prefix–count
+   \(\#\{\,i : a_i\bmod x\le r\}\)
+   is at least the median position.  Each such prefix–count can be computed in \(O(n/x)\) by using a global prefix–sum of the original frequencies of the \(a_i\).  A binary search costs \(O(\log x)\) steps, each step \(O(n/x)\), so about \(O((n/x)\log x)\).  Since for large \(x\), \(n/x\) is small (at most \(n/T\)), the total over all distinct large \(x\) stays around \(O\bigl(q\,\tfrac nT\log n\bigr)\), which with \(T\approx\sqrt n\) is about \(O(q\sqrt n\log n)\).  
+
+In practice with \(n\le10^5\), \(q\le10^5\), \(T=1200\) this runs comfortably in time.
+
+Below is a Java implementation using these ideas.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int SMALL = 1200;  // threshold between "small x" and "large x"
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder output = new StringBuilder();
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int q = Integer.parseInt(st.nextToken());
+
+            int[] a = new int[n];
+            st = new StringTokenizer(in.readLine());
+            int maxA = 0;
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+                if (a[i] > maxA) maxA = a[i];
+            }
+
+            // freq[v] = how many times value v appears
+            int[] freq = new int[maxA + 1];
+            for (int v : a) freq[v]++;
+
+            // build the list of distinct values
+            ArrayList<Integer> vals = new ArrayList<>();
+            for (int v = 0; v <= maxA; v++) {
+                if (freq[v] > 0) vals.add(v);
+            }
+
+            // prefix sums S[v] = number of elements <= v
+            int[] S = new int[maxA + 1];
+            S[0] = freq[0];
+            for (int v = 1; v <= maxA; v++) {
+                S[v] = S[v - 1] + freq[v];
+            }
+
+            // median position
+            int mpos = (n + 2) / 2;
+
+            // compute original median (for any x > maxA, no reduction is possible)
+            int origMedian = 0;
+            for (int v = 0; v <= maxA; v++) {
+                if (S[v] >= mpos) {
+                    origMedian = v;
+                    break;
+                }
+            }
+
+            // read all queries, mark which x appear
+            int[] queries = new int[q];
+            boolean[] seen = new boolean[maxA + q + 5]; 
+            // size is maxA+q+5 to safely cover x up to n even if n>maxA
+            int maxQ = 0;
+            for (int i = 0; i < q; i++) {
+                int x = Integer.parseInt(in.readLine().trim());
+                queries[i] = x;
+                if (!seen[x]) {
+                    seen[x] = true;
+                    if (x > maxQ) maxQ = x;
+                }
+            }
+
+            // answers[x] will hold the median-of-remainders for that x
+            int[] answers = new int[maxQ + 1];
+            Arrays.fill(answers, -1);
+
+            // special case: any x > maxA -> same as original median
+            for (int x = maxA + 1; x <= maxQ; x++) {
+                if (seen[x]) answers[x] = origMedian;
+            }
+
+            // === Handle small x ===
+            // We'll reuse a small array f[] of size SMALL to accumulate counts
+            int[] f = new int[SMALL];
+            for (int x = 1; x <= maxQ && x <= SMALL; x++) {
+                if (!seen[x]) continue;
+                if (answers[x] != -1) continue;
+                // clear f[0..x-1]
+                for (int r = 0; r < x; r++) f[r] = 0;
+                // accumulate freq[v] into remainder classes v % x
+                for (int v : vals) {
+                    int r = v % x;
+                    f[r] += freq[v];
+                }
+                // find the median remainder
+                int cum = 0, ans = 0;
+                for (int r = 0; r < x; r++) {
+                    cum += f[r];
+                    if (cum >= mpos) {
+                        ans = r;
+                        break;
+                    }
+                }
+                answers[x] = ans;
+            }
+
+            // === Handle large x ===
+            // A helper to compute how many a_i have (a_i % x) <= R
+            for (int x = 1; x <= maxQ; x++) {
+                if (!seen[x] || answers[x] != -1) continue;
+                // We'll do a binary search on r in [0..x-1]
+                int lo = 0, hi = x - 1;
+                while (lo < hi) {
+                    int mid = (lo + hi) >>> 1;
+                    // compute P(mid) = # of a_i with (a_i % x) <= mid
+                    int total = 0;
+                    for (int start = 0; start <= maxA; start += x) {
+                        int end = start + mid;
+                        if (end > maxA) end = maxA;
+                        int blockCount = S[end] - (start > 0 ? S[start - 1] : 0);
+                        total += blockCount;
+                        if (total >= mpos) break;  // early stop
+                    }
+                    if (total >= mpos) {
+                        hi = mid;
+                    } else {
+                        lo = mid + 1;
+                    }
+                }
+                answers[x] = lo;
+            }
+
+            // output the answers in the original query order
+            for (int i = 0; i < q; i++) {
+                output.append(answers[queries[i]]).append(' ');
+                // clear seen[] for reuse in the next test
+                // we only need to clear the ones we actually saw
+            }
+            output.append('\n');
+
+            // cleanup the 'seen' array for the x's we used
+            for (int i = 0; i < q; i++) {
+                seen[queries[i]] = false;
+            }
+        }
+
+        System.out.print(output);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Median of remainders**  
+   To minimize the median after arbitrary subtractions of \(x\), each element ends up as small as possible, i.e.\ at its remainder modulo \(x\).  Hence the final array is \(\{\,a_i\bmod x\}\), and the answer is just the median of those modded values.
+
+2. **Splitting "small" vs. "large" \(x\)**  
+   - If \(x\le SM\!ALL\), we may have up to \(SM\!ALL\) distinct such queries.  For each such \(x\) we build an array  
+     \[
+       f_r \;=\; \#\{\,i : a_i \bmod x = r\},\quad r=0,1,\dots,x-1
+     \]
+     by looping once over the _unique_ values of \(a\).  Then a quick prefix–scan of \(f\) locates the median remainder.
+   - If \(x>SM\!ALL\), there are few blocks of the form \([k\,x,\;k\,x + \text{(something)}]\) in the range of \(a\).  We do a small binary search on the remainder \(r\); each check  
+     \[
+       \#\{\,i : a_i\bmod x \le r\}
+     \]
+     can be done by summing at most \(\lfloor\max a_i/x\rfloor+1\) blocks via a global prefix–sum of the original frequencies.
+
+By caching each distinct \(x\) only once and then re-using the result for repeated queries, the total work becomes roughly
+
+- \(O(SMALL\cdot n)\) for the small-\(x\) part,
+- \(O\bigl(q\,(n/SMALL)\,\log n\bigr)\) for the large-\(x\) part,
+
+which is fast enough for \(n,q\le10^5\) when \(SMALL\approx1200\).

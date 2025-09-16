@@ -1,0 +1,78 @@
+E. Range Minimum Sum
+time limit per test4 seconds
+memory limit per test512 megabytes
+For an array [a1,a2,…,an]
+ of length n
+, define f(a)
+ as the sum of the minimum element over all subsegments. That is,
+f(a)=∑l=1n∑r=lnminl≤i≤rai.
+
+A permutation is a sequence of integers from 1
+ to n
+ of length n
+ containing each number exactly once. You are given a permutation [a1,a2,…,an]
+. For each i
+, solve the following problem independently:
+
+Erase ai
+ from a
+, concatenating the remaining parts, resulting in b=[a1,a2,…,ai−1,ai+1,…,an]
+.
+Calculate f(b)
+.
+Input
+Each test contains multiple test cases. The first line contains the number of test cases t
+ (1≤t≤105
+). Description of the test cases follows.
+
+The first line of each test case contains an integer n
+ (1≤n≤5⋅105
+).
+
+The second line of each test case contains n
+ distinct integers a1,…,an
+ (1≤ai≤n
+).
+
+It is guaranteed that the sum of n
+ over all test cases does not exceed 106
+.
+
+Output
+For each test case, print one line containing n
+ integers. The i
+-th integer should be the answer when erasing ai
+.
+
+Example
+InputCopy
+4
+1
+1
+3
+3 1 2
+5
+4 2 1 5 3
+8
+8 1 4 6 7 3 5 2
+OutputCopy
+0 
+4 7 5 
+19 21 27 17 19 
+79 100 72 68 67 80 73 80 
+Note
+In the second test case, a=[3,1,2]
+.
+
+When removing a1
+, b=[1,2]
+. f(b)=1+2+min{1,2}=4
+.
+When removing a2
+, b=[3,2]
+. f(b)=3+2+min{3,2}=7
+.
+When removing a3
+, b=[3,1]
+. f(b)=3+1+min{3,1}=5
+.

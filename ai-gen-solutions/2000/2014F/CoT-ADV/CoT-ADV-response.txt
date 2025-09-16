@@ -1,0 +1,153 @@
+First, restate the problem in our own words:
+
+We have a tree of \(n\) camps (nodes) with an initial amount of gold \(a_i\) at camp \(i\).  We may “strengthen” any subset \(S\) of camps.  Strengthening a camp \(u\) does not change its own gold, but it **subtracts** \(c\) gold from each of its neighbors (regardless of whether those neighbors are themselves strengthened or not).  After the attack, *only* the camps in \(S\) survive, and each surviving camp \(i\)'s gold has been reduced by \(c\) for **each** of its neighbors in \(S\) who was also strengthened (because every strengthened neighbor subtracts \(c\) from \(i\)).  
+
+We want to choose a subset \(S\subseteq\{1,\dots,n\}\) to maximize
+\[
+\sum_{i\in S} \bigl(a_i - c\cdot(\text{# of neighbors of }i\text{ in }S)\bigr).
+\]
+Observe that whenever an edge \((u,v)\) has both ends in \(S\), it causes a total penalty of \(2c\) (one for \(u\) losing \(c\) from \(v\)'s strengthening, and one for \(v\) losing \(c\) from \(u\)'s strengthening).  If an edge has only one end in \(S\), it contributes no penalty to any surviving node.  If neither end is in \(S\), obviously it does nothing.
+
+Since the camps form a tree, we can solve this in \(O(n)\) per test by a simple tree‐DP of two states per node \(u\):
+
+Define
+ dp0[u] = maximum total we can get from the subtree rooted at \(u\) if **we do not** strengthen \(u\),
+ dp1[u] = maximum total we can get from the subtree rooted at \(u\) if **we do** strengthen \(u\).
+
+Transitions (where we have made \(u\) the parent of all its children in a rooted tree):
+- If we do **not** strengthen \(u\), then each child \(v\) may independently be strengthened or not, with no penalty on the edge \(u\!-\!v\).  
+  \[
+    \text{dp0}[u] 
+      = \sum_{v\in \text{children}(u)} \max\bigl(\text{dp0}[v],\,\text{dp1}[v]\bigr).
+  \]
+- If we **do** strengthen \(u\), we collect \(a_u\).  But for each child \(v\), if we also strengthen \(v\), the edge \((u,v)\) siphons off a total of \(2c\) from our sum.  Equivalently:
+  \[
+    \text{dp1}[u] = a_u 
+      + \sum_{v\in \text{children}(u)} \max\bigl(\text{dp0}[v],\,\text{dp1}[v] - 2\,c \bigr).
+  \]
+At the end, the best answer for the whole tree is \(\max(\text{dp0}[1],\,\text{dp1}[1])\) if we root the tree at 1.  Note that we always allow the possibility of selecting no nodes at all (which gives total 0), so the answer never becomes negative.
+
+Because \(n\) can be up to \(2\times10^5\) over all test cases, we:
+
+- Read all test cases, 
+- For each test, build an adjacency list once,
+- Do a simple BFS to orient the tree (record a parent for each node and a BFS‐order array),
+- Then process the nodes in **reverse** BFS order (so children come before parents),
+- Compute the two DP states,
+- Output the result.
+
+All arrays are of 1‒based size \(n+1\).  We use 64‐bit `long` for all sums since \(a_i\) and \(c\) can be up to \(10^9\) and \(n\) up to \(2\times10^5\).
+
+Below is a complete Java solution.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        int t = Integer.parseInt(br.readLine().trim());
+
+        // We'll reuse these across test cases to avoid reallocation overhead.
+        // But since sum(n) <= 2e5, re-creating per test is also acceptable.
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long c = Long.parseLong(st.nextToken());
+
+            long[] a = new long[n + 1];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+
+            // Build adjacency list
+            List<Integer>[] adj = new ArrayList[n + 1];
+            for (int i = 1; i <= n; i++) {
+                adj[i] = new ArrayList<>();
+            }
+            for (int i = 0; i < n - 1; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                adj[u].add(v);
+                adj[v].add(u);
+            }
+
+            // BFS to orient the tree, record parent[] and bfsOrder[]
+            int[] parent = new int[n + 1];
+            int[] bfsOrder = new int[n];
+            int head = 0, tail = 0;
+            bfsOrder[tail++] = 1;
+            parent[1] = 0;  // root has no parent
+
+            while (head < tail) {
+                int u = bfsOrder[head++];
+                for (int v : adj[u]) {
+                    if (v == parent[u]) continue;
+                    parent[v] = u;
+                    bfsOrder[tail++] = v;
+                }
+            }
+
+            // dp0[u] = best if u is NOT strengthened
+            // dp1[u] = best if u IS strengthened
+            long[] dp0 = new long[n + 1];
+            long[] dp1 = new long[n + 1];
+
+            // Process nodes in reverse BFS order => children before parents
+            for (int idx = n - 1; idx >= 0; idx--) {
+                int u = bfsOrder[idx];
+                long best0 = 0;       // sum for dp0[u]
+                long best1 = a[u];    // start with a[u] for dp1[u]
+
+                for (int v : adj[u]) {
+                    if (v == parent[u]) continue;
+                    // If u is NOT picked, child v can be picked or not, no penalty
+                    best0 += Math.max(dp0[v], dp1[v]);
+                    // If u IS picked, picking v costs 2c on edge (u,v)
+                    best1 += Math.max(dp0[v], dp1[v] - 2L * c);
+                }
+                dp0[u] = best0;
+                dp1[u] = best1;
+            }
+
+            // The answer is the best of picking root(1) or not.
+            long answer = Math.max(dp0[1], dp1[1]);
+            // If it's negative, choosing nobody yields 0
+            if (answer < 0) answer = 0L;
+            sb.append(answer).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+Explanation of the key steps:
+
+1. **Rewriting the objective**  
+   If we select a subset \(S\), then each internal edge \((u,v)\) with both ends in \(S\) contributes a penalty of \(2c\).  Edges with only one endpoint in \(S\) do not penalize any surviving node.  Hence the total for \(S\) is
+   \[
+     \sum_{i\in S} a_i \;-\; 2c \times \bigl|\{\text{edges entirely inside }S\}\bigr|.
+   \]
+
+2. **Tree DP**  
+   - `dp0[u]` = maximum total from the subtree of \(u\) if we do **not** pick \(u\).  
+     In that case, each child \(v\) is free to be picked or not (we take the best of `dp0[v]` vs. `dp1[v]`), and no penalty arises on the edge \((u,v)\).  
+   - `dp1[u]` = maximum total from the subtree of \(u\) if we **do** pick \(u\).  
+     We get \(a_u\).  For each child \(v\), if we also pick \(v\), we must subtract \(2c\) to account for the edge penalty; hence from the child we get \(\max(\text{dp0}[v],\,\text{dp1}[v] - 2c)\).
+
+3. **Root at 1 and BFS‐ordering**  
+   We do a BFS from node 1 to record each node’s parent and an ordering of the nodes so that, when we process the array in reverse, we always see children before their parent.  That lets us fill `dp0[u]`, `dp1[u]` in one pass of \(O(n)\).
+
+4. **Answer**  
+   Finally we take \(\max(\text{dp0}[1],\;\text{dp1}[1])\).  It can never be worse than 0, because we could always choose no nodes at all.
+
+Time complexity per test:  
+- Building the graph: \(O(n)\).  
+- BFS + DP (one pass over edges): \(O(n)\).  
+
+Overall, since the sum of \(n\) over all test cases is \(\le 2\cdot10^5\), this runs in \(O(2\cdot10^5)\), easily within the 2-second time limit. Memory is \(O(n)\) to store the graph and DP arrays.

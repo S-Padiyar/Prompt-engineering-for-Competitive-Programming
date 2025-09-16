@@ -1,0 +1,123 @@
+Problem Restatement  
+We have an array a of length n. We form n cyclic shifts of a:  
+ c₁ = a₁, a₂, …, aₙ  
+ c₂ = a₂, a₃, …, aₙ, a₁  
+ ⋯  
+ cₙ = aₙ, a₁, a₂, …, aₙ₋₁  
+
+We then concatenate all these shifts in order into one big array  
+ b = c₁ ∥ c₂ ∥ … ∥ cₙ  
+whose total length is n·n.  
+
+We are asked q queries; each query gives indices l and r (1 ≤ l ≤ r ≤ n²), and asks for the sum of b[l] + b[l+1] + … + b[r].
+
+Because n can be up to 2·10⁵ (so n² up to 4·10¹⁰) and q up to 2·10⁵, we cannot actually build b (it would be of size O(n²)). We need a way to answer each query in O(1) or O(log n).
+
+Key Observation  
+Each “block” cᵢ has exactly the same multiset of elements as a, so its total sum is S = sum(a₁…aₙ).  
+If we let  
+  block = ⌊(k−1)/n⌋  (0-based count of complete blocks before position k),  
+  shift = block+1      (1-based index of the cyclic shift from which position k comes),  
+  pos   = (k−1) % n + 1  (1-based offset inside that block),  
+then the prefix sum B(k) = sum_{i=1..k} b[i] can be computed as  
+
+  B(k) = block·S  
+         + (sum of the first pos elements of the shift c_{shift}).  
+
+To get the “first pos elements of shift c_{shift}” quickly, note that c_{shift} is just the original a starting from index shift around circularly.  If we build an auxiliary array ext of length 2n so that  
+ ext[i] = a[(i–1) % n + 1],  for i=1..2n,  
+and its prefix sums P[i] = ext[1] + ext[2] + … + ext[i],  then the sum of any contiguous segment of length pos starting at ext[shift] is  
+
+  P[shift + pos – 1] – P[shift – 1].  
+
+Thus  
+  B(k) = block·S + P[shift + pos – 1] – P[shift – 1].  
+
+Then each query (l, r) is answered by  
+  answer = B(r) – B(l–1).  
+
+Complexities  
+• Preprocessing per test case:  
+  – Compute S = sum(a) in O(n)  
+  – Build ext and its prefix sums P in O(n) (ext has length 2n but that’s O(n))  
+  
+• Each query: O(1) operations to compute two B(·) and subtract.  
+  
+Total time per test case O(n + q).  Across all test cases, sum of n and sum of q are each ≤ 2·10⁵, so the solution runs in O((Σn + Σq)) ≲ 4·10⁵, easily within 2 seconds.
+
+Java Implementation  
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        // Fast input
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int q = Integer.parseInt(st.nextToken());
+
+            // Read the array a[1..n]
+            long[] a = new long[n];
+            st = new StringTokenizer(in.readLine());
+            long sumA = 0;
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+                sumA += a[i];
+            }
+
+            // Build ext[1..2n] as two copies of a, and its prefix sums P[0..2n]
+            long[] P = new long[2 * n + 1];  // P[0] = 0
+            for (int i = 1; i <= 2 * n; i++) {
+                P[i] = P[i - 1] + a[(i - 1) % n];
+            }
+
+            // Function to compute B(k) = sum_{i=1..k} b[i]
+            // Uses 0-based arithmetic internally
+            // If k==0, sum is 0
+            class Prefix {
+                long get(long k) {
+                    if (k == 0) return 0;
+                    long block = (k - 1) / n;           // number of complete blocks before
+                    long shift = block + 1;             // which cyclic shift
+                    long pos = (k - 1) % n + 1;         // how many elements in the partial block
+                    long partialSum = P[(int)(shift + pos - 1)] - P[(int)(shift - 1)];
+                    return block * sumA + partialSum;
+                }
+            }
+            Prefix pref = new Prefix();
+
+            // Answer queries
+            for (int i = 0; i < q; i++) {
+                st = new StringTokenizer(in.readLine());
+                long l = Long.parseLong(st.nextToken());
+                long r = Long.parseLong(st.nextToken());
+                long ans = pref.get(r) - pref.get(l - 1);
+                sb.append(ans).append('\n');
+            }
+        }
+
+        // Print all answers at once
+        System.out.print(sb.toString());
+    }
+}
+```
+
+Explanation of Key Parts  
+1. We never build the O(n²)-sized array b.  
+2. We note each "block" of b has length n and total sum = S = sum(a).  
+3. To find the prefix sum up to any position k in b, split it into  
+   - whole blocks: there are `(k−1)/n` full blocks each of sum S,  
+   - plus a partial block, which is simply a contiguous slice of length `pos = (k−1)%n +1` from the `shift = (k−1)/n +1` cyclic shift of a.  
+4. We store a duplicated array of length 2n so that any such slice is a single interval in the duplicated array, letting us use prefix sums to get its sum in O(1).  
+5. Each query (l, r) is answered by `B(r) − B(l−1)` in O(1).  
+
+Time Complexity  
+Preprocessing per test case: O(n)  
+Each query: O(1)  
+Total: O(Σn + Σq) ≤ O(4·10⁵), which is efficient for the given constraints.

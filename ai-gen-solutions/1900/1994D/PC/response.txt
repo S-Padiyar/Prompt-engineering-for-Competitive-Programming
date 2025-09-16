@@ -1,0 +1,155 @@
+**Analysis**
+
+We have \(n\) vertices (initially no edges) and an array \(a\) of length \(n\).  We must perform exactly \(n-1\) operations, numbered \(1,2,\dots,n-1\).  In operation \(x\), we must choose two distinct vertices \(u,v\) so that
+
+\[
+|a_u - a_v| \equiv 0 \pmod x
+\]
+
+and add the edge \((u,v)\).  At the end of all \(n-1\) operations, the graph must be connected and has exactly \(n-1\) edges, and thus must form a spanning tree (no cycles, since a connected \(n\)-vertex graph with \(n-1\) edges is a tree).
+
+Hence in *each* operation \(x\), we must add exactly one edge that joins two previously disconnected components; otherwise either we create a cycle (if we connect within the same component) or we fail to add an edge (and so do fewer than \(n-1\) edges total).
+
+Key idea: process the operations in **descending** order of \(x\), from \(x=n-1\) down to \(1\).  At each step \(x\),
+
+1.  We look for two vertices \(u\) and \(v\) lying in *different* current DSU‐components, whose values \(a_u\) and \(a_v\) are congruent modulo \(x\).  Indeed
+   \[
+     |a_u - a_v|\equiv 0\pmod x
+     \quad\Longleftrightarrow\quad
+     a_u \bmod x = a_v \bmod x.
+   \]
+2.  Whenever we find such a pair \((u,v)\), we union their two components in our DSU and record that \((u,v)\) is the edge chosen in operation \(x\).  
+3.  If *no* such cross‐component pair exists for the current \(x\), then it is impossible to keep the graph cycle‐free while still using exactly one edge in this operation, so the answer is **No**.
+
+If we succeed in finding exactly one cross‐component edge for all \(x=n-1,n-2,\dots,1\), then we have added exactly \(n-1\) edges, each reducing the component count by one, so we end with a single component.  Thus we have formed a spanning tree, and we output **Yes** and the list of edges in the order of increasing \(x\) (since operation \(x\) must be reported on the \(x\)-th output line).
+
+The running time is
+\[
+  \sum_{x=1}^{n-1}\bigl(O(x)\text{ to clear an array of size }x\;+\;O(n)\text{ to scan all vertices}\bigr)
+  \;=\;O(n^2),
+\]
+which is fine for \(n\le2000\).  
+
+Below is a Java implementation using a standard DSU (union–find) with path compression.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class DSU {
+        int[] p, r;
+        public DSU(int n) {
+            p = new int[n];
+            r = new int[n];
+            for (int i = 0; i < n; i++) {
+                p[i] = i;
+                r[i] = 0;
+            }
+        }
+        int find(int x) {
+            if (p[x] != x) p[x] = find(p[x]);
+            return p[x];
+        }
+        boolean union(int x, int y) {
+            x = find(x);
+            y = find(y);
+            if (x == y) return false;
+            if (r[x] < r[y]) {
+                p[x] = y;
+            } else if (r[y] < r[x]) {
+                p[y] = x;
+            } else {
+                p[y] = x;
+                r[x]++;
+            }
+            return true;
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter pw = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            int[] a = new int[n];
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // ansU[x], ansV[x] will store the edge chosen at operation x (1-based).
+            int[] ansU = new int[n], ansV = new int[n];
+            boolean possible = true;
+            DSU dsu = new DSU(n);
+
+            // For each x = n-1 down to 1, pick exactly one cross-component pair
+            for (int x = n - 1; x >= 1; x--) {
+                // remToRoot[r] = a DSU-root that we've seen with remainder r = a[u]%x
+                // nodeWithRem[r] = one example vertex index that achieves that remainder
+                int[] remToRoot = new int[x];
+                int[] nodeWithRem = new int[x];
+                // initialize to -1 meaning "unseen"
+                for (int r = 0; r < x; r++) {
+                    remToRoot[r] = -1;
+                }
+
+                boolean found = false;
+                for (int u = 0; u < n; u++) {
+                    int ru = dsu.find(u);
+                    int r = a[u] % x;
+                    if (remToRoot[r] == -1) {
+                        // first time we see this remainder in this operation
+                        remToRoot[r] = ru;
+                        nodeWithRem[r] = u;
+                    } else if (remToRoot[r] != ru) {
+                        // we found two vertices in different components
+                        int v = nodeWithRem[r];
+                        dsu.union(u, v);
+                        ansU[x] = u + 1;    // convert to 1-based
+                        ansV[x] = v + 1;
+                        found = true;
+                        break;
+                    }
+                    // else same component -> skip
+                }
+                if (!found) {
+                    // no valid cross-component edge at this x
+                    possible = false;
+                    break;
+                }
+            }
+
+            if (!possible) {
+                pw.println("No");
+            } else {
+                pw.println("Yes");
+                // Output the edges in the order of operations 1..n-1
+                for (int x = 1; x < n; x++) {
+                    pw.println(ansU[x] + " " + ansV[x]);
+                }
+            }
+        }
+        pw.flush();
+    }
+}
+```
+
+Explanation of the main points:
+
+1. **DSU**  
+   We keep a union–find (disjoint‐set) over the \(n\) vertices so that each added edge merges two different components.
+
+2. **Descending \(x\)**  
+   Larger \(x\) is more restrictive (harder to satisfy divisibility), so we reserve those early.  If at some \(x\) we cannot find any edge joining two distinct DSU components that also satisfies
+   \(\,|a_u-a_v|\equiv0\pmod x\), we must declare `No`.
+
+3. **Remainder buckets**  
+   Two numbers differ by a multiple of \(x\) exactly when they are congruent modulo \(x\).  We sweep through the vertices, reduce each \(a[u]\bmod x\), and record the DSU‐root and the vertex index of the *first* occurrence of each remainder.  On seeing a second occurrence whose root is *different*, we have found a valid cross‐component edge for operation \(x\).
+
+4. **Tree property**  
+   We add exactly one edge per \(x\) from \(n-1\) down to \(1\), so \(n-1\) edges in all, each time reducing the number of components by one.  At the end, we have a single component (i.e.\ a connected graph) with \(n-1\) edges, hence a spanning tree.
+
+This runs in \(O(n^2)\) per test case (clearing an array of size \(x\) and scanning \(n\) vertices for each \(x\)), which is fine for \(n\le 2000\).

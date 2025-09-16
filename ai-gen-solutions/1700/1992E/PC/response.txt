@@ -1,0 +1,272 @@
+**Analysis**
+
+We have an integer \(n\) (in the problem \(1\le n\le100\)) and we are to look at all pairs \((a,b)\) with
+```
+1 ≤ a ≤ 10 000,
+1 ≤ b ≤ min(10 000, a·n)
+```
+such that the "buggy" solution
+
+  1. writes the decimal string of \(n\) repeated \(a\) times,
+  2. then "subtracts" \(b\) by deleting the last \(b\) characters of that string,
+  
+produces, as a non‐empty string, exactly the same integer as the correct answer
+\[
+n\cdot a - b.
+\]
+
+Let \(L\) = the number of digits of \(n\), and write the decimal string of \(n\) as \(\mathit{str}(n)\).  When you repeat that string \(a\) times you get a long string of length \(N=aL\).  Deleting the last \(b\) characters leaves the first
+\[
+k \;=\; aL - b
+\]
+characters of the repetition.  We require \(k>0\) (so the result is nonempty) and that that first-\(k\)-digits string, interpreted as an integer, is exactly
+\[
+n\,a - b.
+\]
+
+It turns out one can write a small number of closed‐form tests for two cases:
+
+1. **Full–block deletions**  
+   If \(b\) is a multiple of \(L\), say \(b=m\,L\), then after removing \(b\) chars you have exactly
+   \[
+     a - m
+   \]
+   full copies of \(n\) left, i.e. the integer whose decimal is \(\underbrace{n\,n\cdots n}_{a-m}\).  
+   One checks those are the solutions of
+   \[
+     \underbrace{n\,n\cdots n}_{a-m}\;=\;n\,a - m\,L.
+   \]
+   One can solve that in closed‐form for an integer \(a\) in terms of \(t=a-m\).  Letting
+   \[
+     D = n,\quad
+     B=10,\quad
+     L=\text{digits}(n),\quad
+     A=n-L,\quad
+     R = B^L-1
+   \]
+   one finds the candidate
+   \[
+     a \;=\;
+       \frac{\,D\,(B^{tL}-1)\;-\;tL\,R}
+            {\,R\,(D-L)\,}
+       \quad
+       (\text{and then }b=(a-t)L).
+   \]
+   We only keep those integer solutions \(1\le a\le10000\), \(b\ge1\), \(b\le10000\), \(b\le a\,n\).
+
+2. **Partial–block deletions**  
+   If \(b\) is _not_ a multiple of \(L\), write
+   \[
+     k = q\,L + r,\quad 1\le r\le L-1,
+   \]
+   so that exactly \(q\) full copies of \(\mathit{str}(n)\) plus the first \(r\) digits of \(\mathit{str}(n)\) remain.  One can again set up a small formula
+   \[
+     \underbrace{n\,n\cdots n}_{q}\,\bigl(\text{first $r$ digits of }n\bigr)
+     \;=\;
+     n\,a - b
+     \;=\;
+     a\,(n-L)+\bigl(qL+r\bigr)
+   \]
+   and solve for \(a\).  As soon as that \(a\) exceeds 10 000 one can stop scanning larger \(q\).
+
+We implement both patterns with BigInteger (to handle intermediate powers like \(10^{12}\) cleanly) but in practice we only ever need small exponents because everything beyond a small threshold forces \(a>10000\) and we quit.  The overall per‐\(n\) work is only a few dozen BigInteger multiplications, which is instant.
+
+Special case \(n=1\):  then repeating the digit `"1"` \(a\) times gives the decimal
+\[
+ 111\cdots1\quad(a\text{ ones})
+\]
+which as an integer is \((10^a-1)/9\).  We demand that equals
+\[
+ 1\cdot a - b = a - b,
+\]
+and also that \(k=a-b>0\).  One checks
+\[
+ \frac{10^k - 1}{9} = k
+\]
+only for \(k=1\).  Hence \(a-b=1\), or \(b=a-1\).  That forces \(a\ge2\).  Within \(1\le a\le10000\), we get the pairs
+\[
+ (a,b) = (2,1),(3,2),\dots,(10000,9999).
+\]
+
+For each test \(n\), we collect all such \((a,b)\), sort them by increasing \(a\), and print:
+
+First the count \(x\), then the \(x\) lines of \(a\;b\).
+
+This runs comfortably in the time/memory limits even though in the worst case (\(n=1\)) you output about 9999 lines.
+
+---
+
+```java
+import java.io.*;
+import java.math.BigInteger;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader  br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter     pw = new PrintWriter(new BufferedOutputStream(System.out));
+        int t = Integer.parseInt(br.readLine().trim());
+
+        for (int _case = 0; _case < t; _case++) {
+            int n = Integer.parseInt(br.readLine().trim());
+            int L = String.valueOf(n).length();
+            List<int[]> ans = new ArrayList<>();
+
+            // Special case n = 1: all (a, b=a-1), a=2..10000
+            if (n == 1) {
+                for (int a = 2; a <= 10000; a++) {
+                    int b = a - 1;
+                    ans.add(new int[]{a, b});
+                }
+            } else {
+                // We will use BigInteger to handle powers 10^(something)
+                BigInteger BI_n = BigInteger.valueOf(n);
+                BigInteger BI_L = BigInteger.valueOf(L);
+                BigInteger ten = BigInteger.TEN;
+
+                // 10^L
+                BigInteger pow10L = ten.pow(L);
+                // R = 10^L - 1
+                BigInteger R = pow10L.subtract(BigInteger.ONE);
+                // A = n - L
+                int Aint = n - L;
+                BigInteger BI_A = BigInteger.valueOf(Aint);
+
+                // ---- Case 1: b = multiple of L  (full-block deletions) ----
+                // denom0 = (10^L - 1) * (n - L)
+                BigInteger denom0 = R.multiply(BI_A);
+                // We'll build BpowLt = 10^(t*L) by iterating t
+                BigInteger BpowLt = BigInteger.ONE;
+
+                for (int tblk = 1; ; tblk++) {
+                    BpowLt = BpowLt.multiply(pow10L); 
+                    // numerator = n*(10^(tL)-1) - t*L*(10^L -1)
+                    BigInteger num = BI_n
+                                      .multiply(BpowLt.subtract(BigInteger.ONE))
+                                      .subtract(
+                                          BigInteger.valueOf((long)tblk * L)
+                                          .multiply(R)
+                                      );
+                    // If num <= 0 no valid a>0
+                    if (num.signum() <= 0) {
+                        continue;
+                    }
+                    // If num > denom0*10000, then a>10000 and will only grow; break
+                    if (num.compareTo(denom0.multiply(BigInteger.valueOf(10000L))) > 0) {
+                        break;
+                    }
+                    // check divisibility
+                    if (num.mod(denom0).equals(BigInteger.ZERO)) {
+                        BigInteger aBig = num.divide(denom0);
+                        int a = aBig.intValue();
+                        if (a > tblk && a <= 10000) {
+                            int b = (a - tblk) * L;
+                            // ensure b in range
+                            if (b >= 1 && b <= 10000 && b <= a * n) {
+                                ans.add(new int[]{a, b});
+                            }
+                        }
+                    }
+                }
+
+                // ---- Case 2: partial block (b not multiple of L) ----
+                // We delete q full copies plus r extra digits, 1 <= r < L
+                String s = String.valueOf(n);
+                // Precompute first-r-digit numbers of n
+                int[] prefix = new int[L];
+                for (int r = 1; r < L; r++) {
+                    prefix[r] = Integer.parseInt(s.substring(0, r));
+                }
+
+                for (int r = 1; r < L; r++) {
+                    BigInteger Br = ten.pow(r);   // 10^r
+                    BigInteger tsum = BigInteger.ZERO;   // will become (10^{qL}-1)/(10^L-1)
+                    // iterate q
+                    for (int q = 1; ; q++) {
+                        // build tsum = tsum*(10^L) + 1
+                        tsum = tsum.multiply(pow10L).add(BigInteger.ONE);
+                        // big part = n * 10^r * tsum
+                        BigInteger bigPart = BI_n.multiply(Br).multiply(tsum);
+                        // plus the small offset P - (qL + r)
+                        BigInteger num = bigPart.add(
+                            BigInteger.valueOf((long)prefix[r] - (q * L + r))
+                        );
+                        if (num.signum() <= 0) {
+                            continue;   // no valid a>0 yet
+                        }
+                        // if num > A*10000 => a>10000 => break
+                        if (num.compareTo(BI_A.multiply(BigInteger.valueOf(10000L))) > 0) {
+                            break;
+                        }
+                        // must divide evenly by A
+                        if (num.mod(BI_A).equals(BigInteger.ZERO)) {
+                            BigInteger aBig = num.divide(BI_A);
+                            int a = aBig.intValue();
+                            if (a > q && a <= 10000) {
+                                // b = aL - (qL + r) = (a-q)*L - r
+                                int b = (a - q) * L - r;
+                                if (b >= 1 && b <= 10000 && b <= a * n) {
+                                    ans.add(new int[]{a, b});
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Sort by increasing a
+            ans.sort(Comparator.comparingInt(x -> x[0]));
+
+            // Output
+            pw.println(ans.size());
+            for (int[] pr : ans) {
+                pw.println(pr[0] + " " + pr[1]);
+            }
+        }
+
+        pw.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Count the digits**  
+   We need \(L=\) the decimal‐digit length of \(n\).
+
+2. **Full‐block deletions**  
+   If \(b\) is a multiple of \(L\), say \(b=mL\), then the remaining string is exactly \(a-m\) copies of \(\mathit{str}(n)\).  One shows the only integer solutions to
+   \[
+     \underbrace{n\,n\,\cdots\,n}_{a-m}
+     \;=\;
+     n\,a \;-\; m\,L
+   \]
+   arise from the closed‐form
+   \[
+     a
+     \;=\;
+     \frac{\,n\,(10^{tL}-1)\;-\;t\,L\,(10^L-1)}
+          {(10^L-1)\,(n-L)}, 
+     \quad
+     t = a-m.
+   \]
+   We try \(t=1,2,3,\dots\) until \(a>10000\), collecting those integer \((a,b)\).
+
+3. **Partial‐block deletions**  
+   If \(b\) is not a multiple of \(L\), write \(b=aL-k\) with
+   \[
+     k = q\,L + r,\quad 1\le r< L,\;0\le q\le a-1.
+   \]
+   The leftover string is \(q\) copies of \(\mathit{str}(n)\) plus the first \(r\) digits.  One sets up
+   \[
+     n\cdot \bigl(10^r\sum_{i=0}^{q-1}10^{iL}\bigr)
+     + \bigl(\text{first $r$ digits of }n\bigr)
+     \;=\;
+     n\,a - b \;=\; a\,(n-L)+(qL+r)
+   \]
+   and solves for \(a\).  One only needs to try small \(q\) until the implied \(a\) exceeds 10000.
+
+4. **Special case \(n=1\)**  
+   Repeating `"1"` \(a\) times yields \((10^a-1)/9\).  Equating that to \(1\cdot a - b\) forces \(k=a-b=1\).  So \(b=a-1\) for all \(2\le a\le10000\).
+
+All valid \((a,b)\) are collected, sorted by \(a\), then printed. This runs in well under a second even for 100 test‐cases.

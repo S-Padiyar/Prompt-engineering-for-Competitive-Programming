@@ -1,0 +1,192 @@
+**Analysis**
+
+We have an \(n\times n\) grid, whose \(i\)-th row has its first \(a_i\) cells colored black (the rest are white).  We want to turn *all* cells white using two kinds of operations:
+
+1.  Paint an entire row white, cost \(1\).
+2.  Paint a \(2\times2\) sub‐square white, cost \(1\).
+
+We wish to cover (i.e.\ turn white) all the black cells at minimum total cost.
+
+---
+
+### Reformulation
+
+-  Let \(b_i = \bigl\lceil \tfrac{a_i}{2}\bigr\rceil\).  Why this definition?
+   -  An isolated row of length \(a_i\) would require \(\lceil a_i/2\rceil\) *horizontal domino*‐like moves of length 2 to clear by \(2\times2\) squares (if no neighbor were helping), because each such square laid *partly* in that row can cover at most 2 black cells in that row.  
+   -  Thus \(b_i\) is the “demand” of row \(i\) in units of 2‐cell blocks.
+
+-  Any \(2\times2\) paint squares we place along the horizontal boundary between rows \(i\) and \(i+1\) we index by an integer \(x_i\).  Each such square contributes **1** block to row \(i\) *and* **1** block to row \(i+1\).  
+-  A “row‐paint” on row \(i\) costs \(1\) but instantly satisfies *all* \(b_i\) demand for that row.
+
+Thus we get a one‐dimensional “cover‐demand” problem on the path of rows:
+
+-  We choose nonnegative integers \(x_1,\dots,x_{n-1}\), each costing \(+\,x_i\).
+-  We may also choose to pay a “row–paint” on row \(i\), costing \(+1\), which frees us from having to meet row \(i\)'s demand from its neighbors.
+-  If we do *not* row‐paint row \(i\), then we must have
+   \[
+      x_{i-1} + x_i \;\ge\; b_i,
+   \]
+   so that the “squares from above \((x_{i-1})\) plus from below \((x_i)\)” supply enough 2‐units to cover row \(i\).  
+
+We wish to minimize
+\[
+   \Bigl(\sum_{i=1}^{n-1} x_i\Bigr)
+   \;+\;
+   (\text{number of rows we chose to paint whole})\,.
+\]
+
+That becomes a small dynamic‐programming on a path:
+
+-  Let \(\mathrm{dp}_i(c)\) = the minimum cost to handle rows \(1\ldots i\) with a “carry” of \(c = x_i\) squares ready to supply row \(i\!+\!1\).  
+-  We process row \(i\) with demand \(b_i\).  For each old state \((c_{\mathrm{old}},\mathrm{cost}_{\mathrm{old}})\), we can either
+
+   1.  **Pay a row‐paint** for row \(i\).  
+       -  That satisfies row \(i\) no matter what \(c_{\mathrm{old}}\) is.  
+       -  We **do not** need to bring in any new squares, so we set \(x_i=0\).  
+       -  Transition cost = \(\mathrm{cost}_{\mathrm{old}} + 1\).  
+       -  New carry = \(0\).
+
+   2.  **Do _not_ pay** a row‐paint for row \(i\).  
+       -  Then we must supply \(b_i\) out of \(c_{\mathrm{old}} + x_i\).  
+       -  Hence we must choose
+         \[
+            x_i \;=\; \max\{\,0,\;b_i - c_{\mathrm{old}}\}\,,
+         \]
+         which is the *smallest* new squares that makes
+         \(
+            c_{\mathrm{old}} + x_i \ge b_i
+         \)
+         just exact (no "extra waste" for row \(i\)).
+       -  Transition cost = \(\mathrm{cost}_{\mathrm{old}} + x_i\).
+       -  New carry = \(x_i\).
+
+We then keep a map (or sorted vector) of \((\text{carry}\to\text{best cost})\) and prune *dominated* states:
+
+-  If two states have carries \(c_1 < c_2\) and also \(\mathrm{cost}_1 \ge \mathrm{cost}_2\), then carrying \(c_1\) is never better than carrying \(c_2\).  We drop dominated states.
+
+Finally, after processing row \(n\), the answer is the minimum cost among all carries.
+
+We also observe a tiny optimization: if \(b_i=0\), row \(i\) has no demand, so clearly we do neither squares nor a row‐paint; we can collapse all the old DP states into a single state “carry \(=0\)” with cost = minimum of the old costs.  This saves a lot of DP‐blowup on zero‐black rows.
+
+Overall the complexity is \(O\bigl(\sum_i (\text{DP‐states at step }i)\log(\cdots)\bigr)\), which in practice on CF constraints \(\sum n\le2\cdot10^5\) is efficient.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader(InputStream in){ br=new BufferedReader(new InputStreamReader(in)); }
+        String next() {
+            while (st==null || !st.hasMoreTokens()) {
+                try { st=new StringTokenizer(br.readLine()); }
+                catch(IOException e){ throw new RuntimeException(e); }
+            }
+            return st.nextToken();
+        }
+        int nextInt(){ return Integer.parseInt(next()); }
+    }
+
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader(System.in);
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while(t-->0) {
+            int n = in.nextInt();
+            int[] a = new int[n];
+            for(int i=0;i<n;i++) {
+                a[i] = in.nextInt();
+            }
+            // b[i] = ceil(a[i]/2)
+            int[] b = new int[n];
+            for(int i=0;i<n;i++){
+                b[i] = (a[i]+1)/2;
+            }
+
+            // dp holds pairs (carry -> best cost).
+            // Start at i=0 with carry=0, cost=0.
+            TreeMap<Integer,Integer> dp = new TreeMap<>();
+            dp.put(0, 0);
+
+            for(int i=0;i<n;i++){
+                int need = b[i];
+                // If need==0, we can collapse all carries to (0 -> minCost).
+                if(need==0){
+                    int best = Integer.MAX_VALUE;
+                    for(int c: dp.values()){
+                        best = Math.min(best, c);
+                    }
+                    dp.clear();
+                    dp.put(0, best);
+                    continue;
+                }
+                // Otherwise, do the two transitions per old state:
+                //  1) pay row-paint => carry'=0, cost+1
+                //  2) no paint: carry' = max(0, need - carry), cost += carry'
+                TreeMap<Integer,Integer> next = new TreeMap<>();
+
+                for(Map.Entry<Integer,Integer> e: dp.entrySet()){
+                    int carryOld = e.getKey();
+                    int costOld  = e.getValue();
+                    // (1) row-paint:
+                    int c1 = 0;
+                    int cost1 = costOld + 1;
+                    next.merge(c1, cost1, Math::min);
+
+                    // (2) no row-paint:
+                    int x = need - carryOld;
+                    if(x < 0) x = 0;  // no deficit
+                    int c2 = x;
+                    int cost2 = costOld + x;
+                    next.merge(c2, cost2, Math::min);
+                }
+
+                // Prune dominated states: if carry2>carry1 and cost2<=cost1 then (carry1) is never better.
+                TreeMap<Integer,Integer> pruned = new TreeMap<>();
+                int bestSoFar = Integer.MAX_VALUE;
+                // Iterate in descending carry
+                for(int c : next.descendingKeySet()){
+                    int cst = next.get(c);
+                    if(cst < bestSoFar) {
+                        // keep
+                        pruned.put(c, cst);
+                        bestSoFar = cst;
+                    }
+                }
+                dp = pruned;
+            }
+
+            // Final answer = min cost among all carries
+            int ans = Integer.MAX_VALUE;
+            for(int c: dp.values()){
+                ans = Math.min(ans, c);
+            }
+            out.println(ans);
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. We define demand of row \(i\) as  
+   \[
+     b_i \;=\;\Bigl\lceil\frac{a_i}{2}\Bigr\rceil,
+   \]  
+   which is how many “2‐cell blocks” that row would need if it were cleared *only* by \(2\times2\) squares (each such square can cover at most 2 blacks in any one row).
+
+2. We keep a DP map
+   \[
+     \mathrm{dp}_i(c)
+   \]
+   = minimal cost to clear rows \(1\ldots i\), having used \(x_i=c\) squares on the boundary between \(i\) and \(i+1\).  That “carry” \(c\) supplements the next row \(i+1\).
+
+3.  To process row \(i\) of demand \(b_i\), for each old state \((c_{\mathrm{old}},cost_{\mathrm{old}})\) we have two choices:
+   -  **Paint the whole row**: pay +1, zero out next‐carry \(\to0\).
+   -  **Use squares only**: we must supply \(b_i\) out of \(c_{\mathrm{old}} +

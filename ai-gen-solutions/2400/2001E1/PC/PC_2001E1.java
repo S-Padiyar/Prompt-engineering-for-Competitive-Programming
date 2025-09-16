@@ -1,0 +1,71 @@
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int T = Integer.parseInt(br.readLine().trim());
+        while (T-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int K = Integer.parseInt(st.nextToken());
+            int p = Integer.parseInt(st.nextToken());
+            if (n == 1) {
+                System.out.println(1);
+                continue;
+            }
+            long[] inv = new long[K+1];
+            for (int i = 1; i <= K; i++) {
+                inv[i] = modPow(i, p-2, p);
+            }
+            long[] pow2 = new long[n+1];
+            pow2[0] = 1;
+            for (int d = 1; d <= n; d++) {
+                pow2[d] = (pow2[d-1] << 1) % p;
+            }
+            long[] prevF = new long[K+1], prevG = new long[K+1];
+            for (int s = 0; s <= K; s++) {
+                prevF[s] = 1;
+                prevG[s] = 1;
+            }
+            for (int depth = 2; depth <= n; depth++) {
+                long[] prefixG = new long[K+1];
+                prefixG[0] = prevG[0];
+                for (int s = 1; s <= K; s++) {
+                    prefixG[s] = (prefixG[s-1] + prevG[s]) % p;
+                }
+                long[] currF = new long[K+1];
+                for (int s = 0; s <= K; s++) {
+                    long sum = 0;
+                    for (int l = 1; l <= s; l++) {
+                        int bound = Math.min(l - 1, s - l);
+                        if (bound >= 0) {
+                            sum = (sum + prevF[l] * prefixG[bound]) % p;
+                        }
+                    }
+                    currF[s] = (sum * 2) % p;
+                }
+                long[] currG = new long[K+1];
+                currG[0] = 1;
+                for (int s = 1; s <= K; s++) {
+                    long num = (pow2[depth] + s - 2) % p;
+                    if (num < 0) num += p;
+                    currG[s] = currG[s-1] * num % p * inv[s] % p;
+                }
+                prevF = currF;
+                prevG = currG;
+            }
+            System.out.println(prevF[K]);
+        }
+    }
+    static long modPow(long a, long e, int mod) {
+        long r = 1 % mod;
+        a %= mod;
+        while (e > 0) {
+            if ((e & 1) == 1) r = (r * a) % mod;
+            a = (a * a) % mod;
+            e >>= 1;
+        }
+        return r;
+    }
+}

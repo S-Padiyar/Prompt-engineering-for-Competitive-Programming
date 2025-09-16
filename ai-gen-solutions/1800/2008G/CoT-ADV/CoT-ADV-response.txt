@@ -1,0 +1,202 @@
+**Problem Restatement**
+
+We have an array of \(n\) positive integers.  We are allowed to repeatedly pick two distinct indices \(i\neq j\) with \(a_i\ge a_j\), and replace 
+- either \(a_i\) with \(a_i - a_j\), 
+- or \(a_i\) with \(a_i + a_j\).  
+
+We want to perform any number of such operations (possibly zero) to maximize the \(k\)-th missing nonnegative integer (called \(\text{mex}_k\)) in the final array.
+
+- \(\text{mex}_1\) is the smallest nonnegative integer **not** in the array.
+- \(\text{mex}_2\) is the second smallest nonnegative integer not in the array, and so on.
+
+For example, if the array is \(\{1,2,4\}\), then the absent nonnegative integers are 
+\[
+0,\;3,\;5,6,7,\dots
+\]
+so \(\text{mex}_1=0,\;\text{mex}_2=3,\;\text{mex}_3=5,\dots\)
+
+We must answer \(t\) independent test cases, with \(\sum n\le2\cdot10^5\).  Each \(a_i\) and \(k\) can be up to \(10^9\).
+
+---
+
+**Key Observations**
+
+1. **When \(n=1\)**, no operation is possible (we need two distinct indices).  The array stays as \(\{a_1\}\).  Its missing nonnegatives are all \(x\ne a_1\).  
+   - If \(a_1>0\), then the first \(a_1\) missing integers are \(0,1,\dots,a_1-1\).  
+     - If \(k\le a_1\), then \(\text{mex}_k=k-1\).  
+     - If \(k>a_1\), then the missing list continues from \(a_1+0,a_1+1,\dots\), so \(\text{mex}_k = a_1 + (k - a_1)\).  
+   - If \(a_1=0\), the missing are \(1,2,3,\dots\), so \(\text{mex}_k=k\).
+
+2. **When \(n\ge2\)**, a well‐known fact about “subtract and add” operations is that you can reduce the array's values (and mix them) until all entries become arbitrary nonnegative multiples of the *gcd* \(g\) of the original array.  Moreover, you can choose up to \(n\) **distinct** multiples of \(g\) (making duplicates only wastes spots for covering missing values).  
+
+   Thus, optimally, you pick
+   \[
+     S = \{0\cdot g,\;1\cdot g,\;2\cdot g,\;\dots,\;(t-1)\cdot g\},
+   \]
+   with \(t\le n\), so that these \(t\) distinct multiples are present.  Everything else in \(\{0,1,2,\dots\}\) is *missing*.  
+
+   - There are \(g-1\) missing integers *between* each consecutive pair of multiples \(m\cdot g\) and \((m+1)\cdot g\).  
+   - After \((t-1)\cdot g\), **all** integers \(\ge t\cdot g\) are missing.
+
+   Let
+     \[
+       \Delta = g-1,\quad M = t\cdot\Delta = t\,(g-1).
+     \]
+   These are:
+   - \(\Delta\) = how many are missing per gap,
+   - \(M\) = how many are missing before reaching \(t\cdot g\).
+
+   We have two cases:
+
+   **Case A** \(\;M \ge k\).  
+     Then the \(k\)-th missing lies among the first \(t\) blocks.  Numbering the missing globally from 1, each block of size \(\Delta\) contributes \(\Delta\) missing integers.  
+       - Let \(b = \lfloor (k-1)/\Delta\rfloor\) be the zero‐based block index.
+       - Let \(\text{off} = (k-1)\bmod \Delta\).  Then inside block \(b\), the missing numbers run from 
+         \[
+           b\cdot g + 1,\;b\cdot g + 2,\;\dots,\;b\cdot g + \Delta.
+         \]
+       - So
+         \[
+           \text{mex}_k
+           = b\cdot g + 1 + \text{off}.
+         \]
+     Note this formula only makes sense if \(\Delta>0\), i.e.\ \(g>1\).
+
+   **Case B** \(\;M < k\).  
+     Then we exhaust the first \(t\) blocks but still need \((k-M)\) more.  After that, *every* integer starting from \(t\cdot g\) is missing, so they are consecutive.  Hence
+     \[
+       \text{mex}_k
+       = t\cdot g \;+\;\bigl((k-M)-1\bigr)
+       = t\cdot g\;+\;(k - t\,(g-1)\;-\;1).
+     \]
+   Since in Case B the expression is strictly increasing in \(t\), we choose the maximum \(t=n\).  
+
+   Putting it all together, for \(n\ge2\):
+   - Compute \(g=\gcd(a_1,\dots,a_n)\).
+   - If \(g=1\), then \(\Delta=0\) so Case A is impossible, and in fact all small nonnegatives can be covered consecutively up to \(n-1\).  You end up with the present set \(\{0,1,2,\dots,n-1\}\) so the missing start at \(n,n+1,\dots\).  Thus
+     \[
+       \text{mex}_k = n + (k-1).
+     \]
+   - Otherwise \(g>1\).  Let \(M = n\,(g-1)\).
+     1. If \(M < k\), then \(\text{mex}_k = n\cdot g + \bigl(k - M -1\bigr)\).
+     2. Else (\(M\ge k\)), let 
+        \[
+          b = \lfloor (k-1)/(g-1)\rfloor,\quad
+          \text{off}=(k-1)\bmod(g-1),
+        \]
+        and
+        \[
+          \text{mex}_k = b\cdot g + 1 + \text{off}.
+        \]
+
+**Complexity**
+
+- We read \(n\) numbers and compute their GCD in \(O(n)\).  
+- All arithmetic is \(O(1)\).  
+- Summing over all test cases, \(\sum n = O(2\cdot10^5)\), so overall \(O(\sum n)\) time and \(O(1)\) extra memory per test (plus input storage).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        // Fast input
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+            
+            st = new StringTokenizer(br.readLine());
+            long[] a = new long[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+            
+            // Case n = 1: no operations allowed
+            if (n == 1) {
+                long x = a[0];
+                // The first x missing are 0..x-1
+                if (k <= x) {
+                    sb.append(k - 1).append('\n');
+                } else {
+                    // Then missing continue from x+0, x+1, ...
+                    sb.append(k).append('\n');
+                }
+                continue;
+            }
+            
+            // Compute gcd of all a[i]
+            long g = a[0];
+            for (int i = 1; i < n; i++) {
+                g = gcd(g, a[i]);
+            }
+            
+            // If gcd = 1, we can cover 0..n-1. Missing start at n, n+1, ...
+            if (g == 1) {
+                // k-th missing = (n) + (k-1)
+                sb.append((n + k - 1)).append('\n');
+                continue;
+            }
+            
+            // Otherwise g > 1
+            long delta = g - 1;            // missing per block
+            long M = delta * n;            // missing count in first n blocks
+            
+            if (M < k) {
+                // Case B: we exhaust the first n blocks
+                // result = n*g + (k - M - 1)
+                long ans = n * g + (k - M - 1);
+                sb.append(ans).append('\n');
+            } else {
+                // Case A: the k-th missing lies in the first few blocks
+                // b = (k-1)/delta, off = (k-1)%delta
+                long b = (k - 1) / delta;
+                long off = (k - 1) % delta;
+                long ans = b * g + 1 + off;
+                sb.append(ans).append('\n');
+            }
+        }
+        
+        // Output all at once
+        System.out.print(sb.toString());
+    }
+    
+    // Helper: compute gcd of two longs
+    private static long gcd(long x, long y) {
+        while (y != 0) {
+            long r = x % y;
+            x = y;
+            y = r;
+        }
+        return x;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Single Element**  
+   - No valid operation if \(n=1\).  We directly enumerate the missing numbers around that single element to get the \(k\)-th missing.
+
+2. **Multiple Elements**  
+   - The repeated subtract/add operations let us reach any nonnegative multiple of \(\gcd\) in each position.  
+   - We choose \(t\le n\) distinct multiples \(0, g, 2g,\dots,(t-1)g\) to minimize the count of missing small nonnegatives.  
+   - The number of missing up to but not including \(t\cdot g\) is \(t\,(g-1)\).  If we need fewer or equal \(\,k\) missing, the answer is in that “blocked” region; else it lies immediately thereafter in a simple consecutive list.
+
+This runs in \(O(n)\) per test (for the \(\gcd\) pass), perfectly within the limits for \(\sum n \le 2\times10^5\).
+
+---
+
+**Time Complexity**  
+\(O(\sum n)\) over all test cases (since each test does a single \(O(n)\) GCD pass).
+
+**Space Complexity**  
+\(O(n)\) to store one array per test plus \(O(1)\) extra.

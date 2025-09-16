@@ -1,0 +1,312 @@
+**Analysis**
+
+We have two arrays \(a[1\ldots n]\) and \(b[1\ldots n]\).  We must choose exactly one non‐empty segment \([l,r]\) (with \(1\le l\le r\le n\)), swap
+\[
+  a_i \longleftrightarrow b_i,\quad i=l,l+1,\dots,r,
+\]
+and then compute
+\[
+  G_1=\gcd(a_1,a_2,\dots,a_n),\quad
+  G_2=\gcd(b_1,b_2,\dots,b_n),
+\]
+and maximize \(G_1+G_2\).  We also need to count how many \((l,r)\) achieve that maximum.
+
+A naïve double loop over \((l,r)\) is \(O(n^2)\), far too big for \(n\) up to \(2\times10^5\).  We must exploit the structure of gcd’s to get roughly \(O(n\log M)\) or so.
+
+**Key observations**
+
+1.  **Prefix/suffix gcd arrays.**  
+    Let
+    \[
+      p\_a[i]=\gcd(a_1,a_2,\dots,a_i),\quad
+      s\_a[i]=\gcd(a_i,a_{i+1},\dots,a_n),
+    \]
+    and analogously \(p\_b[i]\), \(s\_b[i]\), all in \(O(n)\) time.
+
+2.  **Effect of a swap** on \([l,r]\).  
+    -  Outside that segment, \(a\)-values keep their original roles, so their gcd is
+       \(\gcd(p\_a[l-1],\,s\_a[r+1])\).  
+    -  Inside \([l,r]\) the new values of `a` come from the old `b`, so the in‐segment gcd is \(\gcd(b_l,b_{l+1},\dots,b_r)\).  
+    Hence
+    \[
+      G_1(l,r)
+       = \gcd\bigl(\gcd(p\_a[l-1],\,s\_a[r+1])\;,\;
+                  \gcd(b_l,b_{l+1},\dots,b_r)\bigr).
+    \]
+    Similarly
+    \[
+      G_2(l,r)
+       = \gcd\bigl(\gcd(p\_b[l-1],\,s\_b[r+1])\;,\;
+                  \gcd(a_l,a_{l+1},\dots,a_r)\bigr).
+    \]
+
+3.  **Enumerating all segments by right endpoint** \(r\).  
+    We will sweep \(r=1\) to \(n\).  For each fixed \(r\), we need to consider all \(l=1\ldots r\).  But we cannot afford an \(O(r)\) loop for each \(r\).  Rather, we exploit that as \(l\) moves from \(1\) to \(r\), all four quantities
+    \[
+      \gcd(b_l,b_{l+1},\dots,b_r),\quad
+      \gcd(a_l,a_{l+1},\dots,a_r),\quad
+      p\_a[l-1],\quad
+      p\_b[l-1]
+    \]
+    only change at *discrete breakpoints*.  In fact
+    -  the distinct values of the *suffix–r‐ending* gcd of \(b\)
+       over \(l=1\ldots r\) form a small list of size \(O(\log M)\),  
+    -  likewise for the *suffix–r‐ending* gcd of \(a\),
+    -  the prefix‐gcd \(p\_a[l-1]\) can only change when \(l-1\) passes one of \(O(\log M)\) “gcd‐break” positions,
+    -  likewise \(p\_b[l-1]\).
+
+    We merge those four sorted lists of break positions into one sorted list of “global break positions.”  If you call
+    \[
+      L_0=1<L_1<L_2<\cdots<L_{k}=r+1
+    \]
+    the union of all breakpoints (plus \(r+1\)), then within each interval
+    \[
+      [L_i,\;L_{i+1}-1]
+    \]
+    none of the four quantities
+    \[
+      \gcd(b_l,\dots,b_r),\quad \gcd(a_l,\dots,a_r),\quad
+      p\_a[l-1],\quad p\_b[l-1]
+    \]
+    changes value.  We just compute once per interval
+    \[
+      G_1 \;=\;\gcd\!\bigl(\gcd\bigl(p\_a[L_i-1],\,s\_a[r+1]\bigr),\;
+                         \gcd(b_{L_i},\dots,b_r)\bigr),
+    \]
+    and similarly \(G_2\), then we know all \(l\) in that sub‐interval yield the same \((G_1,G_2)\).  We update the global maximum of \(G_1+G_2\) and add the length of the interval to its count.
+
+Since each of the four lists has size \(O(\log M)\sim30\), their union also has \(O(\log M)\) breaks.  Hence each \(r\)-step costs only \(O(\log M)\) work, giving \(O(n\log M)\) overall.  This passes for \(n\le2\cdot10^5\).
+
+Below is a full Java implementation using fast I/O and the described sweep‐and‐merge of breakpoints.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 500_000 + 5;
+    static int[] a = new int[MAXN], b = new int[MAXN];
+    static int[] pa = new int[MAXN], pb = new int[MAXN];
+    static int[] sa = new int[MAXN], sb = new int[MAXN];
+    
+    // Temporary arrays for the "running gcd segments" of a and b
+    static int[] aGL = new int[64], aG  = new int[64],  // aGL = left endpoints, aG = gcd-values
+                 newGL = new int[64], newG = new int[64];
+    static int[] bGL = new int[64], bG  = new int[64],
+                 newBL = new int[64], newBG = new int[64];
+
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        PrintWriter out = new PrintWriter(System.out);
+
+        int T = in.nextInt();
+        while (T-- > 0) {
+            int n = in.nextInt();
+            for (int i = 1; i <= n; i++) {
+                a[i] = in.nextInt();
+            }
+            for (int i = 1; i <= n; i++) {
+                b[i] = in.nextInt();
+            }
+            // Build prefix gcds
+            pa[0] = 0; pb[0] = 0;
+            for (int i = 1; i <= n; i++) {
+                pa[i] = gcd(pa[i - 1], a[i]);
+                pb[i] = gcd(pb[i - 1], b[i]);
+            }
+            // Build suffix gcds
+            sa[n + 1] = 0; sb[n + 1] = 0;
+            for (int i = n; i >= 1; i--) {
+                sa[i] = gcd(sa[i + 1], a[i]);
+                sb[i] = gcd(sb[i + 1], b[i]);
+            }
+
+            // Collect the break‐points of pa and pb
+            // i is a "break" if pa[i] != pa[i-1],  it affects l = i+1
+            List<Integer> lpA = new ArrayList<>(), lpB = new ArrayList<>();
+            for (int i = 1; i < n; i++) {
+                if (pa[i] != pa[i - 1]) lpA.add(i + 1);
+                if (pb[i] != pb[i - 1]) lpB.add(i + 1);
+            }
+            // Now we sweep r from 1..n
+            long bestSum = 0, ways = 0;
+            int sizeA = 0, sizeB = 0; // sizes of the running-lists for 'a' and 'b'
+            int ptrA = 0, ptrB = 0;   // pointers into lpA, lpB for how many are <= r
+
+            for (int r = 1; r <= n; r++) {
+                // 1) update the running‐gcd segments for a ending at r
+                int newA = 0;
+                for (int i = 0; i < sizeA; i++) {
+                    int g = gcd(aG[i], a[r]);
+                    if (newA == 0 || g != newG[newA - 1]) {
+                        newGL[newA] = aGL[i];
+                        newG[newA++] = g;
+                    }
+                }
+                if (newA == 0 || newG[newA - 1] != a[r]) {
+                    newGL[newA] = r;
+                    newG[newA++] = a[r];
+                }
+                // swap new into old
+                sizeA = newA;
+                for (int i = 0; i < sizeA; i++) {
+                    aGL[i] = newGL[i];
+                    aG[i]  = newG[i];
+                }
+
+                // 2) same for b
+                int newB = 0;
+                for (int i = 0; i < sizeB; i++) {
+                    int g = gcd(bG[i], b[r]);
+                    if (newB == 0 || g != newBG[newB - 1]) {
+                        newBL[newB] = bGL[i];
+                        newBG[newB++] = g;
+                    }
+                }
+                if (newB == 0 || newBG[newB - 1] != b[r]) {
+                    newBL[newB] = r;
+                    newBG[newB++] = b[r];
+                }
+                sizeB = newB;
+                for (int i = 0; i < sizeB; i++) {
+                    bGL[i] = newBL[i];
+                    bG[i]  = newBG[i];
+                }
+
+                // 3) advance the lpA/lpB pointers to include all breaks ≤ r
+                while (ptrA < lpA.size() && lpA.get(ptrA) <= r) ptrA++;
+                while (ptrB < lpB.size() && lpB.get(ptrB) <= r) ptrB++;
+
+                // 4) merge the 4 sorted lists of break‐points:
+                //    { aGL[0..sizeA-1], bGL[0..sizeB-1], lpA[0..ptrA-1], lpB[0..ptrB-1] }
+                //    plus we will append (r+1) at end.
+                int[] Ls = new int[sizeA + sizeB + ptrA + ptrB + 1];
+                int ia=0, ib=0, iA=0, iB=0, plen=0;
+                int last = -1;
+                while (ia < sizeA || ib < sizeB || iA < ptrA || iB < ptrB) {
+                    int m = Integer.MAX_VALUE;
+                    if (ia < sizeA) m = Math.min(m, aGL[ia]);
+                    if (ib < sizeB) m = Math.min(m, bGL[ib]);
+                    if (iA < ptrA)  m = Math.min(m, lpA.get(iA));
+                    if (iB < ptrB)  m = Math.min(m, lpB.get(iB));
+                    if (m != last) Ls[plen++] = m;
+                    last = m;
+                    if (ia < sizeA && aGL[ia] == m) ia++;
+                    if (ib < sizeB && bGL[ib] == m) ib++;
+                    if (iA < ptrA  && lpA.get(iA) == m) iA++;
+                    if (iB < ptrB  && lpB.get(iB) == m) iB++;
+                }
+                // finally append r+1
+                if (r+1 != last) Ls[plen++] = r+1;
+
+                // 5) now walk those breaks in ascending order: between Ls[k]..Ls[k+1]-1,
+                //    all four gcd‐subvalues are constant.  We just compute once per interval.
+                int idxApt = 0, idxBpt = 0;  // to find which block of aGL/bGL covers L
+                for (int k = 0; k+1 < plen; k++) {
+                    int L = Ls[k], R = Ls[k+1] - 1;
+                    int len = R - L + 1;
+                    if (len <= 0) continue;
+                    // advance idxApt until next block would overshoot
+                    while (idxApt+1 < sizeA && aGL[idxApt+1] <= L) idxApt++;
+                    while (idxBpt+1 < sizeB && bGL[idxBpt+1] <= L) idxBpt++;
+                    int gaSeg = aG[idxApt], gbSeg = bG[idxBpt];
+
+                    // out‐of‐segment gcds
+                    int outA = gcd(pa[L-1], sa[r+1]);
+                    int outB = gcd(pb[L-1], sb[r+1]);
+                    // final swapped‐in gcd
+                    int G1 = gcd(outA, gbSeg);
+                    int G2 = gcd(outB, gaSeg);
+                    int sum = G1 + G2;
+
+                    if (sum > bestSum) {
+                        bestSum = sum;
+                        ways = len;
+                    } else if (sum == bestSum) {
+                        ways += len;
+                    }
+                }
+            }
+
+            out.println(bestSum + " " + ways);
+        }
+        out.flush();
+    }
+
+    // fast iterative gcd
+    static int gcd(int x, int y) {
+        while (y != 0) {
+            int t = x % y;
+            x = y;
+            y = t;
+        }
+        return x;
+    }
+
+    // fast reader
+    static class FastReader {
+        final int BS = 1<<20;
+        byte[] buf = new byte[BS];
+        int bi = BS, bn = BS;
+        InputStream in = System.in;
+        int read() throws IOException {
+            if(bi>=bn){
+                bi=0; bn=in.read(buf);
+                if(bn<0) return -1;
+            }
+            return buf[bi++];
+        }
+        int nextInt() throws IOException {
+            int c, x = 0;
+            do { c = read(); if(c<0) return -1; } while(c!='-' && (c<'0'||c>'9'));
+            boolean neg = (c=='-');
+            if(neg) c=read();
+            for(; c>='0'&&c<='9'; c=read()) x = x*10 + (c-'0');
+            return neg ? -x : x;
+        }
+    }
+}
+```
+
+**Explanation of the Steps**
+
+1. **Prefix/Suffix GCDs (`pa`, `pb`, `sa`, `sb`)**  
+   We can compute in \(O(n)\):
+   ```
+   pa[0] = 0;
+   for i=1..n: pa[i] = gcd(pa[i-1], a[i]);
+   
+   sa[n+1] = 0;
+   for i=n..1: sa[i] = gcd(sa[i+1], a[i]);
+   ```
+   (and similarly for `pb`, `sb`).
+
+2. **Maintaining all suffix‐ending gcd’s** of \(a\) and \(b\) for segments ending at \(r\):  
+   We keep a small list of pairs \((\text{gcdValue},\text{leftIndex})\) of size \(O(\log M)\).  When we move from \(r-1\) to \(r\), we take each old gcd‐block \(\bigl(g,\ell\bigr)\) and replace it by \(\gcd(g,\,a[r])\), merging duplicates, then also add the new block \(\bigl(a[r],r\bigr)\).  This standard trick keeps exactly the distinct gcd‐segments for "suffix ending at \(r\)".
+
+3. **Breakpoints**  
+   Each of  
+   - the distinct suffix‐gcd blocks of `a` (left‐endpoints),  
+   - the distinct suffix‐gcd blocks of `b`,  
+   - the prefix‐gcd changes in `pa`,  
+   - the prefix‐gcd changes in `pb`  
+   is a sorted list of \(O(\log M)\) positions in \([1..r]\).  We merge these four lists (plus \(r+1\)) into one sorted, de‐duplicated list \(L_0< L_1<\dots< L_k=r+1\).  
+
+4. **Processing each small interval** \([L_i,\,L_{i+1}-1]\)  
+   On this entire interval
+   \[
+     \gcd(b_l,\dots,b_r),\;
+       \gcd(a_l,\dots,a_r),\;
+       pa[l-1],\;
+       pb[l-1]
+   \]
+   are each constant.  We compute
+   \[
+     G_1 = \gcd\bigl(\gcd(pa[L_i-1],\,sa[r+1]),\;\gcd(b_{L_i},\dots,b_r)\bigr)
+   \]
+   \[
+     G_2 = \gcd\bigl(\gcd(pb[L_i-1],\,sb[r+1]),\;\gcd(a_{L_i},\dots,a_r)\bigr),
+   \]
+   and the sum \(G_1+G_2\) is the same for *all* \(l\) in that sub‐interval, so we add the length \((L_{i+1}-1)-L_i+1\) to our count if it matches the global maximum.
+
+Overall the algorithm runs in \(O(n\,\log M)\) time (with \(\log M\lesssim30\) for 32‐bit integers), which easily handles \(n\) up to \(2\cdot10^5\).

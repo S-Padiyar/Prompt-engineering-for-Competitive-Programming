@@ -1,0 +1,260 @@
+**Analysis**
+
+We have an array a of length n and a binary mask b of length n.  We may perform up to k “+1” operations, each on an index ​i​ with ​b[i]=1​, to increase ​a[i]​.  After all our operations we look at the resulting array \(a'\), sort it into non‐decreasing order
+\[
+a'_1 \le a'_2 \le \cdots \le a'_n,
+\]
+and our score is
+\[
+\;\;a'_n \;+\;a'_{d}\,,\quad
+d = \left\lfloor \frac{n}{2}\right\rfloor\,.
+\]
+We wish to distribute the ≤ k increments so as to maximize \(a'_n + a'_d\).
+
+---
+
+**Key reduction**
+
+1.  After all operations, let the maximum element be \(a'_n\), and let the “median‐position” be \(a'_d\).  Then the score is
+   \[
+     S \;=\; a'_n \;+\;a'_d.
+   \]
+2.  We may spend some of our \(k\) increments to raise up the element that ends up in position \(n\); call its initial maximum among \(b[i]=1\) positions 
+   \[
+      M_1 = \max\,\{\,a_i: b_i=1\},
+   \]
+   or \(-\infty\) if no \(b_i=1\).  Similarly, let
+   \[
+      M_0 = \max\,\{\,a_i: b_i=0\},
+   \]
+   which cannot be incremented.
+3.  If we spend \(r\) of our \(k\) operations on that “max”‐slot, its final value becomes
+   \[
+     \max\Bigl(M_0,\;M_1 + r\Bigr).
+   \]
+4.  The other \(k-r\) (or fewer) must be spent raising up small elements so that the \(d\)th‐smallest (of all \(n\)) becomes as large as possible.  Call that target \(m\).  To get \(a'_d\ge m\) in the final sorted array of length \(n\) we need
+   \[
+     \underbrace{\#\{i: a_i \ge m\}}_{\text{already }\ge m}\;+\;
+     \underbrace{\#\{i: b_i=1,\;a_i<m\text{ that we boost}\}}_{\text{exactly enough}}
+     \;\ge\;
+     (n-d+1),
+   \]
+   i.e.\ we must ensure at least \(n-d+1\) elements are \(\ge m\).  
+
+   Let
+   \[
+     \text{freeCount}(m)
+       = \#\{i: a_i\ge m\},
+   \qquad
+     t = \max\bigl(0,\,(n-d+1) - \text{freeCount}(m)\bigr).
+   \]
+   We must take the \(t\) cheapest \(b_i=1\), \(a_i<m\) elements and raise them to \(m\).  If there are not \(t\) such, it is impossible to reach median \(\ge m\).  Otherwise the cost is
+   \[
+     \sum_{j=1}^t \bigl[m - a_{(j)}\bigr],
+   \]
+   where \(a_{(1)}\le a_{(2)}\le\cdots\) are those \(b_i=1\), \(a_i<m\).  
+
+5.  Thus for each candidate \(m\) we can compute
+
+   -  `costMed(m)`: the minimal ops needed to make \(a'_d\ge m\),
+   -  and hence the remainder `rem = k - costMed(m)` can go to boosting the max‐slot from \(M_1\) up.
+
+   The resulting score if `costMed(m) ≤ k` is
+   \[
+     S(m)
+     = m \;+\;\max\bigl(M_0,\;M_1 + (k - \text{costMed}(m))\bigr).
+   \]
+   We take the maximum of \(S(m)\) over all feasible \(m\).
+
+6.  One sees that a feasible optimum \(m\) will occur either at one of the existing \(a_i\), or at the (integer) largest \(m\) for which `costMed(m) ≤ k`.  Hence we
+
+   A.  gather the unique values of \(a_i\) as candidate \(m\)′s,
+
+   B.  also binary‐search for the largest integer \(m\) (possibly not in the original list) with `costMed(m) ≤ k`, call it `m_max`,
+
+   C.  evaluate \(S(m)\) for all those candidate \(m\), and take the maximum.
+
+All operations run in \(O(n\log n)\) per test (sorting plus binary‐search and a few lookups), which is fine up to total \(n\le 2\cdot10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final long INF = (long)4e18;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int T = Integer.parseInt(br.readLine());
+        // We will reuse buffers across testcases but 
+        // total n over all tests <= 2e5 so it's safe.
+        while (T-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+
+            long[] a = new long[n];
+            int[] b = new int[n];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                b[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // Sort all a[] for quick rank queries
+            Arrays.sort(a);
+
+            // Build list of those a[i] where b[i]=1, also sorted
+            List<Long> B1 = new ArrayList<>();
+            long M0 = -INF, M1 = -INF;
+            for (int i = 0; i < n; i++) {
+                if (b[i] == 1) {
+                    B1.add(a[i]);
+                    M1 = Math.max(M1, a[i]);
+                } else {
+                    M0 = Math.max(M0, a[i]);
+                }
+            }
+            Collections.sort(B1);
+
+            // Prefix sums of B1 for quick "sum of largest t of B1< m"
+            int sz1 = B1.size();
+            long[] prefB1 = new long[sz1+1];
+            prefB1[0] = 0;
+            for (int i = 0; i < sz1; i++) {
+                prefB1[i+1] = prefB1[i] + B1.get(i);
+            }
+
+            // Our d = floor(n/2), but to have a'_d >= m in size-n array
+            // we need at least (n - d + 1) elements >= m.
+            int d = n/2;
+            int needed = n - d + 1;
+
+            // Extract the unique sorted values of a[] as candidate m's
+            List<Long> uniq = new ArrayList<>();
+            uniq.add(a[0]);
+            for (int i = 1; i < n; i++) {
+                if (a[i] != a[i-1]) {
+                    uniq.add(a[i]);
+                }
+            }
+
+            // A helper to compute costMed(m): the min ops to ensure a'_d >= m,
+            // or INF if impossible.
+            class CostMed {
+                long get(long m) {
+                    // how many a[] < m ?
+                    int lt = Arrays.binarySearch(a, m);
+                    if (lt < 0) lt = -lt - 1;
+                    // freeCount = how many already >= m
+                    int freeCnt = n - lt;
+                    int t = Math.max(0, needed - freeCnt);
+                    if (t == 0) {
+                        return 0;
+                    }
+                    // among B1, how many are < m ?
+                    int idx = Collections.binarySearch(B1, m);
+                    if (idx < 0) idx = -idx - 1;
+                    if (idx < t) return INF; // not enough boostable
+                    // sum of the t largest in B1[0..idx-1]
+                    long sumLastT = prefB1[idx] - prefB1[idx - t];
+                    return t * m - sumLastT;
+                }
+            }
+            CostMed cm = new CostMed();
+
+            // Evaluate S(m) for each unique a[i]
+            long answer = 0;
+            for (long m : uniq) {
+                long c = cm.get(m);
+                if (c > k) continue;
+                long rem = k - c;
+                long bestMax;
+                // we may choose the b=0 max if that is larger,
+                // or else boost M1 by rem (if M1 exists).
+                bestMax = M0;
+                if (M1 > -INF/2) {
+                    bestMax = Math.max(bestMax, M1 + rem);
+                }
+                answer = Math.max(answer, m + bestMax);
+            }
+
+            // Also binary‐search for the largest m (not necessarily in uniq)
+            // for which costMed(m) <= k
+            long lo = 0, hi = a[n-1] + k + 1;
+            while (lo < hi) {
+                long mid = (lo + hi + 1) >>> 1;
+                if (cm.get(mid) <= k) {
+                    lo = mid;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            // lo is now the maximum m s.t. costMed(m)<=k
+            if (lo > 0) {
+                long c = cm.get(lo);
+                if (c <= k) {
+                    long rem = k - c;
+                    long bestMax = M0;
+                    if (M1 > -INF/2) {
+                        bestMax = Math.max(bestMax, M1 + rem);
+                    }
+                    answer = Math.max(answer, lo + bestMax);
+                }
+            }
+
+            System.out.println(answer);
+        }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1.  **Sorting & Prefix Sums**  
+    We sort the entire array `a[]` (for quick “how many < m” queries via `lower_bound`)  
+    and we separately gather the subarray of those indices with `b[i]=1`, also sorted,  
+    with a prefix‐sum array so that in \(O(1)\) we can compute  
+    \(\sum\) of any consecutive block in that list.
+
+2.  **Computing `costMed(m)`**  
+    To force the \(d\)th smallest of all \(n\) to be at least \(m\), we need at least
+    \(\,(n-d+1)\) elements \(\ge m\).  Some are already \(\ge m\) (the “freeCount”),
+    the rest we must boost from among the `b=1` entries that are below \(m\).  
+    If that set has size `< t`, impossibility \(\to\infty\).  Otherwise
+    we take the \(t\) largest initial values below \(m\) (so the cheapest “\(m - a_i\)”
+    costs) and sum those costs.  That is `costMed(m)`.
+
+3.  **Maximizing the score**  
+    Having spent `costMed(m)` operations to make the median \(\ge m\), we have
+    `k - costMed(m)` left to pump up our eventual maximum‐slot.  If among `b=1`
+    the max is `M1`, we can raise it by the remainder.  If we also have some
+    index with `b=0` whose original value `M0` is even higher, we may instead
+    choose that (we cannot boost it).  Hence the final “max” is
+    `max(M0, M1 + (k - costMed(m)))`.  We add that to \(m\), producing one
+    candidate final score
+    \[
+      S(m) = m + \max(M_0,\;M_1 + (k - \text{costMed}(m))).
+    \]
+    We sweep all “interesting” \(m\).
+
+4.  **Candidate \(m\)**  
+    The cost‐function `costMed(m)` is a piecewise‐linear, nondecreasing function
+    of \(m\) with break‐points precisely at the distinct \(a_i\).  Hence an
+    optimum occurs either at one of the original \(a_i\) or at the largest
+    integer \(m\) for which `costMed(m) ≤ k`.  We therefore:
+
+    - Enumerate all distinct \(a_i\) (the “uniq” list).
+    - Also binary‐search for the maximal \(m\) (not necessarily in that list)
+      satisfying `costMed(m) ≤ k`.
+    - Evaluate \(S(m)\) for all these, and take the maximum.
+
+This runs in \(O(n\log n)\) per test (sorting plus a few binary searches), easily
+within the \(n\le2\cdot10^5\), \(T\le10^4\) constraints.

@@ -1,0 +1,222 @@
+Below is a complete Java solution that runs in O(n) time per test and O(1) extra space (beyond the input array).  The key idea is to set up the elementary linear system that describes how many times \(x_i\) we operate at position \(i\), observe that there is exactly one real solution, and then check whether that solution is in fact a non‐negative integer solution.  If it is, its sum
+\[
+  m \;=\; \sum_{i=1}^n x_i
+\]
+is exactly the minimum number of operations required; otherwise it is impossible and we print \(-1\).
+
+### 1. Restatement
+
+We have an array \(a\) of length \(n\).  An operation at index \(i\) does:
+  - \(a[i]\) decreases by 2,
+  - \(a[i+1]\) increases by 1  (where \(i+1\) wraps around to 1 when \(i=n\)).
+
+We wish, after some number of operations, for all entries of \(a\) to become the same nonnegative integer \(k\).  Since each operation reduces the total sum of the array by exactly 1, if we start with sum
+\[
+   S \;=\;\sum_{i=1}^n a_i,
+\]
+and end with all \(n\) entries equal to \(k,\) the final sum is \(n\cdot k\).  Thus the total number of operations
+\[
+   m \;=\; S - n\,k.
+\]
+We want to choose \(k\) (an integer \(\ge0\)) so that the transformation is actually feasible, and among all feasible \(k\) pick the largest (to make \(m=S-nk\) minimal).
+
+### 2. Linear‐algebraic formulation
+
+Call \(x_i\) the number of times we apply the operation at position \(i\).  Then each such operation removes 2 from \(a_i\) and adds 1 to \(a_{i+1}\).  Hence in total
+\[
+   a_i^\text{(final)} 
+     \;=\; a_i^\text{(initial)} \;-\;2\,x_i \;+\; x_{i-1},
+\]
+where we interpret \(x_0\) as \(x_n\).  We demand \(a_i^\text{(final)}=k\) for all \(i\).  If we put
+\[
+   b_i \;=\; a_i^{(\text{init})}-k,
+\]
+then the requirement is
+\[
+   -\,x_{i-1} \;+\;2\,x_i \;=\; b_i,
+    \qquad i=1,\dots,n,
+\]
+in a cyclic sense.  
+
+One can check this \(n\times n\) system has exactly one real solution \((x_1,\dots,x_n)\).  We only accept it if
+1. every \(x_i\) is an integer, and  
+2. every \(x_i\ge0\).  
+
+In that case, the total number of ops is
+\[
+   m \;=\;\sum_{i=1}^n x_i \;=\; S - n\,k,
+\]
+and by choosing the largest feasible \(k\) we minimize \(m\).
+
+### 3. Algorithm outline
+
+1.  Compute \(S=\sum a_i\).  
+2.  Let \(k=\lfloor S/n\rfloor\).  
+3.  Form the right‐hand side \(b_i=a_i-k\).
+4.  Solve the cyclic tridiagonal system
+       \[
+         -x_{i-1} + 2\,x_i = b_i,\quad i=1\ldots n,\quad x_0=x_n,
+       \]
+   by imposing the cycle‐closure in one pass (see code).  This can be done in \(O(n)\).  
+5.  Check that all the resulting \(x_i\) are
+     (a) integral  
+     (b) \(\ge0\).  
+   If so, output \(m=S-n\,k\).  Otherwise print \(-1\).
+
+Both the derivation of the one‐pass solver and the proof that there is a unique real solution are standard for cyclic tridiagonal systems.  In fact one shows in one forward/backward sweep that
+\[
+   x_i = \alpha_i\,x_1 + \beta_i
+\]
+for \(i=1\ldots n\), and then the equation for \(i=1\) itself closes the cycle and pins down \(x_1\) in closed form.  We then simply check integrality and nonnegativity.
+
+### 4. Java Implementation
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+  public static void main(String[] args) throws IOException {
+    BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+    PrintWriter out = new PrintWriter(System.out);
+
+    int t = Integer.parseInt(in.readLine().trim());
+    while (t-- > 0) {
+      int n = Integer.parseInt(in.readLine().trim());
+      long[] a = new long[n];
+      StringTokenizer st = new StringTokenizer(in.readLine());
+      long S = 0;
+      for (int i = 0; i < n; i++) {
+        a[i] = Long.parseLong(st.nextToken());
+        S += a[i];
+      }
+
+      // 1) The only possible target k is at most floor(S/n).
+      long k = S / n;
+
+      // 2) Build b[i] = a[i] - k.
+      long[] b = new long[n];
+      for (int i = 0; i < n; i++) {
+        b[i] = a[i] - k;
+      }
+
+      // 3) Solve the cyclic system:
+      //      - x[i-1] + 2*x[i] = b[i],  for i=0..n-1  (with x[-1] = x[n-1]).
+      //
+      // We'll do the standard trick:
+      //   x[i] = alpha[i] * x[0] + beta[i],
+      // then enforce the i=0 equation to find x[0].
+
+      double[] alpha = new double[n];
+      double[] beta  = new double[n];
+
+      // i = 0 row: 2*x[0] - x[n-1] = b[0]
+      // treat x[n-1] as if it were an unknown multiple of x[0], we start
+      // the forward sweep at i=1.
+      alpha[0] = 1.0;   // x[0] = 1*x[0] + 0
+      beta[0]  = 0.0;
+
+      // Forward sweep for i=1..n-1
+      //    -x[i-1] + 2 x[i] = b[i]
+      // =>  x[i] = ( b[i] + x[i-1] ) / 2
+      for (int i = 1; i < n; i++) {
+        alpha[i] = alpha[i-1] / 2.0;
+        beta[i]  = (beta[i-1] + b[i]) / 2.0;
+      }
+
+      // Now the closure at i=0 gives:
+      //    2*x[0] - x[n-1] = b[0]
+      //    2*x0 - [ alpha[n-1]*x0 + beta[n-1] ] = b[0]
+      // => x0 * (2 - alpha[n-1]) = b[0] + beta[n-1]
+      double denom = 2.0 - alpha[n-1];
+      double numer = b[0] + beta[n-1];
+
+      // If denom is zero or numer/denom not an integer => no integral solution.
+      if (Math.abs(denom) < 1e-14) {
+        out.println(-1);
+        continue;
+      }
+      double x0d = numer / denom;
+
+      // Check x0d is very close to an integer:
+      long x0 = Math.round(x0d);
+      if (Math.abs(x0d - x0) > 1e-8) {
+        // Not integral
+        out.println(-1);
+        continue;
+      }
+
+      // Reconstruct all x's and check nonnegativity + integer
+      boolean ok = true;
+      long[] x = new long[n];
+      x[0] = x0;
+      for (int i = 1; i < n; i++) {
+        double xd = alpha[i] * x0 + beta[i];
+        long xi = Math.round(xd);
+        if (Math.abs(xd - xi) > 1e-8 || xi < 0) {
+          ok = false;
+          break;
+        }
+        x[i] = xi;
+      }
+      if (!ok || x[n-1] < 0) {
+        out.println(-1);
+      } else {
+        // Everything is fine: the minimal m = sum x[i].
+        long m = 0;
+        for (long xi : x) m += xi;
+        out.println(m);
+      }
+    }
+    out.flush();
+  }
+}
+```
+
+### 5. Walk‐through on the sample
+
+Input:
+```
+3
+2
+1 1
+3
+1 3 2
+4
+2 1 2 6
+```
+
+Case 1) \(n=2,\;a=[1,1],\;S=2\).  Then \(\lfloor S/n\rfloor=1\).  We set \(k=1\), so \(b=[0,0]\).  The cyclic system
+\[
+  -x_1 + 2x_0 = 0,\quad -x_0+2x_1=0
+\]
+clearly has unique real solution \(x_0=x_1=0,\) which is integral and \(\ge0\).  Sum is \(0\), so output `0`.
+
+Case 2) \(n=3,\;a=[1,3,2],\;S=6\).  Then \(\lfloor S/n\rfloor=2,\) so \(k=2\) and
+\[
+   b = [-1,\,1,\,0].
+\]
+One finds the unique real solution \(x_0,x_1,x_2\) to
+\[
+   2x_0 - x_2 = -1,\quad -x_0+2x_1=1,\quad -x_1+2x_2=0
+\]
+is \emph{not} integral (indeed it has denominator \(7\) and gives a non‐integral \(x\)).  So we print `-1`.
+
+Case 3) \(n=4,\;a=[2,1,2,6],\;S=11\).  Then \(\lfloor 11/4\rfloor=2,\) \(k=2\), and
+\[
+   b=[0,\,-1,\,0,\,4].
+\]
+The solver finds exactly
+\[
+   x=[1,0,0,2], 
+\]
+all integers \(\ge0\).  Their sum is \(1+0+0+2=3\).  That matches \(S-nk=11-8=3\).  So we print `3`.
+
+### 6. Complexity
+
+- We do exactly one pass to compute the sum \(S\).  
+- We build \(b_i\) in \(O(n)\).  
+- We do one forward sweep of length \(n\) to build \(\alpha,\beta\).  
+- Then one backward (implicit) check of the closure and a second sweep to rebuild all \(x_i\).  
+
+Hence each test is \(O(n)\).  Since \(\sum n\le2\cdot10^5\), the total work is \(O\bigl(\sum n\bigr)=O(2\cdot10^5)\), comfortably within time limits.  Memory overhead is \(O(n)\) per test for arrays, again within the 512 MB limit.

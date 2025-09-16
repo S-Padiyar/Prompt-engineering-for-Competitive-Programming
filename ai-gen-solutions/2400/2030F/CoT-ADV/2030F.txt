@@ -1,0 +1,128 @@
+F. Orangutan Approved Subarrays
+time limit per test3 seconds
+memory limit per test512 megabytes
+Suppose you have an array b
+. Initially, you also have a set S
+ that contains all distinct elements of b
+. The array b
+ is called orangutan-approved if it can be emptied by repeatedly performing the following operation:
+
+In one operation, select indices l
+ and r
+ (1≤l≤r≤|b|
+) such that v=bl=bl+1=…=br
+ and v
+ is present in S
+. Remove v
+ from S
+, and simultaneously remove all bi
+ such that l≤i≤r
+. Then, reindex the elements br+1,br+2,…
+ as bl,bl+1,…
+ accordingly.
+You are given an array a
+ of length n
+ and q
+ queries.
+
+Each query consists of two indices l
+ and r
+ (1≤l≤r≤n
+), and you need to determine whether or not the subarray al,al+1,…,ar
+ is orangutan-approved.
+
+Input
+The first line contains t
+ (1≤t≤104
+) — the number of test cases.
+
+The first line of each test case contains integers n
+ and q
+ (1≤n,q≤2⋅105
+) — the size of a
+ and the number of queries, respectively.
+
+The following line contains n
+ integers a1,a2,…,an
+ (1≤ai≤n
+) — the elements of the array a
+.
+
+The following q
+ lines contain two integers l
+ and r
+ — the endpoints of the subarray for each query (1≤l≤r≤n
+).
+
+It is guaranteed that the sum of n
+ and q
+ over all test cases does not exceed 2⋅105
+.
+
+Output
+For each query, output "YES" (without quotes) if the subarray from l
+ to r
+ is orangutan-approved, and "NO" (without quotes) otherwise.
+
+You can output "YES" and "NO" in any case (for example, strings "yES", "yes" and "Yes" will be recognized as a positive response).
+
+Example
+InputCopy
+3
+4 2
+1 2 2 1
+1 4
+1 3
+5 3
+1 2 1 2 1
+2 5
+3 5
+1 3
+8 4
+1 2 3 2 1 3 2 3
+1 5
+2 8
+3 5
+6 8
+OutputCopy
+YES
+YES
+NO
+YES
+YES
+YES
+NO
+YES
+YES
+Note
+In the first query of the first testcase, the answer is YES.
+
+Initially, S={1,2}
+ and b=[1,2,2,1]
+Select l=2
+ and r=3
+. Since b2=b3=2
+ is in S
+, we may erase b2
+ and b3
+ from the array, as well as erasing 2
+ from S
+. The set S
+ becomes {1}
+ and the array becomes [1,1]
+.
+Select l=1
+ and r=2
+. Since b1=b2=1
+ is in S
+, we may erase b1
+ and b2
+ from the array, as well as erasing 1
+ from S
+. The set S
+ becomes {}
+ and the array becomes []
+.
+Since the array is now empty, we can say the original array is orangutan-approved.
+In the first query of the second testcase, the answer is NO, because it can be shown that the subarray [2,1,2,1]
+ cannot become empty through any sequence of valid operations.

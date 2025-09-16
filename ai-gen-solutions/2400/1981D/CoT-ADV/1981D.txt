@@ -1,0 +1,56 @@
+D. Turtle and Multiplication
+time limit per test3 seconds
+memory limit per test512 megabytes
+Turtle just learned how to multiply two integers in his math class, and he was very excited.
+
+Then Piggy gave him an integer n
+, and asked him to construct a sequence a1,a2,…,an
+ consisting of integers which satisfied the following conditions:
+
+For all 1≤i≤n
+, 1≤ai≤3⋅105
+.
+For all 1≤i<j≤n−1
+, ai⋅ai+1≠aj⋅aj+1
+.
+Of all such sequences, Piggy asked Turtle to find the one with the minimum number of distinct elements.
+
+Turtle definitely could not solve the problem, so please help him!
+
+Input
+Each test contains multiple test cases. The first line contains the number of test cases t
+ (1≤t≤104
+). The description of the test cases follows.
+
+The first line of each test case contains a single integer n
+ (2≤n≤106
+) — the length of the sequence a
+.
+
+It is guaranteed that the sum of n
+ over all test cases does not exceed 106
+.
+
+Output
+For each test case, output n
+ integers a1,a2,…,an
+ — the elements of the sequence a
+.
+
+If there are multiple answers, print any of them.
+
+Example
+InputCopy
+3
+2
+3
+4
+OutputCopy
+114514 114514
+1 2 2
+3 3 4 4
+Note
+In the third test case, a=[3,4,2,6]
+ violates the second condition since a1⋅a2=a3⋅a4
+. a=[2,3,4,4]
+ satisfy the conditions but its number of distinct elements isn't minimum.

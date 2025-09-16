@@ -1,0 +1,198 @@
+**Analysis**
+
+We have an array \(a\) of length \(n\).  We call a subarray \(a_{\ell},a_{\ell+1},\dots,a_{r}\) _brilliant_ if the set of _distinct_ values in that subarray can be “filled in” (by repeatedly taking integer mid-points \(\frac{x+y}2\), when they land in the integers and are not already present) so as to form a consecutive block of integers from its minimum to its maximum.
+
+A key combinatorial/algebraic fact is that for any finite integer set
+\[
+S = \{s_1<s_2<\cdots<s_k\},
+\]
+the _greatest common divisor_ of ***all*** pairwise differences
+\[
+\gcd\bigl(|s_j-s_i|\;:\;1\le i<j\le k\bigr)
+\]
+governs exactly which arithmetic strides survive the midpoint-filling process.  In fact one shows
+
+1.  If that GCD has an odd prime factor, the filling process _cannot_ overcome that odd factor (you never get numbers that break that odd modulus), so you cannot ever become fully consecutive.
+2.  Conversely if that GCD is a pure power of two, then repeated mid-points divide out the 2’s until the only “stride” remaining is \(1\), and you do eventually fill out every integer in between.
+
+Thus a subarray is _brilliant_ precisely if
+
+- it has only one distinct value (which trivially is a consecutive block of size 1), or
+- the GCD of all pairwise differences in the distinct set is a power of two.
+
+---
+
+But we do _not_ want to recompute a full pairwise GCD for every subarray—that would be \(O(n^2)\).  The classic trick is:
+
+1.  Observe \(\gcd(s_j-s_i\;\text{over all }i<j)\)
+    equals
+    \[
+      \gcd\bigl(|a_{i+1}-a_i| : i=\ell,\dots,r-1\bigr),
+    \]
+    i.e.\ the GCD of the _adjacent_ differences in that subarray.
+
+2.  Therefore if we define a new array
+   \[
+     d_i = |a_{i+1}-a_i|,\quad i=1,\dots,n-1,
+   \]
+   then for any subarray \(a_\ell,\dots,a_r\) with \(r>\ell\), the relevant GCD is
+   \(\gcd(d_\ell,d_{\ell+1},\dots,d_{r-1})\).
+
+3.  We must count all subarrays of \(d\) whose GCD is a power of two (or zero, which corresponds to “all equal” in the \(a\)-subarray).  We then add \(n\) singleton subarrays \([\,\ell=\!r\,]\), all of which are brilliant by definition.
+
+To count the number of subarrays of \(d\) whose GCD lies in the set 
+\(\{\,0,1,2,4,8,\dots\}\), one uses the well–known “GCD‐on‐the‐fly” DP:
+
+- We sweep a right‐endpoint \(i\) from \(1\) to \(n-1\).
+- We maintain a small list of pairs \((g,c)\) meaning: “there are \(c\) subarrays ending at \(i-1\) whose GCD is \(g\).”
+- When we move to add \(d_i\), every old GCD \(g\) gets updated to \(\gcd(g,d_i)\).  We merge equal GCD‐values to keep the list of size \(\le O(\log(\max d_i))\).  
+- We also start a brand‐new subarray \([i,i]\) with GCD \(d_i\).
+- In that list for endpoint \(i\), we sum up the counts \(c\) whose GCD is \(0\) or a power of two.  That contributes to our running total of brilliant subarrays of length \(\ge2\).
+
+Finally we add \(n\) for the trivial single‐element subarrays.
+
+Overall time is
+\[
+  \sum_{i=1}^{n-1}O(\log(\max d_i))
+  = O\bigl(n\log(\max a_i)\bigr),
+\]
+which is fine for \(n\) up to \(4\cdot10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    // Fast I/O
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader(InputStream in) { br = new BufferedReader(new InputStreamReader(in)); }
+        String next() {
+            while (st == null || !st.hasMoreTokens()) {
+                try { st = new StringTokenizer(br.readLine()); }
+                catch (IOException e) { throw new RuntimeException(e); }
+            }
+            return st.nextToken();
+        }
+        int nextInt() { return Integer.parseInt(next()); }
+    }
+
+    // gcd helper
+    static int gcd(int a, int b) {
+        while (b != 0) {
+            int t = a % b;
+            a = b;
+            b = t;
+        }
+        return a;
+    }
+
+    // Check if x is 0 or a power of two
+    static boolean isPowerOfTwoOrZero(int x) {
+        return x == 0 || ((x & (x - 1)) == 0);
+    }
+
+    public static void main(String[] args) {
+        FastReader in = new FastReader(System.in);
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = in.nextInt();
+            }
+
+            // If n == 1, there's exactly 1 subarray and it's brilliant.
+            if (n == 1) {
+                out.println(1);
+                continue;
+            }
+
+            // Build the difference array d[i] = |a[i+1] - a[i]|, length = n-1
+            int m = n - 1;
+            int[] d = new int[m];
+            for (int i = 0; i < m; i++) {
+                d[i] = Math.abs(a[i + 1] - a[i]);
+            }
+
+            // We'll do the classic "sliding GCD" DP.
+            // prevG[k], prevCnt[k] will store the distinct GCD-values
+            // and their counts for subarrays ending at index i-1.
+            int[] prevG = new int[32], prevCnt = new int[32];
+            int prevSize = 0;
+
+            long ans = 0;  // counts all brilliant subarrays of length >= 2
+
+            for (int i = 0; i < m; i++) {
+                int val = d[i];
+                int[] curG = new int[32], curCnt = new int[32];
+                int curSize = 0;
+
+                // Extend every old subarray by d[i]
+                for (int j = 0; j < prevSize; j++) {
+                    int g = gcd(prevG[j], val);
+                    if (curSize > 0 && curG[curSize - 1] == g) {
+                        curCnt[curSize - 1] += prevCnt[j];
+                    } else {
+                        curG[curSize] = g;
+                        curCnt[curSize] = prevCnt[j];
+                        curSize++;
+                    }
+                }
+
+                // Also start a brand-new subarray [i, i]
+                if (curSize > 0 && curG[curSize - 1] == val) {
+                    curCnt[curSize - 1]++;
+                } else {
+                    curG[curSize] = val;
+                    curCnt[curSize] = 1;
+                    curSize++;
+                }
+
+                // Count how many of these ending-at-i have GCD in {0,1,2,4,8,...}
+                for (int j = 0; j < curSize; j++) {
+                    if (isPowerOfTwoOrZero(curG[j])) {
+                        ans += curCnt[j];
+                    }
+                }
+
+                // Move cur -> prev for next iteration
+                prevSize = curSize;
+                System.arraycopy(curG, 0, prevG, 0, curSize);
+                System.arraycopy(curCnt,0, prevCnt,0, curSize);
+            }
+
+            // Add the n single-element subarrays (all are brilliant).
+            ans += n;
+
+            out.println(ans);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of the main steps**
+
+1.  **Precompute differences**  
+    We build an array \(d\) of length \(n-1\) with  
+    \[
+      d_i = |\,a_{i+1}-a_i|\,,\quad i=1,\dots,n-1.
+    \]
+    A subarray of the original \(a\) from \(\ell\) to \(r\) with \(r>\ell\) is brilliant precisely if  
+    \(\gcd(d_\ell,d_{\ell+1},\dots,d_{r-1})\)  
+    is an integer power of two (or zero, which occurs when all the \(a\)-values are equal in that subarray).
+
+2.  **“GCD‐on‐the‐fly” for subarrays of \(d\)**  
+    We sweep over each right‐end \(i\) of the difference‐array \(d\).  We maintain a small list of pairs \((g,c)\) meaning that there are \(c\) subarrays of \(d\) ending at index \(i-1\) whose GCD is \(g\).  When we extend to include \(d_i\), each old GCD \(g\) becomes \(\gcd(g,d_i)\).  We merge equal GCD’s (to keep the list length \(O(\log\max d)\)).  We also start one new subarray \([i,i]\) with GCD \(d_i\).  Then we simply sum up the counts \(c\) for those entries whose updated GCD is in \(\{0,1,2,4,8,\dots\}\).
+
+3.  **Adding singletons**  
+    Every subarray of length 1 in \(a\) is automatically brilliant, so at the end we add \(n\) for those.
+
+The total complexity is \(O(n\log A)\), where \(A\) is the largest \(|a_i|\), easily fast enough for \(n\) up to \(4\times10^5\).

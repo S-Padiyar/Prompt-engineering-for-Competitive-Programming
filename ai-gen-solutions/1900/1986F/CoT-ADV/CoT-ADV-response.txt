@@ -1,0 +1,167 @@
+Problem Restatement  
+You are given a connected undirected graph on n vertices (numbered 1…n) and m edges. You must remove exactly one edge so as to minimize the number of ordered pairs (u,v) with 1 ≤ u < v ≤ n that remain reachable by some path in the resulting graph. In other words, you wish to break the graph (if possible) into two pieces whose sizes are as balanced as possible, since only pairs inside each connected component remain reachable. Removing a non‐bridge leaves the graph connected (no pairs are lost), removing a bridge splits it into two components of sizes a and b=n−a, losing a×b reachable pairs. We want to maximize a×b over all possible edges; then the answer is:
+
+   answer = total_pairs − max_{bridges}( a × (n−a) ),
+   where total_pairs = n(n−1)/2.
+
+If there are no bridges at all, you must remove some edge and the graph stays connected, so the answer is the full n(n−1)/2.
+
+Input Format  
+t           — number of test cases (1≤t≤10^4).  
+For each test case:  
+  n m       — number of vertices and edges (2≤n≤10^5, n−1≤m≤min(10^5, n(n−1)/2))  
+  Then m lines, each has u v, an undirected edge (1≤u,v≤n, u≠v).  
+Sum of n and sum of m over all test cases ≤2⋅10^5.
+
+Output Format  
+For each test case, output a single integer — the minimum number of reachable pairs after removing exactly one edge.
+
+Constraints & Edge Cases  
+- The initial graph is connected and simple (no multi‐edges or loops).  
+- If m=n−1 (a tree), every edge is a bridge; you choose the bridge that most evenly splits the tree.  
+- If the graph has no bridges (is 2‐edge‐connected), removing any edge leaves it connected, so answer = n(n−1)/2.  
+- We must handle up to 2⋅10^5 total vertices and edges, so an O(n+m) or O((n+m) log n) per test set solution is required.  
+
+Algorithmic Pattern  
+This is a graph‐traversal + bridge‐finding problem. We will use a single DFS (Tarjan’s algorithm) to compute discovery times (tin[u]), low‐link values (low[u]), and subtree sizes. Whenever we see that low[v]>tin[u] for an edge (u,v) in the DFS tree, that edge is a bridge, and the component that hangs off v has size subtreeSize[v], so removing that bridge splits the graph into (subtreeSize[v]) and (n−subtreeSize[v]). We compute the product and keep the maximum over all bridges.
+
+Step-by‐Step Solution Plan  
+1. Read t.  
+2. For each test case:  
+   a. Read n, m.  
+   b. Build an adjacency list of size n+1. Each entry holds pairs (neighbor, edgeID).  
+   c. Initialize arrays:  
+      - tin[u], low[u] of length n+1  
+      - visited[u] boolean  
+      - subtreeSize[u] of length n+1  
+      - a global timer = 0  
+      - maxCut = 0 (the maximum a*(n−a) found).  
+   d. Run DFS(1, parentEdgeID=−1) to fill tin/low/subtreeSize and detect bridges:  
+      - Mark u visited, tin[u]=low[u]=timer++, subtreeSize[u]=1.  
+      - For each (v, eid) in adj[u]:  
+         • If eid==parentEdgeID, skip.  
+         • If visited[v], low[u]=min(low[u], tin[v]).  
+         • Else: DFS(v, eid);  
+             subtreeSize[u]+=subtreeSize[v];  
+             low[u]=min(low[u], low[v]);  
+             if (low[v] > tin[u]) // bridge  
+                let a = subtreeSize[v], b = n-a;  
+                maxCut = max(maxCut, 1L*a*b).  
+   e. After DFS, totalPairs = 1L*n*(n-1)/2;  
+      answer = totalPairs − maxCut;  
+   f. Print answer.  
+
+Time Complexity  
+For each test case, DFS runs in O(n + m). Building the graph is O(n + m). Since total n + m over all tests is ≤2⋅10^5, overall O(n + m) ≃ O(2⋅10^5).  
+
+Space Complexity  
+O(n + m) for adjacency lists and O(n) for auxiliary arrays, which is also O(2⋅10^5).  
+
+Java Implementation  
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static int n, m;
+    static ArrayList<Edge>[] adj;
+    static int[] tin, low, subSize;
+    static boolean[] visited;
+    static int timer;
+    static long maxCut;  // maximum a*(n-a) over all bridges
+
+    static class Edge {
+        int to, id;
+        Edge(int _to, int _id) { to = _to; id = _id; }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder out = new StringBuilder();
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            n = Integer.parseInt(st.nextToken());
+            m = Integer.parseInt(st.nextToken());
+
+            // Build adjacency list
+            adj = new ArrayList[n + 1];
+            for (int i = 1; i <= n; i++) {
+                adj[i] = new ArrayList<>();
+            }
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(in.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                adj[u].add(new Edge(v, i));
+                adj[v].add(new Edge(u, i));
+            }
+
+            // Initialize arrays for Tarjan DFS
+            tin = new int[n + 1];
+            low = new int[n + 1];
+            subSize = new int[n + 1];
+            visited = new boolean[n + 1];
+            timer = 0;
+            maxCut = 0L;
+
+            // Run DFS from node 1 (graph is connected)
+            dfs(1, -1);
+
+            // Total possible pairs
+            long totalPairs = (1L * n * (n - 1)) / 2;
+            long answer = totalPairs - maxCut;
+            out.append(answer).append('\n');
+        }
+
+        System.out.print(out);
+    }
+
+    // DFS to compute tin[], low[], subtree sizes, and detect bridges
+    static void dfs(int u, int parentEdgeId) {
+        visited[u] = true;
+        tin[u] = low[u] = timer++;
+        subSize[u] = 1;
+
+        for (Edge e : adj[u]) {
+            int v = e.to;
+            if (e.id == parentEdgeId) continue;
+            if (visited[v]) {
+                // back-edge
+                low[u] = Math.min(low[u], tin[v]);
+            } else {
+                // tree-edge
+                dfs(v, e.id);
+                subSize[u] += subSize[v];
+                low[u] = Math.min(low[u], low[v]);
+                // Check for bridge
+                if (low[v] > tin[u]) {
+                    long a = subSize[v];
+                    long b = (long) n - a;
+                    maxCut = Math.max(maxCut, a * b);
+                }
+            }
+        }
+    }
+}
+```
+
+Explanation of Key Parts  
+- We store each undirected edge twice in an adjacency list, giving each edge a unique ID (0…m−1).  
+- In `dfs(u, parentEdgeId)`, we skip the edge that we came in on by comparing IDs.  
+- `tin[u]` is the time of first visit; `low[u]` is the lowest discovery time reachable via back‐edges (including itself).  
+- If for a child v we have `low[v] > tin[u]`, then (u,v) is a bridge. Removing it splits the graph into two components: one of size `subSize[v]`, and the other of size `n−subSize[v]`.  
+- We track `maxCut = max(a*(n−a))` over all bridges.  
+- The final answer is `totalPairs - maxCut`, because we lose exactly `a*(n−a)` reachable pairs when splitting.  
+
+Sample Walk‐through (Fourth Test from Statement)  
+Input graph has n=6, m=7, edges:
+1–2, 1–3, 2–3, 3–4, 4–5, 4–6, 5–6.  
+This graph is two triangles {1,2,3} and {4,5,6} joined by the bridge 3–4.  
+- Initial totalPairs = 6·5/2 = 15.  
+- The only bridge is 3–4; removing it splits into a=3 and b=3, so a·b=9.  
+- Answer = 15 − 9 = 6, which matches the example.  
+
+Complexity  
+- Time: O(n + m) per test → O(2⋅10^5) overall.  
+- Space: O(n + m) for adjacency lists + O(n) for DFS arrays.

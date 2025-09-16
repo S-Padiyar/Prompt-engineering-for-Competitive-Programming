@@ -1,0 +1,194 @@
+**Analysis**
+
+We have \(n\) enemies on integer positions \(x_1<x_2<\cdots<x_n\).  Enemy \(i\) has health \(h_i\).  Xilonen’s stomp attack is centered at a fixed integer position \(p\), chosen once before any attacks; on each of her \(T\) attacks:
+
+- An enemy at position \(x\) takes 
+  \[
+     \max\bigl(0,\,m - |p - x|\bigr)
+  \]
+  damage per hit.
+
+Thus if an enemy at \(x_i\) receives \(d_i(p)=\max(0,m-|p-x_i|)\) damage each attack, then after \(T\) attacks its total damage is \(T\cdot d_i(p)\), and it is defeated exactly when
+\[
+   T \cdot d_i(p)\;\ge\;h_i 
+   \;\iff\;
+   T \;\ge\;\bigl\lceil \tfrac{h_i}{d_i(p)}\bigr\rceil,
+\]
+provided \(d_i(p)>0\).  If \(d_i(p)=0\) (i.e.\ \(|p-x_i|\ge m\)) it never dies.
+
+We want to pick a single \(p\) and a number of attacks \(T\) so that **at least** \(k\) enemies die, and we seek the minimum such \(T\).  Instead of directly trying all \(p\), we do a binary search on \(T\).  For a candidate \(T\), we ask:
+
+– _Is there an integer \(p\) so that at least \(k\) enemies satisfy \(\lceil h_i/T\rceil \le d_i(p)\)?_
+
+Rewriting \(\lceil h_i/T\rceil \le d_i(p)\) with \(d_i(p)=m-|p-x_i|\), we get
+
+\[
+  m - |p - x_i| \;\ge\; \Bigl\lceil\frac{h_i}{T}\Bigr\rceil 
+  \;\Longleftrightarrow\;
+  |p - x_i|\;\le\; m - c_i,
+\]
+where \(c_i=\lceil h_i/T\rceil\).  If \(m - c_i<0\), enemy \(i\) cannot die in \(T\) hits from any \(p\).  Otherwise define
+\[
+   r_i = m - c_i \;\ge 0,
+   \quad
+   \text{and}\quad
+   [\,L_i,R_i\,]=[\,x_i - r_i,\;x_i + r_i\,].
+\]
+Then enemy \(i\) will be killed in \(T\) hits precisely for those \(p\in[L_i,R_i]\).
+
+Hence the feasibility check for a given \(T\) becomes:
+
+1.  Build all intervals \([L_i,R_i]\) for those \(i\) with \(r_i\ge 0\).
+2.  If we have fewer than \(k\) such intervals at all, fail immediately.
+3.  Otherwise, see if there is an integer \(p\) covered by at least \(k\) intervals.  
+    -  This is a “maximum overlap of intervals” problem: we collect events  
+       \((L_i,+1)\) and \((R_i+1,-1)\),  
+      sweep them in order, keep a running sum of “active intervals,” and check if it ever reaches \(\ge k\).
+
+If the check succeeds, we know we can kill \(k\) enemies in \(T\) hits; otherwise not.  We binary‐search \(T\) in \([1,\max h_i]\).  If no \(T\) in that range is feasible, the answer is \(-1\).
+
+- Each feasibility check is \(O(n\log n)\) to sort up to \(2n\) endpoints.
+- We do \(O(\log(\max h_i))\approx 30\) such checks.
+- Overall \(\displaystyle O\bigl(n\log n\log H\bigr)\), which is fine for \(n\le10^5\).
+
+Below is a Java implementation using this approach.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 100000;          // maximum n over all test cases
+    static long[] events = new long[2 * MAXN]; // scratch space for sweep events
+
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            long m = in.nextLong();
+            int k = in.nextInt();
+
+            long[] h = new long[n];
+            long maxH = 0;
+            for (int i = 0; i < n; i++) {
+                h[i] = in.nextLong();
+                if (h[i] > maxH) maxH = h[i];
+            }
+            long[] x = new long[n];
+            for (int i = 0; i < n; i++) {
+                x[i] = in.nextLong();
+            }
+
+            // Binary search for the minimum T
+            long left = 1, right = maxH;
+            long answer = -1;
+            while (left <= right) {
+                long mid = (left + right) >>> 1;
+                if (canKillAtLeastK(n, m, k, h, x, mid)) {
+                    answer = mid;
+                    right = mid - 1;
+                } else {
+                    left = mid + 1;
+                }
+            }
+            out.println(answer);
+        }
+
+        out.flush();
+    }
+
+    /**
+     * Check if there is a position p (integer) where at least k enemies
+     * can be killed in exactly T hits.
+     */
+    static boolean canKillAtLeastK(int n, long m, int k,
+                                   long[] h, long[] x, long T) {
+        int ecount = 0; // will count 2 * (#intervals)
+
+        // Build intervals [Li, Ri] for enemies killable in T hits
+        for (int i = 0; i < n; i++) {
+            // c = ceil(h[i] / T)
+            long c = (h[i] + T - 1) / T;
+            long r = m - c;   // must have r >= 0 to be killable
+            if (r >= 0) {
+                long L = x[i] - r;
+                long R = x[i] + r;
+                // encode events: at L, +1; at R+1, -1
+                // pack into one long: high bits = position<<1, low bit = delta
+                // delta bit: 1 for +1, 0 for -1.
+                events[ecount++] = (L << 1) | 1;       // +1 event
+                events[ecount++] = ((R + 1) << 1) | 0; // -1 event
+            }
+        }
+
+        // If fewer than k intervals at all, impossible
+        if (ecount / 2 < k) return false;
+
+        // Sort all events by position, then by delta (we get -1 before +1 if same pos)
+        Arrays.sort(events, 0, ecount);
+
+        // Sweep-line to find max overlap
+        int curr = 0;
+        for (int i = 0; i < ecount; i++) {
+            // decode delta
+            // low bit == 1 => +1, else -1
+            curr += ((events[i] & 1) == 1 ? +1 : -1);
+            if (curr >= k) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Fast IO
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader() {
+            br = new BufferedReader(new InputStreamReader(System.in));
+        }
+        String next() {
+            while (st == null || !st.hasMoreTokens()) {
+                try { st = new StringTokenizer(br.readLine()); }
+                catch(IOException e) { throw new RuntimeException(e); }
+            }
+            return st.nextToken();
+        }
+        int nextInt()    { return Integer.parseInt(next()); }
+        long nextLong()  { return Long.parseLong(next()); }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Binary search** on the number of attacks \(T\).  
+2. For each candidate \(T\), compute for each enemy the minimum per‐hit damage needed to kill it in \(T\) hits:
+   \[
+     c_i \;=\;\Bigl\lceil\frac{h_i}{T}\Bigr\rceil.
+   \]
+   If \(c_i>m\), it’s impossible for that enemy ever to die in \(T\) hits (damage per hit would have to exceed \(m\)), so we discard that enemy.
+
+3. Otherwise we have \(m - c_i\ge0\).  Let
+   \[
+     r_i \;=\; m - c_i.
+   \]
+   Then those positions \(p\) with 
+   \(\;|p - x_i|\le r_i\)
+   kill enemy \(i\) in \(T\) hits; i.e.\ \(p\in[x_i - r_i,\,x_i + r_i]\).
+
+4. We get up to \(n\) such intervals \([L_i,R_i]\).  We ask if there is an integer \(p\) covered by at least \(k\) of them.  That is simply the maximum overlap of these intervals.  
+
+   We implement a standard sweep‐line:
+
+   - Convert each \([L_i,R_i]\) to two events  
+     \((L_i,\;+\!1)\) and \((R_i+1,\;-\!1)\).  
+   - Sort all events by their position, breaking ties so that removals come before additions at the same position (so that an interval ending at \(R\) does not “cover” \(p=R+1\), but one beginning at \(R+1\) does).  
+   - Traverse in order, maintaining a running count of “active intervals.”  If it ever reaches \(\ge k\), we succeed.
+
+If the sweep‐line ever shows at least \(k\) overlaps, the candidate \(T\) is feasible; we then search lower.  Otherwise we search higher.  If no \(T\) in \([1,\max h_i]\) is feasible, we print \(-1\).
+
+This runs in \(O(\,n\log n\log(\max h_i)\,)\), which is efficient for \(n\le10^5\) and healths up to \(10^9\).

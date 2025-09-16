@@ -1,0 +1,126 @@
+**Analysis**
+
+We have an undirected graph on vertices \(1,2,\dots,n\), where \(\{u,v\}\) is an edge if and only if
+\[
+u \,\oplus\, v
+\]
+is prime.
+
+We must colour the vertices so that adjacent vertices get different colours, using the minimum number of colours.
+
+---
+
+1.  **A key observation:**
+    -  If you forbid the prime \(2\), then all remaining primes are odd, so any XOR by an odd prime flips the least‐significant bit, hence swaps parity.  Thus the graph of odd‐prime‐edges alone is bipartite (odd vs.\ even).
+    -  The prime \(2\) induces edges \(u\sim u\oplus2\), which stay within the same parity class.  Those edges form a disjoint union of paths.
+    -  Putting them together, one can show that the maximum size of a clique in the entire graph is
+       \[
+       \omega(G)
+       =4,
+       \]
+      attained already within the first six vertices by the clique \(\{1,3,4,6\}\).  Hence for \(n\ge6\) the chromatic number \(\chi(G)\) is at least 4; one can also exhibit a 4‐colouring, so \(\chi(G)=4\) for all \(n\ge6\).
+
+2.  **Small cases** \(n<6\).  By direct checking or small‐case search one finds
+    \[
+    \chi(G)=
+     \begin{cases}
+       1,&n=1,\\
+       2,&n=2,3,\\
+       3,&n=4,5.
+     \end{cases}
+    \]
+    One can explicitly write down a valid optimal colouring for each of these.
+
+3.  **A uniform 4‐colouring for all \(n\ge6\):**  A very neat fact is that if you colour by
+    \[
+      c(i)\;=\;(i \bmod 4)+1,
+    \]
+    then for *any* prime \(p\neq4k\) (in particular *any* prime \(p\)) and any \(i\), we have
+    \[
+      c(i)\;=\;(i\bmod4)+1
+      \;\ne\;
+      \bigl((i\oplus p)\bmod4\bigr)+1
+      \;=\;c(i\oplus p),
+    \]
+    because \(p\bmod4\in\{1,2,3\}\) is never \(0\), so \(i\bmod4\) and \((i\oplus p)\bmod4\) differ.
+    Hence this uses exactly 4 colours and is valid for every edge–so for \(n\ge6\) we can output
+    \(\chi=4\) and \(c(i)=(i\%4)+1\).
+
+Putting it all together gives an \(O(n)\)‐time solution per test case, which easily handles up to \(2\times10^5\) total vertices.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder output = new StringBuilder();
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            if (n == 1) {
+                output.append(1).append('\n');
+                output.append(1).append('\n');
+            }
+            else if (n == 2) {
+                output.append(2).append('\n');
+                output.append("1 2").append('\n');
+            }
+            else if (n == 3) {
+                // Optimal is 2‐colourable: one can do {1}, {2,3}
+                output.append(2).append('\n');
+                output.append("1 2 2").append('\n');
+            }
+            else if (n == 4) {
+                // Optimal is 3‐colourable
+                output.append(3).append('\n');
+                // e.g. 1–2–2–3 is known to work
+                output.append("1 2 2 3").append('\n');
+            }
+            else if (n == 5) {
+                // Optimal is 3‐colourable
+                output.append(3).append('\n');
+                // for example 1–2–2–3–3
+                output.append("1 2 2 3 3").append('\n');
+            }
+            else {
+                // n >= 6: we proved χ(G) = 4, and (i mod 4)+1 is a valid 4‐colouring
+                output.append(4).append('\n');
+                for (int i = 1; i <= n; i++) {
+                    int col = (i % 4) + 1;
+                    output.append(col).append(i == n ? '\n' : ' ');
+                }
+            }
+        }
+        System.out.print(output);
+    }
+}
+```
+
+**Explanation of the key steps**
+
+1.  **Small cases** \((n\le5)\) are handled by pre‐written optimal colourings:
+    -  \(n=1\): obviously 1 colour.
+    -  \(n=2\): \(1\mathbin\oplus2=3\) is prime, so \(\chi=2\).
+    -  \(n=3\): edges are \(1\!-\!2\) and \(1\!-\!3\), also bipartite, so \(\chi=2\).
+    -  \(n=4\) or \(5\): one checks \(\chi=3\) by small‐case brute force or hand construction.
+
+2.  **For \(n\ge6\)** we exhibit a **4‐colouring**:
+    \[
+      c(i)\;=\;(i\bmod4)+1.
+    \]
+    -  Any prime \(p\) satisfies \(p\!\bmod4\in\{1,2,3\}\), never 0.
+    -  XORing with such a \(p\) *always* changes \(i\bmod4\), so
+       \[
+         (i\bmod4)\neq\bigl((\,i\oplus p\,)\bmod4\bigr),
+       \]
+      which forces \(c(i)\neq c(i\oplus p)\).  
+    -  Hence no two endpoints of a prime‐edge collide in colour.
+
+3.  **Optimality** for \(n\ge6\).  One finds a clique of size 4 already on \(\{1,3,4,6\}\), so
+    \(\chi\ge4\), and we have given a 4‐colouring, so \(\chi=4\).
+
+This runs in \(O(n)\) per test (simply writing out the colours) and handles \(\sum n\le2\times10^5\) comfortably under the 2-second limit.

@@ -1,0 +1,134 @@
+**Analysis**
+
+We have n card‐types (labels 1…n), and initially we own aᵢ copies of label i.  We are allowed to “buy” up to k additional cards; each card we buy can be any label 1…n.  After our buys, we must partition **all** our cards into decks so that
+
+ 1. Every deck has the **same** size s.
+ 2. Within each deck, all labels are **distinct**.
+
+We want to choose our buys (how many of each label to purchase, up to a total of k) so as to make the resulting maximum possible deck‐size s.
+
+---
+
+Let
+
+ A = ∑_{i=1}^n aᵢ   (initial total cards),
+ M = max_{i}(aᵢ)    (the largest initial count of any single label).
+
+Any feasible deck‐size s must satisfy:
+
+  • You cannot “throw away” cards.  If you decide to make t decks of size s, you will have exactly m = s·t cards in total, so you must use exactly m cards.  You start with A cards and can buy up to k more, so
+
+     A  ≤  m  =  s·t  ≤  A + k.  
+
+  • Because in each deck every label is distinct, each label i can appear at most once per deck.  So if you form t decks, you can accommodate at most t copies of any given label.  But you must use your **all** of your original aᵢ copies as well (you cannot discard them), hence
+
+     t  ≥  max_i aᵢ  =  M.  
+
+Summarizing, (s, t) is feasible exactly if
+
+  (1)  A   ≤  s·t  ≤  A + k,
+  (2)  t  ≥  M,
+
+and s·t, t are integers of course.
+
+Thus for a given s, we only need to check whether there is an integer t in the interval
+
+   [ max(M, ⌈A/s⌉),  ⌊(A+k)/s⌋  ].
+
+If that interval is non‐empty, we can pick t in it, buy exactly s·t–A new cards (≤k), and then t ≥ M guarantees we can place the original aᵢ cards (no label has more than t copies).
+
+We want the **maximum** s with that property.  We also clearly need s ≤ n (because a deck of size s must consist of s distinct labels among n possible).  
+
+Since ∑n over all test‐cases ≤2·10^5, we can for each test simply:
+
+ 1. Compute A =∑aᵢ and M = max aᵢ in O(n).
+ 2. Let S_max_candidate = min(n, ⌊(A+k)/M⌋).  (Clearly if s>⌊(A+k)/M⌋ then even with t=M we have s·M > A+k, so impossible.)
+ 3. For s = 1…S_max_candidate, check
+
+       L = ⌊(A+k)/s⌋,    R = max( M,  ⌈A/s⌉ ),
+
+     if L ≥ R then s is feasible.  Take the largest feasible s.
+
+Overall cost is O(n) per test, and ∑n≤2·10^5 is fine in 2s.  
+
+---
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.StringTokenizer;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        
+        int t = Integer.parseInt(in.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+            
+            long A = 0;      // sum of a_i
+            long M = 0;      // max of a_i
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) {
+                long ai = Long.parseLong(st.nextToken());
+                A += ai;
+                if (ai > M) {
+                    M = ai;
+                }
+            }
+            
+            // Upper bound on s: s*M <= A+k  =>  s <= (A+k)/M
+            long maxByM = (A + k) / M;
+            int upper = (int)Math.min(n, maxByM);
+            
+            int answer = 0;
+            // Try every s from 1..upper
+            for (int s = 1; s <= upper; s++) {
+                // L = floor((A+k)/s)
+                long L = (A + k) / s;
+                // ceil(A/s) = (A + s - 1) / s
+                long needT = (A + s - 1) / s;
+                // R = max(M, ceil(A/s))
+                long R = Math.max(M, needT);
+                
+                if (L >= R) {
+                    answer = s;
+                }
+            }
+            
+            sb.append(answer).append('\n');
+        }
+        
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Bounds on the number of decks t**  
+   - We must have enough “slots” to place all original cards: if we build t decks of size s, total slots is s·t.  We own A cards and can buy up to k more, so  
+       A ≤ s·t ≤ A+k.  
+     This forces  
+       ⌈A/s⌉ ≤ t ≤ ⌊(A+k)/s⌋.  
+   - We cannot place more than one copy of the same label in a deck, so a label that originally had `aᵢ` copies (and we cannot discard them) requires at least `aᵢ` different decks.  Hence  
+       t ≥ max_i aᵢ = M.  
+
+2. **Putting it together**  
+   We require an integer t in the intersection  
+       [⌈A/s⌉, ⌊(A+k)/s⌋]  ∩  [M, ∞).  
+   Equivalently  
+       max(M, ⌈A/s⌉)  ≤  ⌊(A+k)/s⌋.  
+
+3. **Searching for maximum s**  
+   - Clearly s cannot exceed n (n distinct labels per deck) or exceed `(A+k)/M` (otherwise even with only M decks you cannot fit all cards into s·M slots).  
+   - We loop s=1…min(n,⌊(A+k)/M⌋), compute  
+       L = ⌊(A+k)/s⌋,   R₁=⌈A/s⌉,  R = max(M,R₁),  
+     and check L≥R.  If so, `s` is feasible, we remember the largest feasible.
+
+Because ∑n≤2·10^5 over all test‐cases, the total cost of O(n) per case is O(2·10^5) and runs easily within the 2 s limit.

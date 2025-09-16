@@ -1,0 +1,164 @@
+**Analysis**
+
+We have a tree of _n_ vertices (nodes), each vertex _i_ carries a monster of attack value _aₙ_.
+
+Every round:  
+
+1. All *still‐alive* monsters jointly deal damage equal to the **sum** of their attack values.
+2. We may kill an arbitrary set of monsters subject to **no two killed in the same round being adjacent** on the tree.
+
+Since we have an astronomically large number of rounds (10¹⁰⁰), we will certainly be able to kill *all* monsters.  Let us decide in which round (an integer ≥ 1) each monster dies.  Call that round _kᵢ_ for monster _i_; then monster _i_ attacks us in rounds 1,2,…,kᵢ, so its total contribution to the damage is
+
+```
+    aᵢ × kᵢ.
+```
+
+We want to choose all the integers {kᵢ} in a way that
+
+- if two nodes _u_,_v_ are adjacent in the tree, then **kᵤ ≠ kᵥ**, because they cannot both be killed in the same round,
+- and the sum of all aᵢ·kᵢ is as small as possible.
+
+But a tree is bipartite: we can 2‐color it (say “black” and “white”) so that no edge joins two vertices of the same color.  A proper coloring with distinct round‐numbers for adjacent vertices is exactly the same as a **proper graph coloring**: adjacent vertices must get different colors.  Since a tree is 2‐colorable, we never need more than two “rounds‐lots” (colors).  
+
+Hence, without loss of generality, we may choose two distinct integer rounds, call them 1 and 2:
+
+– All black nodes die in round 1 → each black node _i_ contributes aᵢ×1  
+– All white nodes die in round 2 → each white node _i_ contributes aᵢ×2  
+
+Possibly we could also swap (black in round 2, white in round 1).  So the total damage in the first scheme is
+
+```
+   (sum of aᵢ over black) * 1  +  (sum of aᵢ over white) * 2
+ = S + (sum of aᵢ over white),
+```
+
+where S = total sum of all aᵢ.  If we swap colors (black→round 2, white→round 1), the cost becomes
+
+```
+   S + (sum of aᵢ over black).
+```
+
+We pick the smaller of these two.  Hence the answer is
+
+```
+   answer = S + min( sum_black, sum_white ).
+```
+
+where `sum_black` is the sum of aᵢ on one side of the bipartition, and `sum_white` on the other.
+
+We just
+
+1. 2‐color the tree by an easy BFS/DFS,
+2. accumulate the sums on each side of the bipartition,
+3. output `S + min(sum_black, sum_white)`.
+
+This runs in O(n) per test, linear in the size of the tree, which is more than fast enough for n up to 3·10⁵ total over all test cases.
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        // Fast input
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        
+        int t = Integer.parseInt(st.nextToken());  // number of test cases
+        
+        // We'll reuse buffers for BFS queue, coloring, etc.
+        // but we don't know upfront max n, so we'll recreate per test.
+        
+        StringBuilder output = new StringBuilder();
+        while (t-- > 0) {
+            // Read n
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            
+            // Read attack values a[0..n-1]
+            long[] a = new long[n];
+            st = new StringTokenizer(br.readLine());
+            long totalSum = 0L;
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+                totalSum += a[i];
+            }
+            
+            // Build adjacency list
+            List<Integer>[] adj = new ArrayList[n];
+            for (int i = 0; i < n; i++) {
+                adj[i] = new ArrayList<>();
+            }
+            for (int i = 0; i < n-1; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken()) - 1;
+                int v = Integer.parseInt(st.nextToken()) - 1;
+                adj[u].add(v);
+                adj[v].add(u);
+            }
+            
+            // BFS to 2-color the tree
+            boolean[] color = new boolean[n];    // false = "black", true = "white"
+            boolean[] seen  = new boolean[n];
+            int[] queue = new int[n];
+            
+            int qh = 0, qt = 0;
+            queue[qt++] = 0;
+            seen[0] = true;
+            
+            while (qh < qt) {
+                int u = queue[qh++];
+                for (int v : adj[u]) {
+                    if (!seen[v]) {
+                        seen[v] = true;
+                        color[v] = !color[u];  // opposite color of parent
+                        queue[qt++] = v;
+                    }
+                }
+            }
+            
+            // Sum up each side
+            long sumBlack = 0L, sumWhite = 0L;
+            for (int i = 0; i < n; i++) {
+                if (color[i]) {
+                    sumWhite += a[i];
+                } else {
+                    sumBlack += a[i];
+                }
+            }
+            
+            // Final answer: totalSum + min(sumBlack, sumWhite)
+            long ans = totalSum + Math.min(sumBlack, sumWhite);
+            output.append(ans).append('\n');
+        }
+        
+        // Write all answers
+        System.out.print(output.toString());
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Bipartition (2‐coloring)**  
+   A tree is always 2‐colorable (it has no odd cycles).  By a simple BFS/DFS from node 0, we assign `color[0] = false` and for each edge (u→v), set `color[v] = !color[u]`.
+
+2. **Cost computation**  
+   If all “black”‐colored vertices die in round 1 and “white”‐colored in round 2, the total damage is  
+   
+       ∑(aᵢ⋅1 over black) + ∑(aⱼ⋅2 over white)
+     = (sum of all aᵢ) + (sum of aⱼ over white).
+   
+   If we swap (white in round 1, black in 2), we get  
+   
+       (sum of all aᵢ) + (sum of aᵢ over black).
+   
+   We take the minimum of these two, i.e.
+   
+       answer = totalSum + min(sumBlack, sumWhite).
+
+This exactly matches the requirement of killing no two adjacent monsters in the same round, and it is optimal since any proper coloring of a tree uses at most 2 colors, and delaying a monster beyond round 2 only increases its contribution `aᵢ·kᵢ` without allowing any further improvement in reducing a neighbor’s round.

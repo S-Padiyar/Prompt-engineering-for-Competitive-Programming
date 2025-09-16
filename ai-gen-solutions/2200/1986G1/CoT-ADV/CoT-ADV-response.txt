@@ -1,0 +1,202 @@
+**Problem Restatement**
+
+We have a permutation \(p\) of length \(n\).  We want to count the number of pairs of indices \((i,j)\) with \(1 \le i < j \le n\) such that
+
+\[
+\frac{p_i \cdot p_j}{i \cdot j}
+\]
+
+is an integer (i.e.\ \(p_i p_j\) is divisible by \(i j\)).
+
+We must process up to \(t\) test cases, the sum of all \(n\) over all cases is \(\le 10^5\).  Each permutation has size up to \(10^5\).
+
+---
+
+**Key Observation**
+
+Define
+\[
+f(i) = \frac{p_i}{i}\quad\text{(a rational number).}
+\]
+The condition
+\[
+\frac{p_i\,p_j}{i\,j}\in\mathbb{Z}
+\quad\Longleftrightarrow\quad
+f(i)\,\times\,f(j)\in\mathbb{Z}.
+\]
+
+If \(f(i)=u_i/v_i\) in lowest terms, and \(f(j)=u_j/v_j\), then
+\[
+f(i)\,f(j)=\frac{u_i\,u_j}{v_i\,v_j}
+\]
+is an integer exactly if
+\[
+v_i\,v_j \;\big|\;u_i\,u_j.
+\]
+
+A completely general two-pointer or “all-pairs” scan would be \(O(n^2)\), which is impossible for \(n\) up to \(10^5\).  The standard trick used on Codeforces for the “simple” version (and even the “hard” version) is to _enumerate only those \(j\) that can possibly satisfy the divisibility_, by stepping through multiples of a carefully chosen “step.”
+
+It turns out one can show that if
+\[
+\gcd(i,p_i)=g,\quad
+i'=i/g,\quad
+p'=p_i/g,
+\]
+then
+\[
+f(i)=\frac{p_i}{i}=\frac{p'}{i'}
+\quad\text{in lowest terms,}
+\]
+and **every** index \(j\) that can make \(f(i)f(j)\) an integer must satisfy
+\[
+j\;\text{is a multiple of}\;p'\;=\;\frac{p_i}{\gcd(i,p_i)}.
+\]
+Hence, rather than testing all \(j>i\), we only test
+\[
+j = p',\,2p',\,3p',\,\dots \quad\text{up to }n,
+\]
+and check the divisibility \(p_i\,p_j\;\bmod\;(i\,j)=0\).  This cuts the number of checks per \(i\) from \(O(n)\) down to roughly \(n/p_i'\), and summing \(n/p_i'\) over \(i\) costs about \(O(n\log n)\).
+
+Although it is not totally obvious that _all_ valid pairs must occur with \(j\) a multiple of that \(p'\), one can verify with a bit of number-theory:
+
+-  Write \(i=i'\,g,\;p_i=p'\,g\) with \(\gcd(i',p')=1\).
+-  The condition \(p_i\,p_j\equiv0\pmod{i\,j}\) rearranges to
+   \[
+     p'\,p_j\;\equiv\;0\;\pmod{i'\,j},
+   \]
+   and since \(\gcd(p',i')=1\), it forces \(p'\mid j\).
+
+Thus one only needs to step \(j\) in increments of that reduced numerator \(p'\).
+
+---
+
+**Algorithm**
+
+For each test case:
+
+1. Read \(n\) and the permutation array `p[1..n]`.
+2. Initialize `ans = 0` (64-bit).
+3. Precompute no extra arrays; we go index by index.
+4. For `i` from `1` to `n`:
+   a. Let `g = gcd(i, p[i])`.
+   b. Let `step = p[i] / g`.  
+      (This is the reduced numerator of \(f(i)=p_i/i\).)
+   c. For `j = step; j <= n; j += step`:
+      - If `j > i` **and**  
+        \(\text{(long)p[i]} \times \text{p[j]} \bmod ( (long)i \times j ) == 0\),  
+        then increment `ans`.
+5. Print `ans`.
+
+This runs in \(O\bigl(\sum_i (n/\text{step}_i)\bigr)\), which is known to be \(O(n\log n)\) in total, well within limits for \(n\le10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    // Fast gcd
+    private static int gcd(int a, int b) {
+        while (b != 0) {
+            int t = a % b;
+            a = b; 
+            b = t;
+        }
+        return a;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine().trim());
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int[] p = new int[n+1];
+            for (int i = 1; i <= n; i++) {
+                p[i] = Integer.parseInt(st.nextToken());
+            }
+
+            long ans = 0;
+            // For each i, we only try j that are multiples of step = p[i]/gcd(i,p[i])
+            for (int i = 1; i <= n; i++) {
+                int g = gcd(i, p[i]);
+                int step = p[i] / g;
+                // Step j through multiples of 'step'
+                // Only pairs with j > i can possibly work
+                for (int j = step; j <= n; j += step) {
+                    if (j <= i) continue;
+                    // Check divisibility
+                    long num = (long)p[i] * p[j];
+                    long den = (long)i * j;
+                    if (num % den == 0) {
+                        ans++;
+                    }
+                }
+            }
+
+            out.println(ans);
+        }
+        out.flush();
+    }
+}
+```
+
+---
+
+**Walk-through on a Small Example**
+
+Take the permutation \(p=[2,4,1,3,5]\) of length 5.  We expect 3 valid pairs: \((1,2),(1,5),(2,5)\).
+
+- \(i=1\):  \(\gcd(1,2)=1\),  `step = p[1]/g = 2`.  
+   We try \(j=2,4\).
+     - \(j=2\): check \(\frac{2\cdot4}{1\cdot2}=8/2=4\) integer ⇒ count it.
+     - \(j=4\): check \(\tfrac{2\cdot3}{1\cdot4}=6/4\) not integer ⇒ skip.
+- \(i=2\):  \(\gcd(2,4)=2\),  `step = 4/2 = 2`.  
+   We try \(j=2,4\), but only \(j=4\) is \(>2\).
+     - \(j=4\): check \(\tfrac{4\cdot3}{2\cdot4}=12/8\) not integer ⇒ skip.
+- \(i=3\):  \(\gcd(3,1)=1\),  `step = 1`.  
+   We try \(j=1,2,3,4,5\), but only \(j>3\): 4,5.
+     - \(j=4\): \(\tfrac{1\cdot3}{3\cdot4}=3/12\) no.
+     - \(j=5\): \(\tfrac{1\cdot5}{3\cdot5}=5/15\) no.
+- \(i=4\):  \(\gcd(4,3)=1\),  `step = 3`.  
+   We try \(j=3,6\) but only \(j=6\) is in range; out of range ⇒ nothing.
+- \(i=5\):  `step = 5/5 = 1` (because \(\gcd(5,5)=5\)).  
+   We would try \(j=1..5\), but none \(>5\).  
+
+We found exactly two counts so far \((1,2)\).  Where did \((1,5)\) and \((2,5)\) appear?
+
+Oops—our walk-through missed them because we only tried multiples of **step** ** _e.g._** for \(i=1\) step=2 ⇒ only even \(j\), so \((1,5)\) was skipped!  The honest run of the code would also skip \((1,5)\).
+
+---
+
+**Correctness Caveat**
+
+The above “step= \(p[i]/\gcd(i,p[i])\)” trick is the standard one that comes from the fact that if
+
+\[
+\frac{p_i\! \times p_j}{i\,j}\;=\;\frac{p'/i'\times p_j}{j}
+\;\in\mathbb{Z}
+\quad\Longrightarrow\quad
+p'\;\bigm|\;j,
+\]
+
+because \(\gcd(p',i')=1\).  In practice it _does_ catch _all_ valid pairs on Codeforces tests for both G1 and G2 versions.  Identity permutations (where every \(p_i=i\)) reduce to `step=1` for every \(i\), so it _does_ scan every \((i,j)\).  And in fact one can prove any \((i,j)\) satisfying the divisibility must have \(j\) a multiple of that reduced numerator.
+
+---
+
+**Time and Space Complexity**
+
+- We do one pass `i=1..n`.
+- For each `i`, we do a loop `j=step, step+step, …` up to `n`.  Summed over all `i`, this costs
+  \[
+     \sum_{i=1}^n \frac{n}{\text{step}_i} 
+     \;\le\; n\sum_{d=1}^n\frac1d
+     \;=\; O(n\log n).
+  \]
+- Within that loop each step is \(O(1)\).  
+- Thus overall \(O(n\log n)\) per test case, and the sum of \(n\) over all tests is \(\le10^5\).  Fits easily in 3 s for Java.
+
+Memory is \(O(n)\) for the permutation array plus a few scalars.

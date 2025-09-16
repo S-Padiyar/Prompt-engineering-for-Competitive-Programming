@@ -1,0 +1,180 @@
+**Analysis**
+
+We have \(n\) vertices with integer labels \(a_1,\dots,a_n\), and we must perform exactly \(n-1\) operations, numbered \(x=1,2,\dots,n-1\).  In operation \(x\) we must pick two distinct vertices \(u,v\) so that
+
+\[
+|a_u - a_v|\equiv 0\pmod x,
+\]
+
+and add the edge \((u,v)\).  After all \(n-1\) operations, we must end up with a *connected* graph.  Since we add exactly \(n-1\) edges, having a connected graph forces us to build a spanning tree (no cycles).
+
+Thus our task is to choose, for each \(x=1\ldots n-1\), a new edge \((u_x,v_x)\) with
+
+- \((u_x,v_x)\) not used before,
+- \(|a_{u_x} - a_{v_x}|\equiv 0\pmod x\),
+- the resulting \(n-1\) edges form a spanning tree.
+
+A neat (and fast enough for \(n\le2000\)) greedy approach is as follows:
+
+1.  We keep a DSU (Union–Find) structure to maintain which vertices are already connected by previously chosen edges.  Since we need a tree, each new edge must connect two *different* DSU components.
+
+2.  We iterate \(x\) **downwards** from \(n-1\) to \(1\).  At step \(x\) we look for *any* pair \((u,v)\) in different DSU‐components such that
+   \[
+     a_u \bmod x \;=\; a_v \bmod x
+     \quad\Longrightarrow\quad
+     a_u - a_v \equiv 0\pmod x.
+   \]
+   If we find such a pair, we add that edge \((u,v)\) and union their DSU components.  If no such pair exists, we must output “No” — no valid solution.
+
+3.  If we succeed in finding an edge for *each* \(x=n-1,n-2,\dots,1\), we will have collected exactly \(n-1\) edges, and by construction they connect new components each time, so the final graph is a spanning tree.  We then print “Yes” and the chosen edges in the order \(x=1,2,\dots,n-1\).
+
+To make step 2 efficient (we cannot afford checking all \(\binom n2\) pairs every time), we use the following trick for each \(x\):
+
+- Build buckets of vertices by \(\mathrm{rem} = a_i \bmod x\).  That takes \(O(n)\).
+- For each nonempty bucket we only need to test the first element \(u\) of the bucket against the others \(v\) in the same bucket, and check if they are in different DSU components.  As soon as we find one such \((u,v)\), we stop and use that pair.  
+- If *no* bucket yields a cross‐component pair, we fail.
+
+Since \(n\le2000\), doing this for each \(x\) costs
+\[
+   \sum_{x=1}^{n-1} \Bigl(O(n) \;+\; \text{(scan small bucket until success/fail)}\Bigr)
+   \;=\; O(n^2),
+\]
+which is fine for our limits.
+
+Below is a Java implementation.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class DSU {
+        int[] parent, rank;
+        DSU(int n) {
+            parent = new int[n+1];
+            rank   = new int[n+1];
+            for(int i = 1; i <= n; i++){
+                parent[i] = i;
+                rank[i] = 0;
+            }
+        }
+        int find(int x){
+            return parent[x] == x ? x : (parent[x] = find(parent[x]));
+        }
+        boolean union(int x, int y){
+            x = find(x); y = find(y);
+            if(x == y) return false;
+            if(rank[x] < rank[y]) {
+                parent[x] = y;
+            } else if(rank[y] < rank[x]) {
+                parent[y] = x;
+            } else {
+                parent[y] = x;
+                rank[x]++;
+            }
+            return true;
+        }
+    }
+    
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter   out= new PrintWriter(System.out);
+        
+        int t = Integer.parseInt(br.readLine().trim());
+        while(t-- > 0){
+            int n = Integer.parseInt(br.readLine().trim());
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int[] a = new int[n+1];
+            for(int i = 1; i <= n; i++){
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+            
+            // Prepare DSU
+            DSU dsu = new DSU(n);
+            // Will hold the chosen edge for operation x (1 <= x <= n-1).
+            int[][] answer = new int[n][2];
+            boolean possible = true;
+            
+            // We'll reuse these buckets for each x
+            ArrayList<Integer>[] buckets = new ArrayList[n+1];
+            for(int i = 0; i <= n; i++){
+                buckets[i] = new ArrayList<>();
+            }
+            
+            // Greedily attempt to pick an edge for x = n-1 down to 1
+            for(int x = n-1; x >= 1; x--){
+                // Clear buckets 0..x-1
+                for(int r = 0; r < x; r++){
+                    buckets[r].clear();
+                }
+                // Distribute vertices into buckets by a[i] % x
+                for(int i = 1; i <= n; i++){
+                    int r = a[i] % x;
+                    buckets[r].add(i);
+                }
+                
+                // Try to find a bucket with at least two DIFFERENT-component vertices
+                boolean found = false;
+                int bu = -1, bv = -1;
+                for(int r = 0; r < x && !found; r++){
+                    ArrayList<Integer> list = buckets[r];
+                    if(list.size() < 2) continue;
+                    int u0 = list.get(0);
+                    int pu0 = dsu.find(u0);
+                    for(int j = 1; j < list.size(); j++){
+                        int v = list.get(j);
+                        int pv = dsu.find(v);
+                        if(pu0 != pv){
+                            bu = u0;
+                            bv = v;
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+                
+                if(!found){
+                    possible = false;
+                    break;
+                }
+                // Union those components, record the edge
+                dsu.union(bu, bv);
+                answer[x][0] = bu;
+                answer[x][1] = bv;
+            }
+            
+            if(!possible){
+                out.println("No");
+            } else {
+                out.println("Yes");
+                // Output in increasing order of x = 1..n-1
+                for(int x = 1; x <= n-1; x++){
+                    out.println(answer[x][0] + " " + answer[x][1]);
+                }
+            }
+        }
+        
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Why DSU (Union–Find)?**  
+   We must build exactly \(n-1\) edges that form a spanning tree.  Each new edge must connect two different components; if it reconnected vertices already in the same component, we would form a cycle and eventually fail to connect all nodes.
+
+2. **Why Bucket by \(a_i \bmod x\)?**  
+   We need \(|a_u - a_v|\equiv 0\pmod x\).  Equivalently,
+   \[
+     a_u \bmod x \;=\; a_v \bmod x.
+   \]
+   Bucketing in \(O(n)\) lets us quickly group candidates.
+
+3. **Why Greedy from \(x=n-1\) down to \(1\)?**  
+   Larger \(x\) are more “restrictive” (\(\bmod x\) is coarser), so we lock in those edges first.  Smaller \(x\) are easier to satisfy, hence postponing them gives us more flexibility.
+
+4. **Correctness Sketch**  
+   If at stage \(x\) there *is* an available cross‐component pair divisible by \(x\), our method will find it in \(O(n)\).  If no such pair exists, *no* valid edge can be chosen at operation \(x\), and we must output “No”.
+
+The overall complexity is \(O(n^2)\) per test case, which is fine for \(n\le2000\) and \(\sum n\le2000\).

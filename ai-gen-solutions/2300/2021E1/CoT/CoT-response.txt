@@ -1,0 +1,326 @@
+**Analysis**
+
+We have an undirected connected graph \(G\) on \(n\) vertices (houses) and \(m\) edges (cables), each edge \((u,v)\) labeled by a latency \(w\).  A subset \(S\subseteq\{1,\dots,n\}\) of size \(|S|=p\) are the demands (houses that actually need service).  We may open up to \(k\) servers (centers) on *any* of the \(n\) vertices, and then each demand \(s\in S\) connects to the nearest open server in the _minimax_ sense—that is, if the demand \(s\) attaches to server \(t\), its latency is
+
+\[
+  \max_{e\in \text{ path}(s\to t)} w(e).
+\]
+
+We must compute, for each \(k=1,2,\dots,n\), the minimum possible total latency
+\[
+   \sum_{s\in S}\;\bigl(\min_{t\in\text{open servers}}\max_{e\in\mathrm{path}(s\to t)}w(e)\bigr).
+\]
+
+---
+
+**Step 1. Compute all‐pairs minimax distances = “bottleneck‐distance.”**
+
+It is well known that the minimax distance
+
+\[
+    D(u,v)\;=\;\min_{\substack{\text{paths }P\text{ from }u\to v}}
+    \;\max_{e\in P} w(e)
+\]
+
+can be read off the **minimum‐spanning‐tree** (MST) of the graph; indeed, in any MST the unique path between \(u\) and \(v\) **minimizes** the maximum edge‐weight along \(u\to v\).  We will not explicitly build all \(n\times n\) distances, however, because we need to solve a \(k\)–median style problem on that metric.
+
+---
+
+**Step 2. Build the “merge tree” (DSU‐tree) from Kruskal.**
+
+We run Kruskal’s MST algorithm, but each time we actually *merge* two components \(A\) and \(B\) along an edge of weight \(w\), we create a new internal node in a binary tree:
+
+```
+        (new node INDEX, weight = w)
+           /                  \
+        root(A)             root(B)
+```
+
+Thus the leaves  \(1,2,\dots,n\) are the original vertices, and every edge‐merge in Kruskal becomes an internal node whose “height” is the edge‐weight that caused the union.  In the end we get a rooted binary tree on \(2n-1\) nodes; the root covers all leaves \(\{1,\dots,n\}\) and has the largest MST‐edge weight as its “height.”
+
+In this DSU‐tree, the minimax distance
+\[
+   D(u,v)\;=\;\text{height}\bigl(\mathrm{LCA}(u,v)\bigr),
+\]
+where \(\mathrm{LCA}\) is the least common ancestor in the tree, and “height” is the weight stored in each internal node ( 0 for the leaves).
+
+---
+
+**Step 3.  DP on the DSU‐tree to solve the ultrametric \(k\)–median.**
+
+Because \(\max\)–distances define an *ultrametric*, there is a neat \(O(n^3)\) DP on the Kruskal‐tree that solves the “pick \(k\) leaves to minimize sum of distances of demand‐leaves to their nearest picked leaf.”
+
+We label each leaf \(i\) by whether it is a demand (\(d_i=1\)) or not (\(d_i=0\)).  In each subtree \(u\), let
+
+- \(\mathrm{dem}[u] =\) total # of demands in \(u\)’s leaves,
+- \(\ell[u] =\) # of leaves in \(u\),
+- \(\mathrm{dp}_u[t]\) = the minimum total penalty for the demands *inside* subtree \(u\) if we open *exactly* \(t\) servers among *those* \(\ell[u]\) leaves.  
+
+Because in an ultrametric any facility anywhere in the subtree will eventually “cover” all demands in that subtree (paying the appropriate merge‐penalties along the way), one shows that
+
+- If \(t>0\), *all* demands in that subtree get covered by some facility in the same subtree, so there are no “left‐over” demands to pay later.
+- If \(t=0\), *none* are covered locally, and they all have to pay the penalty at the next merge node.
+
+Hence the **only** bookkeeping DP needs is
+
+```
+dp_u[t]  for t = 0..ℓ[u],
+```
+
+and the combination at an internal node \(u\) with children \(L,R\) and merge‐weight \(w_u\) is
+
+```
+   new_dp_u[t]
+ =  min_{ tL + tR = t }
+     dp_L[tL]
+     + dp_R[tR]
+     +  penalty(tL,tR)
+```
+
+where
+```
+   penalty(tL,tR)
+ =  if tL>0 and tR=0  :  dem[R] * w_u
+   else if tR>0 and tL=0 :  dem[L] * w_u
+   else :  0
+```
+-   If exactly one child has no server (t=0), its demands must climb up and get served in the sibling, each paying wₙ.
+-   If both have server(s), everything got covered inside—no penalty.
+-   If neither has a server, no one can cover the other, so they remain “uncovered” and will pay later (no penalty yet).
+
+At a leaf \(u\) (one house):
+
+```
+dp_u[0] = 0      (we open 0 servers here ⇒  no local coverage)
+dp_u[1] = 0      (we open the server at u ⇒  demand at u, if any, is covered at distance 0; if not a demand, it’s just a “wasted” server)
+```
+
+We build these DP vectors bottom‐up in the order the Kruskal‐tree nodes were created (children have smaller index than parent).  Finally at the root (which has all n leaves) we read off
+
+```
+answer[k] = dp_root[k] ,   k=1..n.
+```
+
+This runs in \(O(n^3)\) per test (the big loops over merging two DP tables of total size up to \(n\) give \(O(n^2)\) per internal node, and there are \(n-1\) merges).
+
+Since \(n\le 400\) and \(\sum n^3\le10^8\), it fits comfortably in 2 s.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final long INF = (long)1e18;
+
+    // DSU arrays for building the Kruskal‐tree
+    static int[] dsu;
+    static int[] leftChild, rightChild;
+    static long[] nodeWeight;
+    static int[] demandCount, leafCount;
+    static int curNode;  // next free index in the DSU‐tree
+
+    // find with path compression
+    static int find(int x) {
+        if (dsu[x] != x) dsu[x] = find(dsu[x]);
+        return dsu[x];
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int T = Integer.parseInt(br.readLine().trim());
+        while (T-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            int p = Integer.parseInt(st.nextToken());
+
+            // demands
+            int[] demands = new int[p];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < p; i++) {
+                demands[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // read edges
+            class Edge { int u, v; long w; }
+            Edge[] edges = new Edge[m];
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken()) - 1;
+                int v = Integer.parseInt(st.nextToken()) - 1;
+                long w = Long.parseLong(st.nextToken());
+                edges[i] = new Edge();
+                edges[i].u = u; 
+                edges[i].v = v; 
+                edges[i].w = w;
+            }
+
+            // sort edges by weight for Kruskal
+            Arrays.sort(edges, Comparator.comparingLong(e -> e.w));
+
+            // we will build a tree of size up to 2n-1
+            int maxNodes = 2*n;
+            dsu        = new int[maxNodes];
+            leftChild  = new int[maxNodes];
+            rightChild = new int[maxNodes];
+            nodeWeight = new long[maxNodes];
+            demandCount= new int[maxNodes];
+            leafCount  = new int[maxNodes];
+
+            // initialize leaves 0..n-1
+            for (int i = 0; i < 2*n; i++) {
+                dsu[i]        = i;
+                leftChild[i]  = -1;
+                rightChild[i] = -1;
+                nodeWeight[i] = 0;
+                demandCount[i]= 0;
+                leafCount[i]  = 0;
+            }
+
+            // mark which leaves are demands
+            for (int s : demands) {
+                demandCount[s-1] = 1;  // zero-based
+            }
+            for (int i = 0; i < n; i++) {
+                leafCount[i] = 1; // each leaf is exactly 1 leaf
+            }
+
+            curNode = n;  // next new internal node index
+
+            // Kruskal, building DSU-tree
+            for (Edge e : edges) {
+                int ru = find(e.u);
+                int rv = find(e.v);
+                if (ru != rv) {
+                    int newNode = curNode++;
+                    leftChild[newNode]  = ru;
+                    rightChild[newNode] = rv;
+                    nodeWeight[newNode] = e.w;
+                    // union in DSU
+                    dsu[ru] = newNode;
+                    dsu[rv] = newNode;
+                    dsu[newNode] = newNode;
+                    // accumulate leafCount and demandCount
+                    leafCount[newNode]   = leafCount[ru]   + leafCount[rv];
+                    demandCount[newNode] = demandCount[ru] + demandCount[rv];
+                }
+            }
+
+            // the root is curNode-1
+            int root = curNode - 1;
+
+            // DP array: for each node u we store dp[u][], size leafCount[u]+1
+            @SuppressWarnings("unchecked")
+            ArrayList<long[]> dp = new ArrayList<>(2*n);
+            for (int i = 0; i < 2*n; i++) {
+                dp.add(null);
+            }
+
+            // Build DP in increasing node index: children always < parent
+            for (int u = 0; u < curNode; u++) {
+                if (u < n) {
+                    // leaf
+                    long[] f = new long[2]; 
+                    // open 0 servers in that leaf
+                    f[0] = 0;
+                    // open 1 server at that leaf
+                    f[1] = 0;
+                    dp.set(u, f);
+                } else {
+                    // internal node
+                    int L = leftChild[u], R = rightChild[u];
+                    long w = nodeWeight[u];
+                    long[] dpl = dp.get(L), dpr = dp.get(R);
+                    int szl = leafCount[L], szr = leafCount[R];
+                    long[] f = new long[ szl + szr + 1 ];
+                    Arrays.fill(f, INF);
+
+                    // combine
+                    for (int tl = 0; tl <= szl; tl++) {
+                        long cl = dpl[tl];
+                        boolean leftHas = (tl > 0);
+                        int remL = leftHas ? 0 : demandCount[L];
+                        for (int tr = 0; tr <= szr; tr++) {
+                            long cr = dpr[tr];
+                            boolean rightHas = (tr > 0);
+                            int remR = rightHas ? 0 : demandCount[R];
+                            int t = tl + tr;
+                            long pen = 0;
+                            if (leftHas && !rightHas) {
+                                pen = (long)remR * w;
+                            } else if (rightHas && !leftHas) {
+                                pen = (long)remL * w;
+                            }
+                            long cand = cl + cr + pen;
+                            if (cand < f[t]) {
+                                f[t] = cand;
+                            }
+                        }
+                    }
+                    dp.set(u, f);
+                }
+            }
+
+            // Extract answer from dp[root]
+            long[] ans = dp.get(root);
+            // We want ans[1..n]
+            StringBuilder sb = new StringBuilder();
+            for (int k = 1; k <= n; k++) {
+                long v = ans[k];
+                // by logic, v cannot be INF for k<=n
+                sb.append(v).append(k==n ? "\n" : " ");
+            }
+            System.out.print(sb);
+        }
+    }
+}
+```
+
+**How it works**
+
+1. **Kruskal‐tree construction**  
+   We run Kruskal in the usual way, except when we union two DSU‐components of “current roots” \(r_1,r_2\), we allocate a new node \(u\) in \(\{n,n+1,\dots\}\), set  
+     •  `leftChild[u]=r1, rightChild[u]=r2`  
+     •  `nodeWeight[u]=w` (the edge‐weight that caused the merge)  
+   and make both `r1` and `r2` point in the DSU to `u`.  By the end, all original vertices are leaves \(0\ldots n-1\), and the final merge‐node is the root of a binary tree with \(2n-1\) nodes.
+
+2. **Counting demands and leaves**  
+   We store `demandCount[u]` = how many demand‐leaves descend from node \(u\), and `leafCount[u]` = total leaves in \(u\).  
+   At leaves \(0\ldots n-1\), `leafCount=1` and `demandCount=1` if that leaf is in \(S\), else 0.  
+   Whenever we make a new internal node \(u\), we do  
+      leafCount[u] = leafCount[L] + leafCount[R]  
+      demandCount[u]=demandCount[L]+demandCount[R].
+
+3. **Ultrametric \(k\)–median DP**  
+   For each node \(u\), we build an array  
+     dp[u][0..leafCount[u]]  
+   where  
+     dp[u][t] = minimum total penalty _so far_ if we open exactly \(t\) servers among the leaves of the subtree rooted at \(u\).  
+
+   - At a leaf \(u\), clearly  
+       dp[u][0] = 0   (no server here ⇒ the leaf is “uncovered” until we merge upward)  
+       dp[u][1] = 0   (we open a server at this leaf ⇒ any demand at \(u\) is covered at zero cost)  
+
+   - At an internal node \(u\) with children \(L,R\) and merge‐weight \(w\), we do a double loop over  
+       \(t_L=0\ldots \ell(L)\),  \(t_R=0\ldots \ell(R)\),  \(t=t_L+t_R\),  
+     and compute  
+       penalty =  
+         –  `demandCount[R]*w` if \(t_L>0\) and \(t_R=0\),  
+         –  `demandCount[L]*w` if \(t_R>0\) and \(t_L=0\),  
+         –  0 otherwise,  
+     then  
+       dp[u][t] = min(dp[u][t], dp[L][t_L] + dp[R][t_R] + penalty).
+
+   This is exactly the known \(O(n^3)\) DP for the ultrametric (max‐edge) distance.
+
+4. **Answer**  
+   The root’s DP table `dp[root]` has size `n+1`; for \(k=1\ldots n\), the minimum total latency is
+   \[
+     \mathrm{dp}[\,\mathrm{root}\,][\,k\,].
+   \]
+
+The overall complexity is \(O(n^3)\) per test, which is fine for \(n\le400\) and \(\sum n^3\le10^8\).

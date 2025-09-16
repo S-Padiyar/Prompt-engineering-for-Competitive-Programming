@@ -1,0 +1,199 @@
+**Analysis**
+
+We want to count, for a given permutation \(p_1,\dots,p_n\), the number of pairs \(1\le i<j\le n\) such that
+
+\[
+p_i\;p_j \equiv 0 \pmod{i\,j}
+\]
+(i.e.\ \(i\,j\) divides \(p_i\,p_j\)).
+
+A useful rewrite is
+\[
+\frac{p_i}{i}\;\cdot\;\frac{p_j}{j}\quad\text{is an integer.}
+\]
+Define for each \(i\)
+\[
+g_i=\gcd(i,p_i),\quad
+u_i=\frac{i}{g_i},\quad
+v_i=\frac{p_i}{g_i}.
+\]
+Then
+\[
+\frac{p_i}{i}=\frac{v_i}{u_i},
+\]
+and the condition
+\[
+\frac{v_i}{u_i}\,\frac{v_j}{u_j}\in\mathbb{Z}
+\]
+is equivalent (because \(\gcd(u_i,v_i)=\gcd(u_j,v_j)=1\)) to
+
+1. \(u_i\mid v_j\),  and
+2. \(u_j\mid v_i\).
+
+Hence we must count pairs \((i,j)\), \(i<j\), such that \(u_i\mid v_j\) and \(u_j\mid v_i\).
+
+We process \(i\) in increasing order, maintain a data‐structure of all earlier \(j<i\) inserting them grouped by their \(u_j\).  Concretely:
+
+-  Precompute for every integer \(1\le x\le n\) the list of its divisors.
+-  As we go from \(i=1\) to \(n\), we know \((u_i,v_i)\).  We want to count among all prior \(j\) with \(u_j\mid v_i\) those that also satisfy \(u_i\mid v_j\).  
+-  We have grouped prior elements by their \(u_j\).  So for each divisor \(d\) of \(v_i\) (these are exactly the possible values of \(u_j\)) we look in the bucket for \(u_j=d\).  In that bucket we only have stored the values \(v_j\), and we must count those \(v_j\) that are multiples of \(u_i\).  
+-  Since \(v_j\) can be large (up to \(n\)) we do not want to scan the whole bucket.  Instead we store in an array `groupArr[d]` a frequency table indexed by \(k=v_j/d\).  Then asking “how many \(v_j\) in this bucket are divisible by \(u_i\)” becomes “how many \(k\) in that frequency‐array satisfy \(k\equiv 0\pmod{t}\)” where 
+  \[
+  t=\frac{u_i}{\gcd(u_i,u_j)}.
+  \]
+  We can then loop
+  \[
+     k=t,2t,3t,\dots \le \lfloor n/d\rfloor
+  \]
+  summing up the counts, which is fast on average because \(t\) tends to be large and the array shortens as \(d\) grows.
+
+We keep a global 2D array `groupArr[u][]`, pre‐sized so that `groupArr[u]` has length \(\lfloor N/u\rfloor+1\).  Whenever we insert a new index \(i\), we compute \(k_i=v_i/u_i\) and do `groupArr[u_i][k_i]++`.  After finishing the test case, we reset exactly those entries we incremented back to zero.  The total cost over all test cases is \(O\bigl(\sum n\log n\bigr)\) for divisor preprocessing plus roughly \(O\bigl(\sum n\times\text{(divisor‐count)}\times(\text{~few steps})\bigr)\), which runs comfortably within the CF limits for the simple version (\(\sum n\le10^5\)).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 100000;
+    // divisors[i] will hold all positive divisors of i
+    static ArrayList<Integer>[] divisors = new ArrayList[MAXN + 1];
+    // groupArr[u][k] = count of prior j with u_j = u and (v_j / u_j) = k
+    static int[][] groupArr = new int[MAXN + 1][];
+
+    public static void main(String[] args) throws IOException {
+        // Fast IO
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int t = Integer.parseInt(st.nextToken());
+
+        // Precompute divisors for all 1..MAXN
+        for (int i = 1; i <= MAXN; i++) {
+            divisors[i] = new ArrayList<>();
+        }
+        for (int d = 1; d <= MAXN; d++) {
+            for (int m = d; m <= MAXN; m += d) {
+                divisors[m].add(d);
+            }
+        }
+        // Preallocate the groupArr tables
+        for (int u = 1; u <= MAXN; u++) {
+            // groupArr[u].length = floor(MAXN/u) + 1
+            groupArr[u] = new int[MAXN / u + 1];
+        }
+
+        StringBuilder output = new StringBuilder();
+        // We will remember exactly which (u,k) cells we increment
+        // so that we can reset them to 0 after each test case.
+        ArrayList<Integer> usedU = new ArrayList<>();
+        ArrayList<Integer> usedK = new ArrayList<>();
+
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int[] p = new int[n + 1];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) {
+                p[i] = Integer.parseInt(st.nextToken());
+            }
+
+            long ans = 0;
+            usedU.clear();
+            usedK.clear();
+
+            // Process i=1..n
+            for (int i = 1; i <= n; i++) {
+                int pi = p[i];
+                int g = gcd(i, pi);
+                int ui = i / g;
+                int vi = pi / g;
+
+                // Enumerate all possible u_j that divide v_i
+                for (int uj : divisors[vi]) {
+                    // Only consider prior j with u_j = uj
+                    int maxK = n / uj;  // we only care up to floor(n/uj)
+                    if (maxK == 0) continue;
+
+                    int d = gcd(ui, uj);
+                    int tstep = ui / d;
+                    if (tstep > maxK) continue;
+
+                    // Sum over k = tstep, 2*tstep, ... ≤ maxK
+                    int[] arr = groupArr[uj];
+                    for (int k = tstep; k <= maxK; k += tstep) {
+                        ans += arr[k];
+                    }
+                }
+
+                // Now insert i into groupArr[ui] at slot k_i = (v_i / u_i)
+                int k_i = vi / ui;
+                groupArr[ui][k_i]++;
+                usedU.add(ui);
+                usedK.add(k_i);
+            }
+
+            // Output answer for this test
+            output.append(ans).append("\n");
+
+            // Reset those cells to zero for the next test
+            for (int idx = 0; idx < usedU.size(); idx++) {
+                groupArr[usedU.get(idx)][usedK.get(idx)] = 0;
+            }
+        }
+
+        // Flush all answers
+        System.out.print(output);
+    }
+
+    // Fast gcd
+    static int gcd(int a, int b) {
+        while (b != 0) {
+            int t = a % b;
+            a = b;
+            b = t;
+        }
+        return a;
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1. **Rewriting the divisibility**  
+   \(\;p_i\,p_j\equiv0\pmod{i\,j}\)\  
+   is equivalent to  
+   \[
+      \frac{p_i}{i}\,\frac{p_j}{j}\in\mathbb{Z}.
+   \]
+
+2. **Reducing fractions**  
+   We set  
+   \[
+     g_i=\gcd(i,p_i),\quad
+     u_i=i/g_i,\quad
+     v_i=p_i/g_i,
+   \]
+   so that
+   \(\displaystyle \frac{p_i}{i}=\frac{v_i}{u_i}\)
+   in lowest terms.  Then
+   \[
+     \frac{v_i}{u_i}\,\cdot\frac{v_j}{u_j}\in\mathbb{Z}
+     \quad\Longleftrightarrow\quad
+     u_i\mid v_j\;\text{ and }\;u_j\mid v_i.
+   \]
+
+3. **Online counting**
+   - We process indices \(i=1,2,\dots,n\) in increasing order.
+   - Before inserting index \(i\) into our data structure, we count how many earlier \(j<i\) satisfy \(u_j\mid v_i\) _and_ \(u_i\mid v_j\).
+   - We know \(u_j\mid v_i\) exactly when \(u_j\) is a divisor of \(v_i\).  So we loop over all divisors \(d\) of \(v_i\); these are the possible values of \(u_j\).
+   - For each such \(d\), we have a small array `groupArr[d]` in which we have already inserted all earlier \(j\) with \(u_j=d\).  In that array we have recorded the value \(k_j=v_j/d\).  The condition \(u_i\mid v_j\) becomes
+     \[
+       u_i\mid d\cdot k_j
+       \;\Longleftrightarrow\;
+       \frac{u_i}{\gcd(u_i,d)}\;\Bigm|\;k_j.
+     \]
+     We call \(t=\tfrac{u_i}{\gcd(u_i,d)}\).  Then we only need to sum up `groupArr[d][t] + groupArr[d][2*t] + … up to floor(n/d)`.
+   - Finally we insert \((u_i,\,k_i)\) into `groupArr[u_i]` with \(k_i=v_i/u_i\).
+
+This runs in \(O(n\log n)\) (divisor enumeration plus the “stepped” sums) which is fast enough for \(n\) up to \(10^5\).

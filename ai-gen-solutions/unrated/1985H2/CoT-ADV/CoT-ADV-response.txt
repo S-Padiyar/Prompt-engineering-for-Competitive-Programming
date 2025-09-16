@@ -1,0 +1,298 @@
+**Problem Restatement**
+
+We are given an \(n\times m\) grid of characters, each either ‘\#’ or ‘.’.  A **connected component** of ‘\#’‐cells is a maximal set of ‘\#’ cells in which you can move between any two cells by stepping only to orthogonally adjacent ‘\#’ cells (up/down/left/right).  Its **size** is the number of ‘\#’ cells in it.
+
+We are allowed to perform **at most one operation**: pick a row \(r\) and a column \(c\), and turn **every** cell in that row and that column into ‘\#’ (overwriting whatever was there).  After that operation, the grid’s connected components change (some old components may merge, and the new “cross” of \(r\) and \(c\) itself is a component).  We want to choose the operation (or choose to do nothing) so that **the largest** connected‐component size of ‘\#’‐cells **after** the operation is as large as possible.  Output that maximum possible size.
+
+---
+
+**Input**
+
+t            — number of test cases (up to \(10^4\));  
+For each test case:  
+\ \ n, m     — dimensions, with \(1 \le n\cdot m \le 10^6\).  
+\ \ next \(n\) lines each contain an \(m\)-character string of ‘\#’/‘.’.
+
+**Output**
+
+For each test case, one integer: the maximum possible size of the largest ‘\#’ connected component after at most one operation.
+
+---
+
+**Constraints & Edge Cases**
+
+• The total grid area over all test cases is at most \(10^6\), so an \(O(nm)\)-time solution per test case (or overall) is required.  
+• We must consider the case of doing **no** operation (so the answer is at least the size of the largest original component).  
+• If the grid is entirely ‘.’, a single operation will create a cross of size \((n + m - 1)\).  
+• Small grids (including \(1\times1\)) must work correctly.
+
+---
+
+**High‐Level Solution Sketch**
+
+1. **Label and measure original components**  
+   - Do a standard BFS/DFS to label each connected component of ‘\#’ in the original grid.  
+   - For each component \(i\), record:  
+     • `size[i]` = number of cells  
+     • `minRow[i], maxRow[i]` = minimum and maximum row it occupies  
+     • `minCol[i], maxCol[i]` = minimum and maximum column it occupies  
+   - Track `origMax` = size of the largest original component (in case we choose to do no operation).
+
+2. **Determine where each component would “touch” if we fill a row/column**  
+   - If we select row \(r\), then any original component that has any cell in row \(\{r-1,\,r,\,r+1\}\) will become joined (via vertical adjacency) to the new “cross.”  Thus each component \(i\) has a **row‐adjacency interval**  
+        \[ R_i = [\,\max(1,\minRow[i]-1)\,,\,\min(n,\maxRow[i]+1)\,] .\]  
+   - Similarly, if we select column \(c\), the component touches \(\{c-1,c,c+1\}\).  Its **column‐adjacency interval**  
+        \[ C_i = [\,\max(1,\minCol[i]-1)\,,\,\min(m,\maxCol[i]+1)\,] .\]
+
+3. **We want, for each pair \((r,c)\), the total size of all unique components whose**  
+   \((r,c)\) **lies in** \(R_i\times C_i\).  
+   - If \((r,c)\in R_i\times C_i\), component \(i\) will merge into the new cross.  
+   - We also must add the new “cross” itself, which has \((n+m-1)\) cells, **then** subtract any original ‘\#’ on that cross so as not to double‐count.
+
+4. **Compute this efficiently with 1D/2D difference arrays + prefix sums**  
+   - We build a 1D array `rowSum[r]` = sum of sizes of all comps \(i\) with \(r\in R_i\).  
+     Achieve by a 1D difference array on `rowDiff[]`:  
+       ``` 
+         rowDiff[R_i.start]   += size[i];
+         rowDiff[R_i.end + 1] -= size[i];
+       ```  
+     then prefix‐sum to get `rowSum[r]`.  
+   - Similarly we build `colSum[c]` for columns with a 1D diff + prefix.  
+   - To handle the **overlap** (counting some component \(i\) in both `rowSum[r]` and `colSum[c]`) we do a 2D difference array `diff2D[r][c]`:  
+       ```
+         diff2D[R_i.start][C_i.start]       += size[i];
+         diff2D[R_i.end + 1][C_i.start]     -= size[i];
+         diff2D[R_i.start][C_i.end   + 1]   -= size[i];
+         diff2D[R_i.end   + 1][C_i.end   + 1] += size[i];
+       ```  
+     A 2D prefix sum on that gives `overlap[r][c] =` sum of `size[i]` for exactly those comps covering \((r,c)\).
+
+5. **Compute best answer**  
+   For each \((r,c)\), let  
+     • `R = rowSum[r]`  
+     • `C = colSum[c]`  
+     • `O = overlap[r][c]`  
+     • `KR =` count of ‘\#’ originally in row \(r\)  
+     • `KC =` count of ‘\#’ originally in column \(c\)  
+     • `X = 1` if the cell \((r,c)\) was originally ‘\#’, else 0.  
+   The size of the merged component when choosing \((r,c)\) is
+     \[
+       (n + m - 1)
+       + (R + C - O)      \quad\text{(sum of all unique comp sizes)}
+       - (KR + KC - X)
+     \]
+   The term \((KR + KC - X)\) removes any original ‘\#’ on that cross—since those were counted in `R+C-O` but also lie on the new cross of \((n+m-1)\).
+
+   We take the maximum of all these values, and also compare with `origMax` (doing no operation).
+
+**Time Complexity**  
+– Labeling components by BFS/DFS: \(O(nm)\).  
+– Building 1D and 2D diffs: one update per component, number of components \(K \le nm\). \(O(K)\).  
+– Prefix sums in 1D and 2D: \(O(nm)\).  
+– Final scan over \((r,c)\): \(O(nm)\).  
+Total \(O(nm)\) per test case, which is fine since \(\sum n m \le 10^6\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static int n, m;
+    static char[][] grid;
+    static int[][] compId;
+    static int[] sizeComp;
+    static int[] minR, maxR, minC, maxC;
+    static int[] rowHashCount, colHashCount;
+    static int[] dr = {1, -1, 0, 0};
+    static int[] dc = {0, 0, 1, -1};
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(in.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            n = Integer.parseInt(st.nextToken());
+            m = Integer.parseInt(st.nextToken());
+            grid = new char[n+1][m+1];
+            for (int i = 1; i <= n; i++) {
+                String line = in.readLine();
+                for (int j = 1; j <= m; j++) {
+                    grid[i][j] = line.charAt(j-1);
+                }
+            }
+
+            // 1) Label components
+            compId = new int[n+1][m+1];
+            // Worst case number of components ≤ n*m
+            sizeComp = new int[n*m + 5];
+            minR = new int[n*m + 5];
+            maxR = new int[n*m + 5];
+            minC = new int[n*m + 5];
+            maxC = new int[n*m + 5];
+            int compCount = 0;
+            int origMax = 0;
+
+            for (int i = 1; i <= n; i++) {
+                for (int j = 1; j <= m; j++) {
+                    if (grid[i][j] == '#' && compId[i][j] == 0) {
+                        compCount++;
+                        int id = compCount;
+                        // initialize bounding box
+                        minR[id] = minC[id] = Integer.MAX_VALUE;
+                        maxR[id] = maxC[id] = -1;
+                        // BFS
+                        Deque<int[]> dq = new ArrayDeque<>();
+                        dq.offer(new int[]{i, j});
+                        compId[i][j] = id;
+                        sizeComp[id] = 0;
+                        while (!dq.isEmpty()) {
+                            int[] u = dq.poll();
+                            int r = u[0], c = u[1];
+                            sizeComp[id]++;
+                            // update bbox
+                            minR[id] = Math.min(minR[id], r);
+                            maxR[id] = Math.max(maxR[id], r);
+                            minC[id] = Math.min(minC[id], c);
+                            maxC[id] = Math.max(maxC[id], c);
+
+                            for (int d = 0; d < 4; d++) {
+                                int rr = r + dr[d], cc = c + dc[d];
+                                if (rr >= 1 && rr <= n && cc >= 1 && cc <= m
+                                  && grid[rr][cc] == '#' 
+                                  && compId[rr][cc] == 0) {
+                                    compId[rr][cc] = id;
+                                    dq.offer(new int[]{rr, cc});
+                                }
+                            }
+                        }
+                        origMax = Math.max(origMax, sizeComp[id]);
+                    }
+                }
+            }
+
+            // 2) Build difference arrays for rowSum, colSum, and 2D overlap
+            long[] rowDiff = new long[n+2];
+            long[] colDiff = new long[m+2];
+            long[][] diff2D = new long[n+2][m+2];
+
+            for (int id = 1; id <= compCount; id++) {
+                int r1 = Math.max(1, minR[id] - 1);
+                int r2 = Math.min(n, maxR[id] + 1);
+                int c1 = Math.max(1, minC[id] - 1);
+                int c2 = Math.min(m, maxC[id] + 1);
+                long sz = sizeComp[id];
+
+                // 1D row interval [r1..r2]
+                rowDiff[r1] += sz;
+                rowDiff[r2+1] -= sz;
+                // 1D col interval [c1..c2]
+                colDiff[c1] += sz;
+                colDiff[c2+1] -= sz;
+
+                // 2D rectangle [r1..r2] x [c1..c2]
+                diff2D[r1][c1]     += sz;
+                diff2D[r2+1][c1]   -= sz;
+                diff2D[r1][c2+1]   -= sz;
+                diff2D[r2+1][c2+1] += sz;
+            }
+
+            // 3) Prefix-sum to get rowSum and colSum
+            long[] rowSum = new long[n+2];
+            long[] colSum = new long[m+2];
+            for (int i = 1; i <= n; i++)
+                rowSum[i] = rowSum[i-1] + rowDiff[i];
+            for (int j = 1; j <= m; j++)
+                colSum[j] = colSum[j-1] + colDiff[j];
+
+            // 4) 2D prefix-sum to get overlap[r][c]
+            long[][] overlap = new long[n+2][m+2];
+            for (int i = 1; i <= n; i++) {
+                for (int j = 1; j <= m; j++) {
+                    overlap[i][j]
+                      = diff2D[i][j]
+                      + overlap[i-1][j]
+                      + overlap[i][j-1]
+                      - overlap[i-1][j-1];
+                }
+            }
+
+            // 5) Count how many '#' in each row/col
+            rowHashCount = new int[n+1];
+            colHashCount = new int[m+1];
+            for (int i = 1; i <= n; i++) {
+                for (int j = 1; j <= m; j++) {
+                    if (grid[i][j] == '#') {
+                        rowHashCount[i]++;
+                        colHashCount[j]++;
+                    }
+                }
+            }
+
+            // 6) Compute the best possible after one operation
+            long best = origMax;  // maybe don't do any op
+            long constantCross = (long)n + m - 1;
+
+            for (int i = 1; i <= n; i++) {
+                for (int j = 1; j <= m; j++) {
+                    // R + C - O = sum of unique comp sizes that touch row i or col j
+                    long R = rowSum[i];
+                    long C = colSum[j];
+                    long O = overlap[i][j];
+                    // subtract original '#' on that cross
+                    long sub = rowHashCount[i] + colHashCount[j]
+                               - (grid[i][j] == '#' ? 1 : 0);
+                    long total = constantCross + (R + C - O) - sub;
+                    if (total > best) best = total;
+                }
+            }
+
+            sb.append(best).append("\n");
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+---
+
+**Step‐by‐Step Example**
+
+Consider the fourth sample in the statement:
+
+```
+5 5
+# . . . #
+. . . . #
+# . . . #
+. . . . .
+. . . # #
+```
+(Spaces added for clarity.)
+
+1. We label original ‘\#’ components (there are several of size 1 and one of size 2 in the bottom right).  
+2. For each component \(i\), we record its bounding rows and columns.  
+3. We build 1D “rowDiff” and “colDiff” arrays and a 2D `diff2D`, each updated by the component’s adjacency intervals.  
+4. Prefix‐summing yields `rowSum[r]` = total of all comp‐sizes touching row \(r\pm1\) and `colSum[c]` similarly, plus the 2D overlap matrix.  
+5. We then iterate all \((r,c)\).  For the best pair \((4,2)\) we get
+   - `constantCross = 5+5−1 = 9`
+   - `rowSum[4]` includes the sizes of all components that lie in rows 3–5
+   - `colSum[2]` includes those in cols 1–3
+   - subtract the 2D overlap (those counted in both)
+   - subtract the original hashes in row 4 and column 2  
+   This correctly yields a merged component size of 16, matching the sample.
+
+---
+
+**Complexity Analysis**
+
+- Labeling components by BFS/DFS: \(O(nm)\).  
+- Building difference updates: \(O(\#\text{components}) \le O(nm)\).  
+- 1D and 2D prefix sums: \(O(nm)\).  
+- Final double loop over all \((r,c)\): \(O(nm)\).  
+
+Overall, \(O(nm)\) time per test case, and since \(\sum nm \le 10^6\), it runs well within the 2 s limit. Memory is dominated by a few \(n\times m\) arrays and per-component data, also within 512 MB.

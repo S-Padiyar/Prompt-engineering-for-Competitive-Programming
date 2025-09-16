@@ -1,0 +1,53 @@
+```java
+import java.io.*;
+import java.util.StringTokenizer;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int t = Integer.parseInt(st.nextToken());
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int l = Integer.parseInt(st.nextToken());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            int[] a = new int[l];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < l; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+            int[][] b = new int[n+1][m+1];
+            for (int i = 1; i <= n; i++) {
+                st = new StringTokenizer(br.readLine());
+                for (int j = 1; j <= m; j++) {
+                    b[i][j] = Integer.parseInt(st.nextToken());
+                }
+            }
+            boolean[][] dpNext = new boolean[n+2][m+2];
+            boolean[][] dpCur  = new boolean[n+2][m+2];
+            int[][] S = new int[n+2][m+2];
+            for (int idx = l - 1; idx >= 0; idx--) {
+                int want = a[idx];
+                for (int r = n; r >= 1; r--) {
+                    for (int c = m; c >= 1; c--) {
+                        int mVal = (b[r][c] == want && !dpNext[r][c]) ? 1 : 0;
+                        S[r][c] = S[r+1][c] + S[r][c+1] - S[r+1][c+1] + mVal;
+                    }
+                }
+                for (int r = 0; r <= n; r++) {
+                    for (int c = 0; c <= m; c++) {
+                        dpCur[r][c] = S[r+1][c+1] > 0;
+                    }
+                }
+                boolean[][] tmp = dpNext;
+                dpNext = dpCur;
+                dpCur = tmp;
+            }
+            sb.append(dpNext[0][0] ? 'T' : 'N').append('\n');
+        }
+        System.out.print(sb);
+    }
+}
+```

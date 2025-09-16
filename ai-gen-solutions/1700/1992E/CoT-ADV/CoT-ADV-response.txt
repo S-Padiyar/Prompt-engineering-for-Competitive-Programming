@@ -1,0 +1,196 @@
+**Problem Restatement**
+
+We have an integer \(n\) (between 1 and 100).  A friend‐gift scenario says:
+
+- Noobish_Monk receives \(n\) friends each giving him \(a\) apples, so in total he really should have \(n\cdot a\) apples.
+- He returns \(b\) apples to his friends, so the correct answer is
+  \[
+     \text{correct} \;=\; n\cdot a - b.
+  \]
+
+However, the solution by K1o0n mistakenly treats \(n\) as a _string_ and does the following:
+
+1. Forms the string \(s\) by concatenating the decimal representation of \(n\) exactly \(a\) times.
+2. “Subtracts” the integer \(b\) by chopping off the _last_ \(b\) characters of \(s\).  If \(b\) is at least the length of \(s\), the result is empty.
+
+We want exactly those \((a,b)\) pairs for which
+- K1o0n’s incorrect routine produces a _nonempty_ string.
+- Interpreting that resulting string as an integer yields exactly the **correct** answer \(n\cdot a - b\).
+
+Additionally, by problem statement constraints,
+\[
+1 \le a \le 10\,000, 
+\quad
+1 \le b \le \min(10\,000,\;n\cdot a).
+\]
+
+For each test \(n\), we must list _all_ such valid pairs \((a,b)\).
+
+---
+
+**Key Insight**
+
+Let
+- \(\;t\) = the decimal string of \(n\),
+- \(L\) = the length of \(t\) (number of digits of \(n\)),
+- We concatenate \(t\) \(a\) times to make a long string \(s\) of length \(aL\).
+
+Chopping off the last \(b\) characters leaves a prefix of length 
+\[
+  p = aL - b.
+\]
+That prefix is exactly the first \(p\) characters of the infinite repetition
+\[
+  t\,t\,t\,t\,\dots
+\]
+and we denote its numeric value by \(U\).  We require
+\[
+  U \;=\; n\cdot a \;-\; b,
+\quad
+  p=aL - b \;\ge\;1.
+\]
+
+---
+
+Because \(n\cdot a - b\) grows at most linearly in \(a\), whereas the prefix \(U\) is at least \(10^{p-1}\) (a \(p\)-digit number), feasibility forces \(p\) to be quite small (indeed \(p\le7\)).  We only need to try all small prefixes \(p\le7\), reconstruct \(U\), and then solve for \(a\) and \(b\) from the two equations:
+
+1. \(p = aL - b\),
+2. \(U = n\,a - b\).
+
+Eliminating \(b\) gives
+\[
+  a\,(n - L)\;=\; U - p,
+\]
+provided \(n\neq L\).  Hence
+\[
+  a = \frac{U - p}{\,n-L\,}\,,
+  \quad
+  b = aL - p.
+\]
+We simply check:
+- \((U-p)\) is divisible by \((n-L)\),
+- \(1\le a\le 10000\),
+- \(1\le b\le 10000\) (and \(b\le a\,n\), though that automatically holds once \(n>L\)),
+- and the resulting prefix is nonempty (\(p\ge1\)), so we record \((a,b)\).
+
+**Special case**: if \(n=1\), then \(L=1\) so \(n-L=0\).  One shows by hand that the _only_ valid prefix length is \(p=1\), which forces \(b=a-1\), and that works for every \(a\ge2\).  That yields 9999 solutions for \(a=2..10000\).
+
+---
+
+**Complexities**
+
+- We only iterate \(p\) up to 7, reconstruct the \(p\)-digit prefix (an \(O(p)\) operation), and do a constant amount of arithmetic.  That is \(O(1)\) per \((k,r)\) choice, in total \(O(7)\) or so per test.
+- Printing may take \(O(\#\text{solutions})\), and in the worst case \(n=1\) gives 9999 lines.  With at most 100 tests, the total output lines stay under \(10^6\), which is fine for a 3-second/256 MB environment.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder output = new StringBuilder();
+
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            String sN = Integer.toString(n);
+            int L = sN.length();
+            
+            // Special case n == 1
+            if (n == 1) {
+                // For a from 2..10000, set b = a - 1
+                output.append(9999).append('\n');
+                for (int a = 2; a <= 10000; a++) {
+                    output.append(a).append(' ').append(a - 1).append('\n');
+                }
+                continue;
+            }
+
+            // General case n != 1
+            // We will collect solutions in a TreeSet to avoid duplicates and keep sorted by 'a'.
+            TreeSet<Long> seen = new TreeSet<>();
+            List<int[]> solutions = new ArrayList<>();
+            
+            int maxPrefixLen = 7;  // we only need to try p <= 7
+            int denom = n - L;     // will be non-zero since n>1 => n>L always
+            
+            // Try all ways to pick a prefix of length p = k*L + r, with 0<=r<L, k>=0
+            // ensuring 1 <= p <= maxPrefixLen
+            for (int k = 0; k * L <= maxPrefixLen; k++) {
+                for (int r = 0; r < L; r++) {
+                    int p = k * L + r;
+                    if (p < 1 || p > maxPrefixLen) continue;
+
+                    // Build the prefix string of length p
+                    StringBuilder prefix = new StringBuilder();
+                    while (prefix.length() < p) {
+                        prefix.append(sN);
+                    }
+                    prefix.setLength(p);
+                    int U = Integer.parseInt(prefix.toString());
+
+                    // Solve a * (n - L) = U - p
+                    int numer = U - p;
+                    if (numer <= 0 || numer % denom != 0) continue;
+                    int a = numer / denom;
+                    if (a < 1 || a > 10000) continue;
+
+                    // Compute b = a*L - p
+                    int b = a * L - p;
+                    if (b < 1 || b > 10000) continue;
+                    // b <= a*n automatically since n > L
+                    
+                    // Avoid duplicates
+                    long key = ((long)a << 20) | b;
+                    if (!seen.contains(key)) {
+                        seen.add(key);
+                        solutions.add(new int[]{a, b});
+                    }
+                }
+            }
+
+            // Sort by 'a' (and then by 'b')
+            solutions.sort(Comparator.<int[]>comparingInt(p -> p[0])
+                                    .thenComparingInt(p -> p[1]));
+
+            // Output
+            output.append(solutions.size()).append('\n');
+            for (int[] sol : solutions) {
+                output.append(sol[0]).append(' ').append(sol[1]).append('\n');
+            }
+        }
+
+        // Flush all at once
+        System.out.print(output.toString());
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Special case \(n=1\)**  
+   - Here \(L=1\), so the denominator \(n-L=0\).  By examining the equations one finds that the only usable prefix length is \(p=1\), which forces \(b=a-1\).  All \(a\ge2\) up to 10 000 are valid, giving 9999 solutions.
+
+2. **General \(n>1\)**  
+   - We let \(L\) = number of digits of \(n\).  
+   - Any valid chopped‐off prefix must have length \(p\le7\) (because if \(p\) were larger, the numeric value of the \(p\)-digit prefix would exceed the maximum possible \(n\cdot a - b\approx 10000\cdot 100\)).  
+   - We write \(p = k\,L + r\) with \(0 \le r< L\), \(k\ge0\).  For each such \((k,r)\) with \(1\le p\le7\), we:
+     - Build the first \(p\) characters of the infinite repetition of the string \(t\).  
+     - Parse it as an integer \(U\).  
+     - Impose  
+       \[
+         a\,(n-L) = U - p,\qquad
+         b = a\,L - p,
+       \]
+       check integrality, and bounds \(1\le a,b\le10000\).  
+   - We gather all valid \((a,b)\), dedupe, sort, and print.
+
+**Complexity**
+
+- Each test runs in \(O(1)\) time (at most \(7\cdot L\le 21\) small loops, each doing a tiny string build and a couple of arithmetic ops).
+- Special case \(n=1\) prints 9999 lines, elsewhere we print at most a handful of lines (often fewer than 5).
+- Overall time is negligible for \(t\le100\) and the output size stays well within a million lines.  
+- Memory usage is also trivial.

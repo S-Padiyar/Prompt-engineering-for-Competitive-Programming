@@ -1,0 +1,130 @@
+**Analysis**
+
+We have an array `a[1..n]` and a parameter `k`.  In one move we remove any *contiguous* block of exactly `k` elements.  We keep removing while the current size exceeds `k`.  When we stop, the remaining array has length
+
+```
+    L = n − T·k
+```
+
+where
+
+```
+    T = ⌈(n−k)/k⌉   (the minimum # of removals so that n − T·k ≤ k).
+```
+
+One can check algebraically that
+
+```
+    T = ⌊(n−1)/k⌋,
+    L = n − T·k
+```
+
+and in fact
+
+```
+    L = (n mod k == 0 ? k : n mod k).
+```
+
+We want to choose *which* elements survive so as to maximize the median of the final array of length `L`.  It turns out (and can be shown by “gap-divisibility” arguments on the forced‐sizes of the removed blocks) that *any* valid choice of survivors corresponds precisely to picking exactly one element out of each of the first `L` residue‐classes modulo `k` (in the original 1-based indexing).  
+
+Concretely:
+
+- Label positions `1,2,…,n`.
+- We must end up keeping exactly one element whose index ≡1 (mod k), one whose index ≡2 (mod k), …, up to one whose index ≡L (mod k).  
+- Equivalently, for each `i=1..L` we pick exactly one `a[j]` with `j≡i (mod k)`.  
+
+Since we wish the *median* of those `L` survivors to be as large as possible, in each residue class `i` we should pick the *maximum* value of `a[j]` among all `j≡i (mod k)`.  Call those maxima
+
+```
+   v[1] = max{ a[j] : j≡1 (mod k) },
+   v[2] = max{ a[j] : j≡2 (mod k) },
+   …,
+   v[L] = max{ a[j] : j≡L (mod k) }.
+```
+
+Now sort the array `v[1..L]` in non‐decreasing order and take its median, i.e. the element at position
+
+```
+   m = ⌊(L+1)/2⌋
+```
+
+(1-based) in the sorted `v`.  That value is the answer.
+
+This runs in O(n) to gather the class maxima plus O(L·log L) to sort (but \(\sum L \le \sum n\le5·10^5\)), so it is quite efficient.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static BufferedReader in;
+    static PrintWriter out;
+    static StringTokenizer tok;
+
+    public static void main(String[] args) throws IOException {
+        in = new BufferedReader(new InputStreamReader(System.in));
+        out = new PrintWriter(System.out);
+
+        int t = nextInt();
+        while (t-- > 0) {
+            int n = nextInt();
+            int k = nextInt();
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = nextInt();
+            }
+
+            // Compute L = final length after removing in blocks of size k
+            int r = n % k;
+            int L = (r == 0 ? k : r);
+
+            // For i = 1..L, we will pick the maximum among a[j] with j ≡ i (mod k).
+            // We do 0-based internally, so residue class i=1 means indices j=0,0+k,0+2k,... 
+            // i=2 means j=1,1+k,1+2k,... up to i=L => j=i-1, (i-1)+k, ...
+            int[] v = new int[L];
+            Arrays.fill(v, Integer.MIN_VALUE);
+
+            for (int j = 0; j < n; j++) {
+                int cls = j % k;  // this is i-1 when i = cls+1
+                if (cls < L) {
+                    v[cls] = Math.max(v[cls], a[j]);
+                }
+            }
+
+            // Sort these L class‐maxima and take the median
+            Arrays.sort(v);
+            int medianIndex = (L - 1) / 2;  // 0‐based index of floor((L+1)/2)
+            out.println(v[medianIndex]);
+        }
+
+        out.flush();
+    }
+
+    // fast input boilerplate
+    static String next() throws IOException {
+        while (tok == null || !tok.hasMoreTokens()) {
+            tok = new StringTokenizer(in.readLine());
+        }
+        return tok.nextToken();
+    }
+    static int nextInt() throws IOException {
+        return Integer.parseInt(next());
+    }
+}
+```
+
+**Explanation of the key step**
+
+1.  After you remove \(T = \lfloor(n-1)/k\rfloor\) blocks of size \(k\), you are left with
+   \[
+     L = n - T\cdot k,
+   \]
+   and one can prove (by looking at the “gaps” of removed positions) that *exactly* one survivor must come from each of the first \(L\) residue‐classes modulo \(k\).  
+
+2.  To maximize the final median, in each such class you simply pick the **maximum** array‐value available in that class.
+
+3.  Finally, you have \(L\) chosen values, you sort them, and take the \(\big\lfloor\frac{L+1}2\big\rfloor\)-th one (1-based) to get the median.  
+
+All steps run in \(O(n + L\log L)\le O(n\log n)\) over all test cases with \(\sum n\le5\cdot10^5\).

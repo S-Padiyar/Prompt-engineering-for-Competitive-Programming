@@ -1,0 +1,164 @@
+**Analysis**
+
+We have a tree of \(n\) vertices (numbered \(1\) through \(n\)), each vertex \(i\) bearing a “weight” \(a_i\).  We wish to schedule the killing of all monsters in “rounds.”  In each round:
+
+1.  All *currently alive* monsters deal us damage equal to the sum of their \(a_i\).
+2.  We choose an independent set of the still–alive monsters (no two adjacent in the tree) and kill them.  Those die immediately and will no longer deal damage in any subsequent round.
+
+We have effectively an unbounded number of rounds (up to \(10^{100}\)), but after we kill everybody, no further damage happens.  Our goal is to minimize the **total** damage taken, which is
+\[
+   \sum_{\text{round } k}
+       \Bigl(\sum_{v\text{ alive at start of round }k} a_v\Bigr).
+\]
+
+A key re‐interpretation is that if we assign to vertex \(v\) the integer round \(r_v\) in which it is killed, it contributes \(a_v\) damage in rounds \(1,2,\dots,r_v\).  Hence the total damage is
+
+\[
+   \sum_{v=1}^n a_v\;r_v.
+\]
+
+The only constraint on the \(r_v\) is that adjacent vertices must have *different* \(r\)-values (since we cannot kill two adjacent monsters in the same round).
+
+Because the tree is bipartite, we may 2‐color its vertices (say “color 0” and “color 1”); each color‐class is an independent set.  Thus it is legal to pick one color class to kill in round 1 and the other in round 2.  No third (or higher) round can *reduce* the total weighted sum \(\sum a_vr_v\).  Indeed, if you tried to spread out kills over 3 or more rounds, you would only force some \(r_v\ge3\), which can only *increase* \(a_vr_v\) relative to putting everything into two buckets.
+
+Hence the optimal strategy is:
+
+1.  Label the tree with a standard 2‐coloring (any root and assign alternating 0/1 by BFS or DFS).
+2.  Let
+   \[
+     S_0 = \sum_{v: \text{color}(v)=0} a_v,\quad
+     S_1 = \sum_{v: \text{color}(v)=1} a_v.
+   \]
+3.  We kill *all* vertices of one color in round 1, and *all* of the other color in round 2.  
+   -  If we kill color‐0 in round 1 and color‐1 in round 2, the total damage is
+      \(\sum a_v\cdot1\;+\;\sum_{v:\mathrm{color}=1}a_v\cdot1
+       = (S_0+S_1)+S_1.\)
+   -  If we reverse the order, the total damage is \((S_0+S_1)+S_0.\)
+
+   We pick the smaller of these two, i.e.
+   \[
+     \min\bigl((S_0+S_1)+S_1,\;(S_0+S_1)+S_0\bigr)
+     = (S_0+S_1)\;+\;\min(S_0,S_1).
+   \]
+
+Thus the answer is
+\[
+  \text{totalDamage} \;=\; \underbrace{\sum_{v=1}^n a_v}_{S_0+S_1}
+                      \;+\;\min\bigl(S_0,\,S_1\bigr).
+\]
+
+We implement this in \(O(n)\) per test case by
+
+- Reading the tree and the array \(a\).
+- Building an adjacency list.
+- Running a BFS (or DFS) from node 1 to 2‐color the tree and accumulate
+  \(\;S_0=\sum_{v\,:\,\mathrm{color}=0} a_v,\;S_1=\sum_{v\,:\,\mathrm{color}=1} a_v.\)
+- Printing \((S_0+S_1)+\min(S_0,S_1)\).
+
+Since \(\sum n \le 3\times10^5\) over all test cases, this runs comfortably in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class FastInput {
+        BufferedReader br;
+        StringTokenizer st;
+        FastInput(InputStream in) {
+            br = new BufferedReader(new InputStreamReader(in));
+        }
+        String nextToken() throws IOException {
+            while (st == null || !st.hasMoreTokens()) {
+                String line = br.readLine();
+                if (line == null) return null;
+                st = new StringTokenizer(line);
+            }
+            return st.nextToken();
+        }
+        int nextInt() throws IOException {
+            return Integer.parseInt(nextToken());
+        }
+        long nextLong() throws IOException {
+            return Long.parseLong(nextToken());
+        }
+    }
+    
+    public static void main(String[] args) throws IOException {
+        FastInput in = new FastInput(System.in);
+        StringBuilder sb = new StringBuilder();
+        
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            long[] a = new long[n+1];
+            for (int i = 1; i <= n; i++) {
+                a[i] = in.nextLong();
+            }
+            
+            // Build adjacency list for the tree
+            List<Integer>[] adj = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) {
+                adj[i] = new ArrayList<>();
+            }
+            for (int i = 0; i < n-1; i++) {
+                int x = in.nextInt();
+                int y = in.nextInt();
+                adj[x].add(y);
+                adj[y].add(x);
+            }
+            
+            // BFS to 2-color the tree, accumulate sum0 and sum1
+            long sum0 = 0, sum1 = 0;
+            int[] color = new int[n+1];
+            Arrays.fill(color, -1);
+            
+            Deque<Integer> queue = new ArrayDeque<>();
+            queue.add(1);
+            color[1] = 0;
+            
+            while (!queue.isEmpty()) {
+                int u = queue.poll();
+                if (color[u] == 0) sum0 += a[u];
+                else             sum1 += a[u];
+                
+                for (int v : adj[u]) {
+                    if (color[v] == -1) {
+                        color[v] = 1 - color[u];
+                        queue.add(v);
+                    }
+                }
+            }
+            
+            long total = sum0 + sum1;
+            long ans = total + Math.min(sum0, sum1);
+            sb.append(ans).append('\n');
+        }
+        
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Bipartition of a Tree**  
+   Any tree is bipartite.  We do a simple BFS (or DFS) from node 1, assigning colors 0 and 1 alternately.  
+
+2. **Damage Calculation**  
+   If all color-0 nodes die in round 1 and all color-1 nodes in round 2, total damage
+   \[
+     = \sum_{v} a_v\cdot1 
+       + \sum_{v:\mathrm{color}=1} a_v\cdot1
+     = (S_0+S_1) + S_1.
+   \]
+   Reversing which color goes in round 1 versus round 2 yields
+   \[
+     (S_0+S_1) + S_0.
+   \]
+   We take the smaller of those two.
+
+3. **Complexity**  
+   Each test case runs in \(O(n)\) time to read the edges, BFS‐color, and sum.  Total over all test cases is \(O(\sum n)\), which is \(\le3\times10^5\).  This easily fits in the time/memory limits.

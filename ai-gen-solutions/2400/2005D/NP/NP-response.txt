@@ -1,0 +1,367 @@
+**Analysis**
+
+We have two arrays \(a[1\ldots n]\) and \(b[1\ldots n]\).  We must pick exactly one contiguous segment \([l,r]\) (with \(1\le l\le r\le n\)) and swap \(a_i\) with \(b_i\) for \(i=l\ldots r\).  After that operation, we get new arrays \(A'\) and \(B'\), and we want
+
+\[
+\max_{1\le l\le r\le n}\Bigl(\gcd(A')+\gcd(B')\Bigr),
+\]
+and also how many segments \((l,r)\) achieve that maximum.  Here
+\[
+A'_i=\begin{cases}b_i,&i\in[l,r],\\a_i,&\text{otherwise},\end{cases}
+\quad
+B'_i=\begin{cases}a_i,&i\in[l,r],\\b_i,&\text{otherwise}.\end{cases}
+\]
+
+A key observation is that
+\[
+\gcd(A')
+=\gcd\bigl(\underbrace{a_1,\ldots,a_{l-1}}_{\text{outside}},\underbrace{b_l,\ldots,b_r}_{\text{inside}},\underbrace{a_{r+1},\ldots,a_n}_{\text{outside}}\bigr).
+\]
+Define the prefix‐and‐suffix gcd arrays
+
+- \(\mathrm{PA}[i]=\gcd(a_1,\dots,a_i)\), with \(\mathrm{PA}[0]=0\) (so \(\gcd(0,x)=x\)),  
+- \(\mathrm{SA}[i]=\gcd(a_i,\dots,a_n)\), with \(\mathrm{SA}[n+1]=0\),  
+
+and similarly \(\mathrm{PB},\mathrm{SB}\) for the \(b\)‐array.
+
+Then for a chosen segment \([l,r]\),
+
+\[
+\gcd(A')
+=\gcd\bigl(\mathrm{PA}[l-1],\,\gcd(b_l,\dots,b_r),\,\mathrm{SA}[r+1]\bigr).
+\]
+Likewise
+\[
+\gcd(B')
+=\gcd\bigl(\mathrm{PB}[l-1],\,\gcd(a_l,\dots,a_r),\,\mathrm{SB}[r+1]\bigr).
+\]
+We want
+\[
+\max_{l,r}\Bigl(
+   \gcd(\mathrm{PA}[l-1],\,X_{l,r},\,\mathrm{SA}[r+1])
+ + \gcd(\mathrm{PB}[l-1],\,Y_{l,r},\,\mathrm{SB}[r+1])
+\Bigr),
+\]
+where
+\[
+X_{l,r}=\gcd(b_l,\dots,b_r),\qquad
+Y_{l,r}=\gcd(a_l,\dots,a_r).
+\]
+
+A direct \(O(n^2)\) over all \((l,r)\) is impossible for \(n\) up to \(2\times10^5\).  However, several facts reduce the complexity:
+
+1.  **Prefix and suffix gcds have only \(O(\log(\max a_i))\) distinct “runs”:**  If you walk the prefix‐gcd array \(\mathrm{PA}[0],\mathrm{PA}[1],\ldots,\)\ it can only strictly decrease by losing at least one prime factor each time.  So the prefix gcd “changes value” at most \(O(\log\max a_i)\) times, and similarly for suffix gcds, and the same for prefices/suffixes of the \(b\)‐array.
+
+2.  **For each fixed \(l\) we can list all intervals of \(r\) where \(\gcd(b_l,\dots,b_r)\) stays constant in \(O(\log(\max b_i))\) time** by a dynamic “merge‐gcd” trick.  Concretely, if we process \(l\) from \(n\) down to \(1\), we keep a short vector of all distinct gcd‐values of suffixes starting at \(l\).  Each time we prepend one new element \(b_l\) to that structure it costs \(O(\text{current‐size})\), and that size is again \(O(\log)\).
+
+3.  **Similarly we can handle all runs for \(\gcd(a_l,\dots,a_r)\), and for the outside‐gcd**
+   \(\gcd(\mathrm{PA}[l-1],\mathrm{SA}[r+1])\)
+   and
+   \(\gcd(\mathrm{PB}[l-1],\mathrm{SB}[r+1])\)
+   in \(O(\log)\) time each by scanning the (few) runs of the suffix‐gcd arrays.
+
+Thus for each \(l\) we obtain at most \(O(\log)\) intervals in \(r\) during which all four quantities
+
+- \(X=\gcd(b_l,\dots,b_r)\),
+- \(Y=\gcd(a_l,\dots,a_r)\),
+- \(P=\gcd(\mathrm{PA}[l-1],\,\mathrm{SA}[r+1])\),
+- \(Q=\gcd(\mathrm{PB}[l-1],\,\mathrm{SB}[r+1])\)
+
+stay constant.  Over each such subinterval of \(r\), the sum
+
+\[
+\gcd(P,X)\;+\;\gcd(Q,Y)
+\]
+
+is a single constant, and we can immediately add its contribution to our count (\(\text{length of subinterval}\times1\)).
+
+Finally we take the global maximum of these sums and the total number of \((l,r)\) pairs achieving that maximum.
+
+Overall each \(l\) costs \(O(\log(\max a_i))\) for all four runs plus merging them, so about \(O(\log)\).  Since \(\sum n\le 5\cdot10^5\) over all tests, this fits in about \(O\bigl((\sum n)\log M\bigr)\) which easily runs in 4 s in Java.
+
+---
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 500_005;
+    static int[] a = new int[MAXN], b = new int[MAXN];
+    static int[] PA = new int[MAXN], PB = new int[MAXN];
+    static int[] SA = new int[MAXN], SB = new int[MAXN];
+
+    // gcd helper
+    static int gcd(int x, int y) {
+        while (y != 0) {
+            int t = x % y;
+            x = y;
+            y = t;
+        }
+        return x;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) a[i] = Integer.parseInt(st.nextToken());
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) b[i] = Integer.parseInt(st.nextToken());
+
+            // Build prefix gcds
+            PA[0] = 0;
+            PB[0] = 0;
+            for (int i = 1; i <= n; i++) {
+                PA[i] = gcd(PA[i - 1], a[i]);
+                PB[i] = gcd(PB[i - 1], b[i]);
+            }
+            // Build suffix gcds (SA[i] = gcd(a[i..n]))
+            SA[n + 1] = 0;
+            SB[n + 1] = 0;
+            for (int i = n; i >= 1; i--) {
+                SA[i] = gcd(a[i], SA[i + 1]);
+                SB[i] = gcd(b[i], SB[i + 1]);
+            }
+
+            // Extract runs of SA and SB: at most O(log) runs each
+            ArrayList<Integer> saVal = new ArrayList<>(),
+                             saStart = new ArrayList<>(),
+                             saEnd = new ArrayList<>();
+            {
+                int last = -1, runStart = 1;
+                for (int i = 1; i <= n + 1; i++) {
+                    if (SA[i] != last) {
+                        if (last != -1) {
+                            saVal.add(last);
+                            saStart.add(runStart);
+                            saEnd.add(i - 1);
+                        }
+                        last = SA[i];
+                        runStart = i;
+                    }
+                }
+                // last run
+                saVal.add(last);
+                saStart.add(runStart);
+                saEnd.add(n + 1);
+            }
+            ArrayList<Integer> sbVal = new ArrayList<>(),
+                             sbStart = new ArrayList<>(),
+                             sbEnd = new ArrayList<>();
+            {
+                int last = -1, runStart = 1;
+                for (int i = 1; i <= n + 1; i++) {
+                    if (SB[i] != last) {
+                        if (last != -1) {
+                            sbVal.add(last);
+                            sbStart.add(runStart);
+                            sbEnd.add(i - 1);
+                        }
+                        last = SB[i];
+                        runStart = i;
+                    }
+                }
+                sbVal.add(last);
+                sbStart.add(runStart);
+                sbEnd.add(n + 1);
+            }
+
+            // We'll build for b the dynamic "suffix starting at l" gcd‐runs
+            // and same for a.  We keep them in small arrays.
+            int[] xVal = new int[64], xR = new int[64];
+            int[] tmpXVal = new int[64], tmpXR = new int[64];
+            int xLen = 0;
+            int[] yVal = new int[64], yR = new int[64];
+            int[] tmpYVal = new int[64], tmpYR = new int[64];
+            int yLen = 0;
+
+            long bestSum = -1, ways = 0;
+
+            // Process l from n down to 1
+            for (int l = n; l >= 1; l--) {
+                // ----- update runs for gcd(b[l..r]) -----
+                int newXL = 0;
+                tmpXVal[newXL] = b[l];
+                tmpXR[newXL] = l;
+                newXL++;
+                for (int i = 0; i < xLen; i++) {
+                    int g = gcd(b[l], xVal[i]);
+                    if (g == tmpXVal[newXL - 1]) {
+                        // extend run
+                        tmpXR[newXL - 1] = xR[i];
+                    } else {
+                        tmpXVal[newXL] = g;
+                        tmpXR[newXL] = xR[i];
+                        newXL++;
+                    }
+                }
+                // swap tmp -> xVal
+                xLen = newXL;
+                System.arraycopy(tmpXVal, 0, xVal, 0, xLen);
+                System.arraycopy(tmpXR, 0, xR, 0, xLen);
+
+                // ----- update runs for gcd(a[l..r]) -----
+                int newYL = 0;
+                tmpYVal[newYL] = a[l];
+                tmpYR[newYL] = l;
+                newYL++;
+                for (int i = 0; i < yLen; i++) {
+                    int g = gcd(a[l], yVal[i]);
+                    if (g == tmpYVal[newYL - 1]) {
+                        tmpYR[newYL - 1] = yR[i];
+                    } else {
+                        tmpYVal[newYL] = g;
+                        tmpYR[newYL] = yR[i];
+                        newYL++;
+                    }
+                }
+                yLen = newYL;
+                System.arraycopy(tmpYVal, 0, yVal, 0, yLen);
+                System.arraycopy(tmpYR, 0, yR, 0, yLen);
+
+                // The outside‐gcd parameters
+                int P_l = PA[l - 1];
+                int Q_l = PB[l - 1];
+
+                // Build the runs of r for P = gcd(P_l, SA[r+1])
+                int[] pVal = new int[64], pS = new int[64], pE = new int[64];
+                int pLen = 0;
+                for (int i = 0; i < saVal.size(); i++) {
+                    int v = saVal.get(i);
+                    int js = saStart.get(i), je = saEnd.get(i);
+                    int rs = js - 1;      // r+1=js   =>   r=js-1
+                    int re = je - 1;      // r+1=je   =>   r=je-1
+                    if (rs < l) rs = l;
+                    if (re > n) re = n;
+                    if (rs > re) continue;
+                    int g = gcd(P_l, v);
+                    if (pLen > 0 && g == pVal[pLen - 1]) {
+                        // merge
+                        pE[pLen - 1] = re;
+                    } else {
+                        pVal[pLen] = g;
+                        pS[pLen] = rs;
+                        pE[pLen] = re;
+                        pLen++;
+                    }
+                }
+
+                // Build the runs of r for Q = gcd(Q_l, SB[r+1])
+                int[] qVal = new int[64], qS = new int[64], qE = new int[64];
+                int qLen = 0;
+                for (int i = 0; i < sbVal.size(); i++) {
+                    int v = sbVal.get(i);
+                    int js = sbStart.get(i), je = sbEnd.get(i);
+                    int rs = js - 1, re = je - 1;
+                    if (rs < l) rs = l;
+                    if (re > n) re = n;
+                    if (rs > re) continue;
+                    int g = gcd(Q_l, v);
+                    if (qLen > 0 && g == qVal[qLen - 1]) {
+                        qE[qLen - 1] = re;
+                    } else {
+                        qVal[qLen] = g;
+                        qS[qLen] = rs;
+                        qE[qLen] = re;
+                        qLen++;
+                    }
+                }
+
+                // We now have 4 small lists of runs over r in [l..n]:
+                //   1) xVal[i],   run from r_start = (i==0?l:xR[i-1]+1)  to r_end = xR[i]
+                //   2) yVal[i],   similarly
+                //   3) pVal[i],   run from pS[i] to pE[i]
+                //   4) qVal[i],   run from qS[i] to qE[i]
+                //
+                // We do a 4‐way merge of all the distinct run‐start positions,
+                // then on each merged subrange [start..end] we know all four values
+                // are constant.  We compute gcd(P,X)+gcd(Q,Y) once, multiply by
+                // (end-start+1), and update (bestSum, ways).
+
+                // Merge run‐starts in sorted order, unique
+                int ix = 0, iy = 0, ip = 0, iq = 0;
+                int[] Z = new int[256]; // will hold sorted unique run‐starts
+                int zLen = 0, lastZ = -1;
+                while (true) {
+                    int nx = (ix < xLen ? (ix == 0 ? l : xR[ix - 1] + 1) : Integer.MAX_VALUE);
+                    int ny = (iy < yLen ? (iy == 0 ? l : yR[iy - 1] + 1) : Integer.MAX_VALUE);
+                    int np = (ip < pLen ? pS[ip] : Integer.MAX_VALUE);
+                    int nq = (iq < qLen ? qS[iq] : Integer.MAX_VALUE);
+                    int m = Math.min(Math.min(nx, ny), Math.min(np, nq));
+                    if (m > n) break;
+                    if (m != lastZ) {
+                        Z[zLen++] = m;
+                        lastZ = m;
+                    }
+                    if (nx == m) ix++;
+                    if (ny == m) iy++;
+                    if (np == m) ip++;
+                    if (nq == m) iq++;
+                }
+
+                // Now walk those Z‐intervals
+                int px = 0, py = 0, pp = 0, pq = 0;
+                for (int i = 0; i < zLen; i++) {
+                    int start = Z[i];
+                    int end = (i + 1 < zLen ? Z[i + 1] - 1 : n);
+
+                    // advance each pointer so it covers 'start'
+                    while (px + 1 < xLen && (px + 1 == 0 ? l : xR[px] + 1) <= start) px++;
+                    while (py + 1 < yLen && (py + 1 == 0 ? l : yR[py] + 1) <= start) py++;
+                    while (pp + 1 < pLen && pS[pp + 1] <= start) pp++;
+                    while (pq + 1 < qLen && qS[pq + 1] <= start) pq++;
+
+                    int X = xVal[px], Y = yVal[py], P = pVal[pp], Q = qVal[pq];
+                    int sum = gcd(P, X) + gcd(Q, Y);
+
+                    long cnt = (end - start + 1);
+                    if (sum > bestSum) {
+                        bestSum = sum;
+                        ways = cnt;
+                    } else if (sum == bestSum) {
+                        ways += cnt;
+                    }
+                }
+            }
+
+            sb.append(bestSum).append(" ").append(ways).append("\n");
+        }
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Prefix and suffix GCDs**  
+   We compute  
+   \(\mathrm{PA}[i]=\gcd(a_1,\ldots,a_i)\),  
+   \(\mathrm{SA}[i]=\gcd(a_i,\ldots,a_n)\),  
+   and similarly for `b[]`.  This lets us quickly form  
+   \(\gcd(\mathrm{PA}[l-1],\mathrm{SA}[r+1])\) in \(O(1)\).
+
+2. **Runs of suffix‐gcds**  
+   The arrays `SA[]` and `SB[]` change values only \(O(\log M)\) times (since each strict drop in a running gcd discards at least one prime factor).  We record those “runs” so that for each possible segment end \(r\) we know in which run it lies in \(O(\log)\) time.
+
+3. **“Dynamic” runs of \(\gcd(b_l\!\dots\!b_r)\)**  
+   If we process \(l\) from \(n\) down to \(1\), we maintain a small list of pairs  
+   \((\mathrm{value},\,\mathrm{rightEnd})\) meaning “from \(r=\text{(previousRightEnd+1)}\) up to this rightEnd the gcd is `value`.”  
+   Prepending a new element `b[l]` to all existing runs costs \(O(\text{currentRuns})\), and that number of runs is again \(O(\log)\).
+
+4. **Merging the four run‐lists**  
+   For each \(l\) we end up with four small run‐lists in \(r\in[l\ldots n]\) for  
+   - \(X=\gcd(b_l\ldots b_r)\),  
+   - \(Y=\gcd(a_l\ldots a_r)\),  
+   - \(P=\gcd(\mathrm{PA}[l-1],\mathrm{SA}[r+1])\),  
+   - \(Q=\gcd(\mathrm{PB}[l-1],\mathrm{SB}[r+1])\).  
+   We do a simple \(4\)-way merge of all the “run‐start” positions (at most \(\sim4\log M\) of them), thus partitioning \([l..n]\) into subintervals where all four of these values stay constant.  Over each subinterval \([s..e]\), the quantity  
+   \(\gcd(P,X)+\gcd(Q,Y)\)  
+   is a single constant, so we just add \((e-s+1)\) to our count if it matches the current best sum, or reset our count if it exceeds the previous best.
+
+Overall this runs in \(O\bigl(n\log(\max a_i)\bigr)\) per test (and \(\sum n\le5\cdot10^5\)), which fits in the 4 s time limit in optimized Java.

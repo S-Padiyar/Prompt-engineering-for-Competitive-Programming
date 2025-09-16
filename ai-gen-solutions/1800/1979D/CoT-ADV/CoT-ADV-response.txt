@@ -1,0 +1,203 @@
+**Problem Restatement**
+
+We have a binary string `s` of length `n`. We must perform exactly one operation, parameterized by an integer `p` (1 ≤ p ≤ n):
+
+1. Reverse the prefix of length `p`:  
+   `s = s[1..p] + s[p+1..n]` → `s = reverse(s[1..p]) + s[p+1..n]`.
+2. Left‐rotate the whole string by `p` positions (cyclic shift):  
+   the string becomes `s[p+1..n] + reverse(s[1..p])`.
+
+We call the final string **k‐proper** if:
+
+- Its first `k` characters are all the same (either all `0` or all `1`),
+- And for every `i` from 1 to `n-k`, we have `s[i] != s[i+k]`.
+
+Since `k` divides `n`, a **k‐proper** string must be one of two alternating‐blocks patterns, each block of size `k`:
+
+- Pattern A (`t0`): `000…00 111…11 000…00 111…11 …`
+- Pattern B (`t1`): `111…11 000…00 111…11 000…00 …`
+
+Each of these has `n/k` blocks, alternating between `0`‐blocks and `1`‐blocks.
+
+**Task**: Find any `p` (1 ≤ p ≤ n) so that after the two‐step operation the resulting string equals `t0` or `t1`. If no such `p` exists, print `-1`. Even if `s` is already k‐proper, we still must perform exactly one operation.
+
+---
+
+**Key Observation & Algorithm**
+
+Let  
+    `s = u + v`, with `u = s[1..p]` and `v = s[p+1..n]`.  
+After reversing `u` and then left‐rotating by `p`, the result is  
+    `v + reverse(u)`.
+
+We want `v + reverse(u)` to equal one of our target patterns (`t0` or `t1`).  
+This splits into two match requirements:
+
+1. **Prefix‐match**: `u` must equal the reverse of the final‐pattern’s suffix of length `p`.  
+2. **Suffix‐match**: `v` must equal the final‐pattern’s prefix of length `n-p`.
+
+Concretely, for each target pattern `t` (either `t0` or `t1`), define its reverse `r = reverse(t)`.  
+We need:
+
+- `s[0..p-1] == r[0..p-1]`  (prefix of `s` matches prefix of `r` of length `p`),
+- `s[p..n-1] == t[0..n-p-1]` (suffix of `s` starting at `p` matches prefix of `t` of length `n-p`).
+
+We only need to find **one** valid `p`.
+
+**Implementation details**
+
+1. **Build** the two candidate patterns `t0` and `t1` of length `n`:
+   - For block index `i` from `0` to `n-1`, let `block = i/k`.
+   - If `block` is even, `t0[i] = '0'`, else `'1'`.
+   - Then `t1[i]` is simply the bit‐wise complement of `t0[i]`.
+
+2. **Prefix check** (`preLen`):  
+   Compare `s` with `r = reverse(t)`.  
+   Let `preLen` = the largest `p` such that `s[0..p-1] == r[0..p-1]`.  
+   We can find it in O(n) by scanning until the first mismatch.
+
+3. **Suffix check**: We need, for each `p`, to know if `s[p..]` matches `t[0..n-p-1]` (length `n-p`).  
+   Precompute an array `suf[p] = LCP(s[p..], t)` = length of longest common prefix of `s[p..]` vs. `t[0..]`.  
+   We do that via a standard Z‐algorithm on the string `Zstr = t + '#' + s`.  
+   - In that augmented string, each position corresponding to start of `s[i]` stores in `Z[]` the LCP with `t`.
+   - Extract those Z‐values into `suf[i]`.
+
+4. **Scan** possible `p` from `1` to `preLen`:  
+   - If `p < n` and `suf[p] >= n-p`, we have a full suffix‐match → return `p`.  
+   - If `p == n`, the suffix part is empty and automatically matches; return `p`.
+
+Do this check first for `t0`, then for `t1`. If neither yields a valid `p`, print `-1`.
+
+Overall each test is O(n) (building two patterns, two Z‐computations, linear scans). Summing over all tests stays within O(∑n) ≤ 2·10^5.
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        // Fast I/O
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter pw = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+            String sStr = br.readLine().trim();
+            char[] s = sStr.toCharArray();
+
+            int answer = -1;
+
+            // Try both patterns: pType=0 for t0 starting with 0, pType=1 for t1 starting with 1
+            outer:
+            for (int pType = 0; pType < 2; pType++) {
+                // Build the k‐alternating pattern t
+                char[] tpat = new char[n];
+                for (int i = 0; i < n; i++) {
+                    int block = (i / k);
+                    char zeroOne = (block % 2 == 0 ? '0' : '1');
+                    if (pType == 0) {
+                        tpat[i] = zeroOne;            // t0
+                    } else {
+                        tpat[i] = (zeroOne == '0' ? '1' : '0'); // t1
+                    }
+                }
+
+                // Build r = reverse(tpat)
+                char[] r = new char[n];
+                for (int i = 0; i < n; i++) {
+                    r[i] = tpat[n - 1 - i];
+                }
+
+                // 1) Compute preLen = max p such that s[0..p-1] == r[0..p-1]
+                int preLen = n;
+                for (int i = 0; i < n; i++) {
+                    if (s[i] != r[i]) {
+                        preLen = i;
+                        break;
+                    }
+                }
+
+                // 2) Build Z‐string: U = tpat + '#' + s
+                int L = n + 1 + n;
+                char[] U = new char[L];
+                for (int i = 0; i < n; i++) U[i] = tpat[i];
+                U[n] = '#';
+                for (int i = 0; i < n; i++) U[n + 1 + i] = s[i];
+
+                // 3) Z‐algorithm on U
+                int[] Z = new int[L];
+                int l = 0, rptr = 0;
+                for (int i = 1; i < L; i++) {
+                    if (i <= rptr) {
+                        Z[i] = Math.min(rptr - i + 1, Z[i - l]);
+                    }
+                    while (i + Z[i] < L && U[Z[i]] == U[i + Z[i]]) {
+                        Z[i]++;
+                    }
+                    if (i + Z[i] - 1 > rptr) {
+                        l = i;
+                        rptr = i + Z[i] - 1;
+                    }
+                }
+
+                // 4) Extract suf array: suf[i] = LCP(s[i..], tpat)
+                //    s starts at U-index (n+1), so for s at index i: U-index = n+1 + i
+                int[] suf = new int[n + 1];
+                for (int i = 0; i < n; i++) {
+                    suf[i] = Z[n + 1 + i];
+                }
+                suf[n] = 0; // beyond end
+
+                // 5) Scan p = 1..preLen
+                //    Need s[0..p-1]==r[0..p-1] and s[p..] matches tpat[0..n-p-1]
+                for (int p = 1; p <= preLen; p++) {
+                    if (p < n) {
+                        // need the suffix-match: suf[p] >= (n - p)
+                        if (suf[p] >= n - p) {
+                            answer = p;
+                            break outer;
+                        }
+                    } else {
+                        // p==n ⇒ suffix is empty, prefix already matched
+                        answer = p;
+                        break outer;
+                    }
+                }
+            }
+
+            pw.println(answer);
+        }
+
+        pw.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Pattern building (`t0`, `t1`)**  
+   We know a k‐proper string of length `n` is entirely determined by whether it starts with `0` or `1`. Blocks of size `k` alternate. We build both possibilities.
+
+2. **Prefix match**  
+   We require `s[0..p-1] == reverse(t)[0..p-1]`. By scanning once we find the longest prefix where `s` matches `r = reverse(t)`. Call that length `preLen`. Only `p ≤ preLen` can possibly satisfy the prefix condition.
+
+3. **Suffix match via Z‐algorithm**  
+   We must check for each `p` whether `s[p..n-1]` matches `t[0..n-p-1]`. If we concatenate `U = t + '#' + s`, then at each position where `s` begins in `U`, the Z‐value gives the length of the match between that suffix of `s` and `t`. We store those in `suf[p]`. Then the suffix‐condition is `suf[p] ≥ n-p`.
+
+4. **Linear scan for `p`**  
+   Finally, for `1 ≤ p ≤ preLen`, we check the Z‐value condition. If `p = n` we trivially accept (empty suffix). We stop as soon as we find one valid `p`.
+
+**Complexity Analysis**
+
+- Building each pattern and its reverse: O(n).  
+- Computing the Z‐array on a string of length `2n+1`: O(2n) = O(n).  
+- Single linear scan for `p`: O(n).  
+- We do this twice (for the two starting‐bit options). Overall O(n) per test.  
+- Total over all tests is O(∑n) ≤ 2·10^5, which easily fits the time limit. Space is also O(n).

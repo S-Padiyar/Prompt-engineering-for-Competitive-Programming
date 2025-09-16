@@ -1,0 +1,226 @@
+**Analysis**
+
+We have a rooted tree on \(n\) vertices (rooted at 1), numbered in *DFS order*; that is, each node’s label is its time‐in number, so each subtree of a node \(u\) is exactly the interval \([u,\;R[u]]\) for some \(R[u]\).  Vertex \(i\) \((2\le i\le n)\) is joined to its parent \(p_i\) by an edge of (unknown) integer weight \(t_i\ge0\).  We know
+
+\[
+\sum_{i=2}^n t_i \;=\; w,
+\]
+
+and we will be told the exact value of each \(t_x\) in some order (each index \(x\) appears exactly once), in total \(n-1\) “events.”  After each event, *independently for each* \(i=1,2,\dots,n\), we want
+
+\[
+\max_{\substack{t_j\ge0,\;\sum t_j=w\\t_x\text{ fixed for all revealed }x}}
+\;\;\mathrm{dist}\bigl(i,\,(i\bmod n)+1\bigr)
+\]
+
+where \(\mathrm{dist}(u,v)\) is the sum of the edge‐weights along the unique path from \(u\) to \(v\); and finally we sum those \(n\) maxima.  
+
+The key simplification is that *for each pair* \(\bigl(i,i+1\bmod n\bigr)\) we can re‐allocate all of the *remaining* weight \(w-\sum_{\rm fixed}t_x\) onto *any one* as‐yet‐unknown edge on the path, so
+
+- if the path has at least one unknown edge, its maximum possible length is
+  \[
+    \bigl(\text{sum of already known weights on that path}\bigr)
+    \;+\;\bigl(\text{remaining total weight}\bigr),
+  \]
+- if the path is already fully known, its length is just the sum of those known weights.
+
+Thus if we let
+
+1.  \(S\) = the *sum* over all pairs \((i,i+1)\) of *already known*‐on‐the‐path weights,
+2.  \(\mathrm{Rem}=w-\sum_{\rm fixed}t_x\) = total *yet‐unassigned* weight,
+3.  \(\mathrm{Good}\) = number of pairs \((i,i+1)\) whose entire path is already fully known,
+
+then the total answer after each event is simply
+
+\[
+   \boxed{S\;+\;\mathrm{Rem}\,\bigl(n - \mathrm{Good}\bigr)\,.}
+\]
+
+Every time we fix one more edge‐weight \(t_x=y\),
+
+- we do 
+  \[
+    S\;\;+=\;2y,
+  \]
+  because in *cyclic* adjacency \((i,i+1)\bmod n\) each tree‐edge shows up in *exactly two* of those \(n\) paths.  
+- we subtract it from Rem,
+- and we must figure out *which* of the \(n\) pairs \((i,i+1)\) have just become *fully known* (i.e.\ that was the last unknown edge on their path).  We keep for each of the \(n\) pairs a counter \(U[i]\) = “how many unknown edges remain on path \(i\to i+1\)”; initially we compute them all, and each time we reveal an edge \(x\), that edge participates in exactly two of the cyclic‐adjacency paths, so we decrement those two \(U[i]\), and if any of them hits zero, we increment \(\mathrm{Good}\).
+
+All operations are thus \(O(1)\) per event once we have built  
+
+- an array \(U[1..n]\) of initial unknown‐edge counts,
+- an array \(R[1..n]\) so that the subtree of node \(u\) is the interval \([u,R[u]]\),
+- and the usual depths and a small LCA‐table to get the path‐length (in edges) between \(i\) and \(i+1\) when initializing.
+
+Since \(\sum n\le 2\times10^5\), an \(O(n\log n)\) preprocessing plus \(O(1)\) per update fits easily.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 200000 + 5;
+    static final int LOG  = 18;  // since 2^18 > 200000
+
+    static int n;
+    static long w;
+    static int[] p = new int[MAXN];
+    static int[] depth = new int[MAXN];
+    static int[] R     = new int[MAXN];
+    static int[] U     = new int[MAXN];  // unknown‐edge count on path i->i+1
+    static int[][] up  = new int[LOG][MAXN];
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int T = Integer.parseInt(br.readLine().trim());
+        StringBuilder out = new StringBuilder();
+
+        while (T-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            n = Integer.parseInt(st.nextToken());
+            w = Long.parseLong(st.nextToken());
+
+            // read parents
+            p[1] = 1;  // root's parent dummy
+            st = new StringTokenizer(br.readLine());
+            for (int i = 2; i <= n; i++) {
+                p[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // compute depth (since p[i] < i always, we can do in one pass)
+            depth[1] = 0;
+            for (int i = 2; i <= n; i++) {
+                depth[i] = depth[ p[i] ] + 1;
+            }
+
+            // build binary‐lifting table up[0][i]=parent
+            for (int i = 1; i <= n; i++) {
+                up[0][i] = p[i];
+            }
+            for (int k = 1; k < LOG; k++) {
+                for (int i = 1; i <= n; i++) {
+                    up[k][i] = up[k-1][ up[k-1][i] ];
+                }
+            }
+
+            // compute R[u] = max label in subtree of u
+            for (int i = 1; i <= n; i++) {
+                R[i] = i;
+            }
+            for (int i = n; i >= 2; i--) {
+                int par = p[i];
+                if (R[i] > R[par]) {
+                    R[par] = R[i];
+                }
+            }
+
+            // initialize U[i] = number of edges on path i->i+1, for i=1..n-1;
+            // and U[n] = number of edges on path n->1 = depth[n].
+            for (int i = 1; i < n; i++) {
+                int j = i+1;
+                int l = lca(i, j);
+                U[i] = depth[i] + depth[j] - 2*depth[l];
+            }
+            U[n] = depth[n];
+
+            // how many pairs are already fully known?
+            int good = 0;
+            for (int i = 1; i <= n; i++) {
+                if (U[i] == 0) good++;
+            }
+
+            long S   = 0;      // sum of known‐on‐path weights
+            long Rem = w;      // remaining total weight
+
+            // process the n-1 events
+            for (int e = 1; e < n; e++) {
+                st = new StringTokenizer(br.readLine());
+                int x   = Integer.parseInt(st.nextToken());
+                long y  = Long.parseLong(st.nextToken());
+
+                // this edge appears in exactly two of the cyclic‐adjacent paths:
+                //   between (x-1, x)  if x>1   ⇒ index (x-1)
+                //   and between (R[x], R[x]+1 mod n)
+                // which in our 1..n cycle is "R[x]" if R[x]<n else "n" (i.e. the pair n->1).
+                int i1 = x - 1;        // 1 <= i1 <= n-1
+                int i2 = (R[x] < n ? R[x] : n);
+
+                // reveal t_x = y
+                Rem -= y;
+                S   += 2 * y;  // each edge shows up in 2 cyclic‐adjacent distances
+
+                // decrement the unknown‐edge count on those two paths
+                if (i1 >= 1) {
+                    U[i1]--;
+                    if (U[i1] == 0) good++;
+                }
+                U[i2]--;
+                if (U[i2] == 0) good++;
+
+                // answer = S + Rem*(number of still‐unknown paths)
+                long ans = S + Rem * ( (long)n - good );
+                out.append(ans).append(' ');
+            }
+            out.append('\n');
+        }
+
+        System.out.print(out);
+    }
+
+    // classic binary‐lifting LCA
+    static int lca(int a, int b) {
+        if (depth[a] < depth[b]) {
+            int t = a; a = b; b = t;
+        }
+        int diff = depth[a] - depth[b];
+        for (int k = 0; k < LOG; k++) {
+            if ((diff & (1<<k)) != 0) {
+                a = up[k][a];
+            }
+        }
+        if (a == b) return a;
+        for (int k = LOG-1; k >= 0; k--) {
+            if (up[k][a] != up[k][b]) {
+                a = up[k][a];
+                b = up[k][b];
+            }
+        }
+        return up[0][a];
+    }
+}
+```
+
+**Explanation of the main ideas**
+
+1.  **DFS‐numbering ⇒ subtrees are intervals.**  
+    Because each subtree of node \(u\) occupies the consecutive labels \([u,R[u]]\), an edge \((p_x\to x)\) *separates* its subtree from the rest of the tree, and in the cyclic adjacency  
+       \((1\to2), (2\to3),\dots,(n-1\to n), (n\to1)\)  
+    it occurs in *exactly two* of those \(n\) consecutive‐node pairs (the boundary at \(x\) and the boundary at \(R[x]\)).
+
+2.  **Independent maximization per pair.**  
+    For the pair \((i,i+1)\), if there is at least one *unknown* edge on the path, you dump *all* the remaining total weight into it, so its maximum possible length is  
+    \[
+      \bigl(\text{sum of already‐known weights on that path}\bigr)\;+\;\mathrm{Rem},
+    \]  
+    otherwise it is just the sum of the already‐known weights.
+
+3.  **Keeping counters.**  
+    We keep
+    - a global sum \(S\) of all the *already known* contributions (noting each fixed edge contributes to exactly two adjacent pairs, hence \(S\gets S+2y\) when we learn \(t_x=y\)),
+    - \(\mathrm{Rem} = w-\sum_{\rm fixed}\!t_x\),  
+    - for each of the \(n\) cyclic‐adjacent pairs, a small counter \(U[i]\) = “how many edges on the path are *still unknown*?”  Once \(U[i]\) hits zero, that pair becomes fully known.  We tally how many are fully known in `good`.
+
+4.  **Answer formula after each event**  
+    \[
+       \sum_{i=1}^n \max\bigl(\mathrm{(known\_sum)}_i,\;\mathrm{(known\_sum)}_i + \mathrm{Rem}\bigr)
+       \;=\;
+       S
+       \;+\;
+       \mathrm{Rem}\times \bigl(n-\mathrm{good}\bigr)\,.
+    \]
+
+All heavy lifting (depth, `R[u]`, and initial `U[i]`) is done in \(O(n\log n)\), and each of the \(n-1\) reveals is \(O(1)\). Since \(\sum n\le2\times10^5\) over all test‐cases, this runs very comfortably in time.

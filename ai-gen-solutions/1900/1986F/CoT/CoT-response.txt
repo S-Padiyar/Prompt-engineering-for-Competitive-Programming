@@ -1,0 +1,185 @@
+**Analysis**
+
+We have an undirected connected graph on \(n\) vertices and \(m\) edges.  Initially, because the graph is connected, there are 
+\[
+\binom{n}{2} \;=\;\frac{n(n-1)}{2}
+\]
+reachable pairs \((u,v)\).  We are allowed to delete exactly one edge, and we wish to minimize the new number of reachable pairs.
+
+- If the deleted edge is *not* a bridge, the graph remains connected, so we still have \(\binom{n}{2}\) reachable pairs.
+- If the deleted edge *is* a bridge, then removing it splits the graph into two connected components of sizes \(A\) and \(B\) with \(A+B=n\).  In that case the new number of reachable pairs is
+  \[
+    \binom{A}{2} + \binom{B}{2}
+    \;=\;\frac{A(A-1)}{2} + \frac{B(B-1)}{2}
+    \;=\;\binom{n}{2} \;-\;A\,B.
+  \]
+  Hence the *reduction* in number of reachable pairs is exactly \(A\times B\).  To minimize the final number of reachable pairs, we must *maximize* \(A\cdot B\) over all bridges of the graph.
+
+Thus the algorithm is:
+
+1. Compute \(\binom{n}{2}\).
+2. Find all bridges using the standard DFS low-link (Tarjan) technique.
+3. During the DFS, also compute the size of the DFS‐tree subtree at each vertex.  Whenever we detect a bridge \((u,v)\) with \(u\) as parent of \(v\) in the DFS‐tree, the two sides have sizes
+   \[
+     A = \text{subtree\_size}[v],\quad B = n - A,
+   \]
+   and we update
+   \[
+     \text{best\_product} = \max(\text{best\_product},\, A\times B).
+   \]
+4. The answer is
+   \[
+     \binom{n}{2} \;-\;\text{best\_product}.
+   \]
+5. If there are no bridges, \(\text{best\_product}=0\) and the answer remains \(\binom{n}{2}\).
+
+This runs in \(O(n + m)\) time per test, which is sufficient for \(\sum n,\sum m\le2\cdot10^5\).
+
+We must take care in Java not to overflow the recursion stack for deep DFS; we wrap our solution in a separate `Thread` with a larger stack.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class FastInput {
+        BufferedReader br;
+        StringTokenizer st;
+        FastInput(InputStream in) {
+            br = new BufferedReader(new InputStreamReader(in));
+        }
+        String nextToken() throws IOException {
+            while (st == null || !st.hasMoreTokens()) {
+                String line = br.readLine();
+                if (line == null) return null;
+                st = new StringTokenizer(line);
+            }
+            return st.nextToken();
+        }
+        int nextInt() throws IOException {
+            return Integer.parseInt(nextToken());
+        }
+    }
+
+    static int n, m;
+    static List<Edge>[] adj;
+    static int[] tin, low, subSize;
+    static boolean[] visited;
+    static int timer;
+    static long bestProduct;
+
+    static class Edge {
+        int to, id;
+        Edge(int _to, int _id) {
+            to = _to; id = _id;
+        }
+    }
+
+    static void dfs(int u, int parentEdgeId) {
+        visited[u] = true;
+        tin[u] = low[u] = ++timer;
+        subSize[u] = 1;
+
+        for (Edge e : adj[u]) {
+            int v = e.to, eid = e.id;
+            if (eid == parentEdgeId) continue;
+            if (visited[v]) {
+                // back-edge
+                low[u] = Math.min(low[u], tin[v]);
+            } else {
+                // tree-edge
+                dfs(v, eid);
+                subSize[u] += subSize[v];
+                low[u] = Math.min(low[u], low[v]);
+                // check bridge condition
+                if (low[v] > tin[u]) {
+                    long A = subSize[v];
+                    long B = n - A;
+                    bestProduct = Math.max(bestProduct, A * B);
+                }
+            }
+        }
+    }
+
+    public static void main(String[] args) throws Exception {
+        // Increase stack size by running solve() in a dedicated thread
+        Thread thread = new Thread(null, () -> {
+            try {
+                solve();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }, "solver", 1 << 26);
+        thread.start();
+        thread.join();
+    }
+
+    static void solve() throws IOException {
+        FastInput in = new FastInput(System.in);
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            n = in.nextInt();
+            m = in.nextInt();
+
+            adj = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) {
+                adj[i] = new ArrayList<>();
+            }
+            for (int i = 0; i < m; i++) {
+                int u = in.nextInt();
+                int v = in.nextInt();
+                adj[u].add(new Edge(v, i));
+                adj[v].add(new Edge(u, i));
+            }
+
+            tin = new int[n+1];
+            low = new int[n+1];
+            subSize = new int[n+1];
+            visited = new boolean[n+1];
+            timer = 0;
+            bestProduct = 0;
+
+            // Graph is guaranteed connected, so one DFS from node 1 suffices:
+            dfs(1, -1);
+
+            long totalPairs = (long) n * (n - 1) / 2;
+            long answer = totalPairs - bestProduct;
+            out.println(answer);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Bridge‐finding with Tarjan’s DFS**  
+   We keep:
+   - `tin[u]` = discovery time of `u`
+   - `low[u]` = lowest (minimum) discovery time reachable from `u` via any number of tree‐edges downward and at most one back‐edge.
+
+   Whenever we visit an unvisited neighbor `v` from `u`, we recurse, then do:
+   ```
+   low[u] = min(low[u], low[v]);
+   if (low[v] > tin[u])  -> edge (u,v) is a bridge
+   ```
+
+2. **Subtree Sizes**  
+   We also track `subSize[u]` = size of the DFS‐tree subtree rooted at `u`.  If \((u,v)\) is a bridge and `u` is the parent of `v` in the DFS‐tree, then removing it splits the graph into:
+   - component 1 of size `subSize[v]`
+   - component 2 of size `n - subSize[v]`
+
+   The product of these sizes, `subSize[v] * (n - subSize[v])`, is the number of *lost* reachable pairs by deleting that bridge.  We keep the maximum over all bridges.
+
+3. **Final Answer**  
+   Since originally there are \(\binom{n}{2}\) reachable pairs, and we lose at most `bestProduct` by removing the best bridge, the minimum reachable pairs after one deletion is
+   \[
+     \binom{n}{2} \;-\;\text{bestProduct}.
+   \]
+
+This runs in \(O(n + m)\) time per test and uses \(O(n + m)\) memory. It handles up to \(\sum n,\sum m\le2\cdot10^5\) comfortably.

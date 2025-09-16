@@ -1,0 +1,367 @@
+**Analysis**
+
+We have an \(n\times m\) grid of `.` and `#` characters, and we may perform at most one operation: pick a row \(r\) and a column \(c\), and turn all cells in that row and that column into `#`.  We want the maximum size of the largest connected component of `#`‐cells (4‐connectivity) after at most one such operation (we may also choose to do nothing).
+
+Let us write
+
+  • \(\mathrm{origMax}\) = the size of the largest connected component in the original grid (no operation).  
+  • \(\mathrm{plusSize}=\,n + m - 1\), the total number of cells in one full row plus one full column (the intersection \((r,c)\) is counted only once).  
+
+If we actually perform the operation on \((r,c)\), then in the resulting grid:
+
+  1. The “plus” (row \(r\) and column \(c\)) contributes \(\mathrm{plusSize}\) cells total.
+  2. Any original components of `#` that touch the plus either by having a `#` in row \(r\) or column \(c\), **or** by having a `#` in one of the adjacent rows \(\{r-1,r+1\}\) next to the newly‐filled row \(r\), or in one of the adjacent columns \(\{c-1,c+1\}\) next to the newly‐filled column \(c\), all become merged into one big component.  
+
+Hence the final merged component size is
+\[
+  \underbrace{\mathrm{plusSize}}_{\text{newly filled row+col}}
+  \;+\;
+  \sum_{\substack{\text{all original components}\\
+                 \text{that merge with the plus}}}
+    (\text{size of that component})
+  \;-\;
+  (\text{number of `#` on the plus in the original grid}),
+\]
+because we must not double‐count the `#` that were already on the plus before the operation.
+
+Define
+
+  • \(\mathrm{rowHash}[r]\) = how many `#`’s are in row \(r\) initially.  
+  • \(\mathrm{colHash}[c]\) = how many `#`’s are in column \(c\) initially.  
+  • overlap \(\mathrm{ov}(r,c)\)= 1 if cell \((r,c)\) is `#` initially, else 0.  
+
+Then “number of `#` on the plus” = \(\mathrm{rowHash}[r]+\mathrm{colHash}[c]-\mathrm{ov}(r,c)\).
+
+We now need to figure out efficiently, for each \(r\) and \(c\), **which** original components merge with the plus.  Equivalently, for each connected component \(k\) we can precompute:
+
+- The set \(\mathrm{R}_k\) of rows in which component \(k\) has cells (plus each of those rows \(\pm1\), clipped to \([0,n-1]\)).  
+- The set \(\mathrm{C}_k\) of columns in which component \(k\) has cells (plus each of those columns \(\pm1\), clipped to \([0,m-1]\)).  
+
+Then component \(k\) merges with the plus if and only if our chosen \((r,c)\) lies in \(\mathrm{R}_k\times \mathrm{C}_k\).  If we did not have to worry about subtracting the original `#`‐overlap on the plus, the size gained from component \(k\) would simply be \(\text{size}_k\).  
+
+Putting everything together, one finds that the contribution of component \(k\) is **added** once in the sum over row‐neighbors of \(r\), plus once in the sum over column‐neighbors of \(c\), and so it is counted twice if \((r,c)\in \mathrm{R}_k\times \mathrm{C}_k\).  Thus in a “row‐only” total plus a “column‐only” total we have overcounted the intersection once, and must subtract \(\text{size}_k\) exactly on all \((r,c)\in \mathrm{R}_k\times \mathrm{C}_k\).
+
+Concretely:
+
+1. Find all connected components of the original `#`‐graph with a BFS/DFS.  Record for each cell its `compId` and for each component its size.
+2. Build for each row \(r\) the list of component‐IDs that appear in rows \(r-1,r,r+1\).  Call that total \(\mathrm{rowSum}[r]\).  Similarly build for each column \(c\) the total \(\mathrm{colSum}[c]\) from columns \(c-1,c,c+1\).  In each sum we add up the sizes of distinct components that appear in those three rows (or three columns).
+3. For each \((r,c)\) define a **base** value
+   \[
+     H(r,c)\;=\;\bigl(\mathrm{rowSum}[r]-\mathrm{rowHash}[r]\bigr)\;+\;\bigl(\mathrm{colSum}[c]-\mathrm{colHash}[c]\bigr)\;+\;\mathrm{ov}(r,c).
+   \]
+   One checks that
+   \[
+     H(r,c)
+     \;=\;
+     \bigl[\sum_{\substack{k: \text{in row‐window}(r)}}\mathrm{size}_k\bigr]
+     -\mathrm{rowHash}[r]
+     \;+\;
+     \bigl[\sum_{\substack{k: \text{in col‐window}(c)}}\mathrm{size}_k\bigr]
+     -\mathrm{colHash}[c]
+     \;+\;\mathrm{ov}(r,c).
+   \]
+4. Now we must subtract the overcount: every component \(k\) that lies both in the row‐window of \(r\) and the column‐window of \(c\) we have counted twice, so we subtract \(\mathrm{size}_k\) on every \((r,c)\in \mathrm{R}_k\times \mathrm{C}_k\).  We perform these subtractions by iterating over each component \(k\), forming the (usually small) Cartesian product \(\mathrm{R}_k\times \mathrm{C}_k\), and doing
+   \[
+     F(r,c)\;-\!=\;\mathrm{size}_k
+     \quad\text{for each }(r,c)\in \mathrm{R}_k\times \mathrm{C}_k.
+   \]
+5. After all that, the value
+   \[
+     F(r,c)\;=\;H(r,c)\;-\;\sum_{k: (r,c)\in \mathrm{R}_k\times \mathrm{C}_k}\!\mathrm{size}_k
+   \]
+   satisfies
+   \[
+     F(r,c)\;=\;\Bigl[\text{sum of all merged component‐sizes}\Bigr]
+        \;-\;\bigl(\mathrm{rowHash}[r]+\mathrm{colHash}[c]-\mathrm{ov}(r,c)\bigr).
+   \]
+   Hence the final component size upon choosing \((r,c)\) is
+   \[
+     \mathrm{plusSize}\;+\;F(r,c).
+   \]
+6. We take the maximum of \(\mathrm{plusSize}+F(r,c)\) over all \((r,c)\), and also compare with \(\mathrm{origMax}\) (the size from doing no operation).  That is our answer.
+
+Because each component \(k\) contributes a small number of rows \(\mathrm{R}_k\) and columns \(\mathrm{C}_k\), and the sum of all component‐sizes is at most the total number of `#`’s \(\le n\,m\), the total work making those subtractions is \(\sum_k|\mathrm{R}_k|\cdot|\mathrm{C}_k|\), which is provably \(O(nm)\) in the worst case.  All other steps—BFS/DFS, building sums, one final scan—are also \(O(nm)\).  Thus the overall solution runs in \(O(nm)\) per test, and the sum of \(nm\) over all tests is \(\le10^6\), which fits easily in time.
+
+Below is a complete Java implementation.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            String[] nm = br.readLine().split(" ");
+            int n = Integer.parseInt(nm[0]);
+            int m = Integer.parseInt(nm[1]);
+
+            char[][] grid = new char[n][];
+            for (int i = 0; i < n; i++) {
+                grid[i] = br.readLine().trim().toCharArray();
+            }
+
+            // 1) Find connected components of '#'
+            int N = n*m;
+            int[] compId = new int[N];
+            Arrays.fill(compId, -1);
+
+            List<Integer> compSize = new ArrayList<>();
+            int origMax = 0;
+            int compCount = 0;
+
+            // directions for 4-connectivity
+            int[] di = {1,-1,0,0};
+            int[] dj = {0,0,1,-1};
+
+            // BFS buffer
+            int[] queue = new int[N];
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < m; j++) {
+                    if (grid[i][j]=='#' && compId[i*m+j] < 0) {
+                        // start new component
+                        compSize.add(0);
+                        int head = 0, tail = 0;
+                        queue[tail++] = i*m + j;
+                        compId[i*m+j] = compCount;
+                        while (head < tail) {
+                            int u = queue[head++];
+                            int ui = u/m, uj = u%m;
+                            compSize.set(compCount, compSize.get(compCount)+1);
+                            for (int d=0; d<4; d++) {
+                                int vi = ui+di[d], vj = uj+dj[d];
+                                if (vi>=0 && vi<n && vj>=0 && vj<m) {
+                                    int v = vi*m + vj;
+                                    if (grid[vi][vj]=='#' && compId[v]<0) {
+                                        compId[v] = compCount;
+                                        queue[tail++] = v;
+                                    }
+                                }
+                            }
+                        }
+                        origMax = Math.max(origMax, compSize.get(compCount));
+                        compCount++;
+                    }
+                }
+            }
+
+            // 2) Build per-row and per-column lists of component‐IDs
+            ArrayList<Integer>[] compIDsRow = new ArrayList[n];
+            ArrayList<Integer>[] compIDsCol = new ArrayList[m];
+            for (int i=0; i<n; i++) compIDsRow[i] = new ArrayList<>();
+            for (int j=0; j<m; j++) compIDsCol[j] = new ArrayList<>();
+
+            // Also track how many '#' in each row/column,
+            // and for each component the distinct rows/columns it occupies
+            int[] rowHash = new int[n], colHash = new int[m];
+            ArrayList<Integer>[] compRows = new ArrayList[compCount];
+            ArrayList<Integer>[] compCols = new ArrayList[compCount];
+            for (int k=0; k<compCount; k++) {
+                compRows[k] = new ArrayList<>();
+                compCols[k] = new ArrayList<>();
+            }
+
+            for (int i=0; i<n; i++) {
+                for (int j=0; j<m; j++) {
+                    if (grid[i][j]=='#') {
+                        int id = compId[i*m+j];
+                        rowHash[i]++;
+                        colHash[j]++;
+                        compIDsRow[i].add(id);
+                        compIDsCol[j].add(id);
+                        compRows[id].add(i);
+                        compCols[id].add(j);
+                    }
+                }
+            }
+
+            // 3) Deduplicate each row's and column's component‐list
+            for (int i=0; i<n; i++) {
+                ArrayList<Integer> rowList = compIDsRow[i];
+                if (rowList.size()>1) {
+                    Collections.sort(rowList);
+                    int write=0;
+                    for (int x: rowList) {
+                        if (write==0 || rowList.get(write-1)!=x) {
+                            rowList.set(write++, x);
+                        }
+                    }
+                    while (rowList.size()>write) rowList.remove(rowList.size()-1);
+                }
+            }
+            for (int j=0; j<m; j++) {
+                ArrayList<Integer> colList = compIDsCol[j];
+                if (colList.size()>1) {
+                    Collections.sort(colList);
+                    int write=0;
+                    for (int x: colList) {
+                        if (write==0 || colList.get(write-1)!=x) {
+                            colList.set(write++, x);
+                        }
+                    }
+                    while (colList.size()>write) colList.remove(colList.size()-1);
+                }
+            }
+
+            // 4) Deduplicate each component's row‐set and column‐set
+            for (int k=0; k<compCount; k++) {
+                ArrayList<Integer> CR = compRows[k];
+                Collections.sort(CR);
+                int wr = 0;
+                for (int x: CR) {
+                    if (wr==0 || CR.get(wr-1) != x) {
+                        CR.set(wr++, x);
+                    }
+                }
+                while (CR.size()>wr) CR.remove(CR.size()-1);
+
+                ArrayList<Integer> CC = compCols[k];
+                Collections.sort(CC);
+                int wc = 0;
+                for (int x: CC) {
+                    if (wc==0 || CC.get(wc-1) != x) {
+                        CC.set(wc++, x);
+                    }
+                }
+                while (CC.size()>wc) CC.remove(CC.size()-1);
+            }
+
+            // 5) Compute row‐window sums and col‐window sums
+            // rowSum[r] = sum of sizes of distinct components in rows r-1, r, r+1
+            long[] rowSum = new long[n], colSum = new long[m];
+            int[] seenRow = new int[compCount], seenCol = new int[compCount];
+            Arrays.fill(seenRow, -1);
+            Arrays.fill(seenCol, -1);
+
+            for (int r=0; r<n; r++) {
+                long s = 0;
+                for (int dr=-1; dr<=1; dr++) {
+                    int rr = r+dr;
+                    if (rr<0 || rr>=n) continue;
+                    for (int id: compIDsRow[rr]) {
+                        if (seenRow[id] != r) {
+                            seenRow[id] = r;
+                            s += compSize.get(id);
+                        }
+                    }
+                }
+                rowSum[r] = s;
+            }
+
+            for (int c=0; c<m; c++) {
+                long s = 0;
+                for (int dc=-1; dc<=1; dc++) {
+                    int cc = c+dc;
+                    if (cc<0 || cc>=m) continue;
+                    for (int id: compIDsCol[cc]) {
+                        if (seenCol[id] != c) {
+                            seenCol[id] = c;
+                            s += compSize.get(id);
+                        }
+                    }
+                }
+                colSum[c] = s;
+            }
+
+            // 6) Build the initial "H(r,c)" in a single array F[]
+            // F[r*m + c] = rowSum[r]-rowHash[r] + colSum[c]-colHash[c] + overlap
+            int[] F = new int[N];
+            for (int r=0; r<n; r++) {
+                int baseR = (int)(rowSum[r] - rowHash[r]);
+                for (int c=0; c<m; c++) {
+                    int idx = r*m + c;
+                    int overlap = (grid[r][c]=='#' ? 1 : 0);
+                    F[idx] = baseR + (int)(colSum[c] - colHash[c]) + overlap;
+                }
+            }
+
+            // 7) Subtract overcount for each component k:
+            //    for all (r,c) in Rk x Ck, do F[r*m + c] -= compSize[k]
+            for (int k=0; k<compCount; k++) {
+                int sz = compSize.get(k);
+                // build Rk = compRows[k] ± 1
+                ArrayList<Integer> Rk = new ArrayList<>();
+                for (int r0: compRows[k]) {
+                    if (!Rk.contains(r0)) Rk.add(r0);
+                    if (r0>0   && !Rk.contains(r0-1)) Rk.add(r0-1);
+                    if (r0+1<n && !Rk.contains(r0+1)) Rk.add(r0+1);
+                }
+                // build Ck
+                ArrayList<Integer> Ck = new ArrayList<>();
+                for (int c0: compCols[k]) {
+                    if (!Ck.contains(c0)) Ck.add(c0);
+                    if (c0>0    && !Ck.contains(c0-1)) Ck.add(c0-1);
+                    if (c0+1<m  && !Ck.contains(c0+1)) Ck.add(c0+1);
+                }
+                // subtract sz from F[r*m + c]
+                for (int r0: Rk) {
+                    int base = r0*m;
+                    for (int c0: Ck) {
+                        F[base + c0] -= sz;
+                    }
+                }
+            }
+
+            // 8) Find the maximum F[r*m + c]
+            int bestF = Integer.MIN_VALUE;
+            for (int v: F) {
+                bestF = Math.max(bestF, v);
+            }
+            if (bestF < 0) bestF = 0; 
+            // (If bestF<0, it means even the best choice loses more than it gains,
+            //  but we can always pick a row/column with no adjacent '#' so we get exactly plusSize.)
+
+            // 9) Answer is max(origMax, plusSize + bestF)
+            int plusSize = n + m - 1;
+            int answer = Math.max(origMax, plusSize + bestF);
+            out.println(answer);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Connected Components**  
+   We label each `#`‐cell by a component ID via a BFS.  We also record the size of each component (the number of cells in it).  This gives us `compId[cell]` and `compSize[id]`.
+
+2. **Row/Column Hash Counts**  
+   We count, for each row \(r\), how many `#`’s originally lie in that row: `rowHash[r]`.  Similarly for each column \(c\): `colHash[c]`.  We also record when \((r,c)\) itself is `#`, which we call `overlap`.
+
+3. **Row‐Window Sums**  
+   When we fill row \(r\), we join all components that appear in rows \(\{r-1,r,r+1\}\).  We form `rowSum[r] =` the sum of **distinct** component‐sizes that occur in those three rows.  We do that by collecting the component‐IDs in each of the three rows into one set, then summing their sizes.
+
+4. **Column‐Window Sums**  
+   Similarly `colSum[c]` = sum of **distinct** component‐sizes in columns \(\{c-1,c,c+1\}\).
+
+5. **Partial Total \(H(r,c)\)**  
+   If we choose \((r,c)\), then from the row‐side we add `rowSum[r]`, but we must not double‐count the cells in row \(r\) already `#`, so we subtract `rowHash[r]`.  Likewise from the column side we add `colSum[c] - colHash[c]`.  Finally we add 1 if \((r,c)\) itself was a `#` (because it got subtracted twice).  Altogether
+   \[
+     H(r,c)\;=\;\bigl[\mathrm{rowSum}[r]-\mathrm{rowHash}[r]\bigr]
+           +\bigl[\mathrm{colSum}[c]-\mathrm{colHash}[c]\bigr]
+           +\mathrm{ov}(r,c).
+   \]
+
+6. **Subtracting the Overcount**  
+   Any component \(k\) that is counted in both the row‐window of \(r\) and the column‐window of \(c\) has been added *twice* in \(H(r,c)\).  We must subtract its full size once more to count it only once.  
+   - We precompute for each component \(k\) the list of rows it occupies (call it `compRows[k]`) and the list of columns it occupies (`compCols[k]`).  
+   - Then the “row‐window” indices \(\mathrm{R}_k\) are each row in `compRows[k]` plus \(\pm1\) (clipped).  The “column‐window” \(\mathrm{C}_k\) is each column in `compCols[k]` plus \(\pm1\).  
+   - For every \((r,c)\in \mathrm{R}_k\times \mathrm{C}_k\) we subtract `compSize[k]` from `F[r*m+c]`.  
+
+7. **Final Answer**  
+   After step 6 we have
+   \[
+     F(r,c)\;=\;H(r,c)\;-\;\sum_{k : (r,c)\in \mathrm{R}_k\times \mathrm{C}_k}\!\mathrm{size}_k
+            \;=\;\Bigl[\text{total size of merged components}\Bigr]
+             -\bigl(\mathrm{rowHash}[r]+\mathrm{colHash}[c]-\mathrm{ov}(r,c)\bigr).
+   \]
+   Therefore the new component size is 
+   \(\mathrm{plusSize}+F(r,c)\).
+   We scan all \((r,c)\), take the maximum of \(\mathrm{plusSize}+F(r,c)\), and also compare with the original largest component (`origMax`), because we are allowed *not* to perform the operation at all.
+
+This algorithm runs in \(O(nm)\) per test, and since the sum of \(nm\) over all tests is at most \(10^6\), it is easily fast enough under the given constraints.

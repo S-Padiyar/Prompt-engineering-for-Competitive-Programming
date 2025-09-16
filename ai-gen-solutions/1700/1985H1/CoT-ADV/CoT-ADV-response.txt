@@ -1,0 +1,245 @@
+**Problem Restatement**
+
+We have an \(n\times m\) grid of cells, each either empty ('.') or filled ('#').  A connected component of ‘#’-cells is defined by 4-directional adjacency.  We may perform *at most one* operation: choose a single row or column and turn *every* cell in that row or column into ‘#’.  After at most one such operation, what is the maximum possible size of the largest connected component of ‘#’?
+
+We must process up to \(t\) test cases, with the total number of cells across all test cases at most \(10^6\).
+
+**Key Observation and Algorithm**
+
+1. **Label Original Components**  
+   First, we flood–fill (BFS/DFS) the original grid to label each connected component of ‘#’ and record its size.  Let there be \(C\) original components, indexed \(1\ldots C\), and let `compSize[id]` be the size of component `id`.  Also let
+   - `ans0 =` the size of the largest original component (before any operation).
+   - `rowCount[r] =` how many `'#'` were originally in row \(r\).
+   - `colCount[c] =` how many `'#'` were originally in column \(c\).
+
+2. **Effect of Filling a Row**  
+   Suppose we fill row \(r\).  All \(m\) cells in row \(r\) become `'#'`.  They form a contiguous horizontal strip of length \(m\).  Any original component that touches (i.e.\ is 4-adjacent to) at least one cell in that new strip will be merged into it.  Adjacent cells can come from:
+   - the newly filled row cells themselves if they were originally `'#'`,
+   - their cells immediately above (row \(r-1\)), or
+   - their cells immediately below (row \(r+1\)).
+
+   Let `adjComps` be the set of distinct original component IDs that neighbor row \(r\).  Then the merged component will have
+   - **\(m\)** new cells from the filled row, plus
+   - **all** cells of each component in `adjComps` *except* we must not double-count those cells of those components that were originally in row \(r\) itself (since those are already counted in the \(m\) cells).
+
+   If we sum the full size of each component in `adjComps` we over-count exactly `rowCount[r]` cells (the original `'#'` in row \(r\)).  Hence the size after filling row \(r\) is
+   \[
+     S_{\text{row }r}
+       = m 
+       + \sum_{id\in \text{adjComps}} \text{compSize}[id]
+       \;-\; \text{rowCount}[r].
+   \]
+
+3. **Effect of Filling a Column**  
+   Analogously, filling column \(c\) adds \(n\) new cells, merges all original components that touch column \(c\) (from left, right, or on the column itself), and we subtract `colCount[c]` to avoid double-counting those originally in column \(c\).  
+   \[
+     S_{\text{col }c}
+       = n
+       + \sum_{id\in \text{adjComps}}
+       \text{compSize}[id]
+       \;-\; \text{colCount}[c].
+   \]
+
+4. **Implementation Details**
+   - Flood–fill to find components in \(O(nm)\).  
+   - For each row \(r\), in \(O(m)\) time we gather all adjacent component IDs (we check the 3 rows \(r-1,r,r+1\) at each column \(j\)), deduplicate them via a small per-row boolean array, sum their sizes, compute \(S_{\text{row }r}\).  
+   - Likewise for each column in \(O(n)\) time.  
+   - Take the maximum among:
+     - No operation: `ans0`
+     - Best row-fill: \(\max_r S_{\text{row }r}\)
+     - Best col-fill: \(\max_c S_{\text{col }c}\)
+
+Overall time per test is \(O(nm + n\cdot m + m\cdot n)\)=\(O(nm)\).  Since total cells over all tests \(\le10^6\), this runs easily in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        // Fast I/O
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+        int t = Integer.parseInt(br.readLine().trim());
+
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+
+            // Read the grid
+            char[][] grid = new char[n][];
+            for (int i = 0; i < n; i++) {
+                grid[i] = br.readLine().toCharArray();
+            }
+
+            // Step 1: Label connected components of '#' via iterative DFS
+            int[][] compId = new int[n][m];
+            // compSize[id] = size of component 'id'
+            // We allocate maximum possible components = n*m (worst case)
+            int[] compSize = new int[n*m + 1];
+            int compCount = 0;
+            int ans0 = 0;  // largest original component
+
+            int[] stack = new int[n*m];  // for DFS: store i*m + j
+            int[] dx = {1, -1, 0, 0}, dy = {0, 0, 1, -1};
+
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < m; j++) {
+                    if (grid[i][j] == '#' && compId[i][j] == 0) {
+                        // New component
+                        compCount++;
+                        int sp = 0;
+                        compId[i][j] = compCount;
+                        stack[sp++] = i*m + j;
+                        int size = 0;
+
+                        // DFS
+                        while (sp > 0) {
+                            int v = stack[--sp];
+                            int x = v / m, y = v % m;
+                            size++;
+
+                            for (int d = 0; d < 4; d++) {
+                                int nx = x + dx[d], ny = y + dy[d];
+                                if (nx>=0 && nx<n && ny>=0 && ny<m
+                                        && grid[nx][ny]=='#' 
+                                        && compId[nx][ny]==0) {
+                                    compId[nx][ny] = compCount;
+                                    stack[sp++] = nx*m + ny;
+                                }
+                            }
+                        }
+                        compSize[compCount] = size;
+                        ans0 = Math.max(ans0, size);
+                    }
+                }
+            }
+
+            // If there were no '#' at all, best we can do is fill one row or column
+            if (compCount == 0) {
+                out.println(Math.max(n, m));
+                continue;
+            }
+
+            // Precompute how many '#' in each row and column
+            int[] rowCount = new int[n], colCount = new int[m];
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < m; j++) {
+                    if (grid[i][j] == '#') {
+                        rowCount[i]++;
+                        colCount[j]++;
+                    }
+                }
+            }
+
+            // We'll mark which component IDs we've already added
+            boolean[] seen = new boolean[compCount + 1];
+            List<Integer> list = new ArrayList<>();
+
+            int answer = ans0;
+
+            // Try filling each row
+            for (int r = 0; r < n; r++) {
+                list.clear();
+                long sumC = 0;
+                // For each column j, look at rows r-1, r, r+1
+                for (int j = 0; j < m; j++) {
+                    for (int dr = -1; dr <= 1; dr++) {
+                        int i2 = r + dr;
+                        if (i2 < 0 || i2 >= n) continue;
+                        if (grid[i2][j] == '#') {
+                            int id = compId[i2][j];
+                            if (!seen[id]) {
+                                seen[id] = true;
+                                list.add(id);
+                                sumC += compSize[id];
+                            }
+                        }
+                    }
+                }
+                // Size = m (new row) + sum of those component sizes - rowCount[r]
+                long mergedSize = (long)m + sumC - rowCount[r];
+                answer = (int)Math.max(answer, mergedSize);
+
+                // reset seen[]
+                for (int id : list) {
+                    seen[id] = false;
+                }
+            }
+
+            // Try filling each column
+            for (int c = 0; c < m; c++) {
+                list.clear();
+                long sumC = 0;
+                // For each row i, look at columns c-1, c, c+1
+                for (int i = 0; i < n; i++) {
+                    for (int dc = -1; dc <= 1; dc++) {
+                        int j2 = c + dc;
+                        if (j2 < 0 || j2 >= m) continue;
+                        if (grid[i][j2] == '#') {
+                            int id = compId[i][j2];
+                            if (!seen[id]) {
+                                seen[id] = true;
+                                list.add(id);
+                                sumC += compSize[id];
+                            }
+                        }
+                    }
+                }
+                // Size = n (new column) + sum of those component sizes - colCount[c]
+                long mergedSize = (long)n + sumC - colCount[c];
+                answer = (int)Math.max(answer, mergedSize);
+
+                // reset
+                for (int id : list) {
+                    seen[id] = false;
+                }
+            }
+
+            out.println(answer);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Component Labeling**  
+   We run an iterative DFS over the grid, assigning each newly discovered ‘#’ a component ID and counting the size of that component.  We store `compSize[id]` and track `ans0`, the maximum size seen.
+
+2. **Row/Column Pre-counts**  
+   We count how many ‘#’ already lie in each row (`rowCount`) and column (`colCount`).  This will let us correct for double-counting when we merge.
+
+3. **Simulating “Fill Row \(r\)”**  
+   - We create a horizontal strip of \(m\) newly guaranteed ‘#’ cells.
+   - Any original component that touches this strip (in row \(r\) itself or above/below) will be merged.  
+   - We gather those component IDs in a temporary list (deduplicating with a boolean `seen[]` array).  Summing their full sizes overcounts exactly the `rowCount[r]` many cells that were in row \(r\).  
+   - So the merged component size is
+     \[
+       m
+       + \sum_{\text{touched components}} \text{compSize}[id]
+       - \text{rowCount}[r].
+     \]
+   - We take the maximum over all rows.
+
+4. **Simulating “Fill Column \(c\)”**  
+   Analogously we form a strip of \(n\) new ‘#’ cells, gather the neighboring original components (from left/right or on the column), subtract `colCount[c]`, and take maximum.
+
+5. **Answer**  
+   The final answer is the maximum among
+   - `ans0` (no operation),
+   - best among all `S_row[r]`,
+   - best among all `S_col[c]`.
+
+**Complexity Analysis**
+
+- Flood–fill all components: \(O(nm)\).
+- For each row: \(O(m)\) checks × \(n\) rows = \(O(nm)\).
+- For each column: \(O(n)\) checks × \(m\) columns = \(O(nm)\).
+- Total per test: \(O(nm)\).  Since the sum of \(nm\) over all tests is \(\le10^6\), this easily runs within the time limit.  
+- Space is \(O(nm)\) for the grid, component IDs, and auxiliary arrays.

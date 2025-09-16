@@ -1,0 +1,202 @@
+**Analysis**
+
+Let us restate the problem in simpler terms.  We have a rooted tree (root = 1).  Only the root’s value and the leaves’ values matter for the final **score**:
+
+- The **weight** of a leaf is  
+  \[
+     (\#\text{ of }10\text{ substrings}) \;-\;(\#\text{ of }01\text{ substrings})
+     \;=\;(\text{root’s bit}) - (\text{leaf’s bit}).
+  \]
+  In particular the leaf contributes 1 to the score iff its bit ≠ root’s bit.
+
+- The **score** of the tree is exactly  
+  \[
+     \#\{\text{leaves whose final bit} \neq \text{root’s final bit}\}.
+  \]
+
+Only vertices whose initial character is `'?'` ever get to be chosen, and each turn one such vertex is turned into a 0 or 1.  Iris moves first and wants to **maximize** the score; Dora moves second and wants to **minimize** it.
+
+Crucially, **internal** vertices with `'?'` (i.e.\ non‐root, non‐leaf) do *not* affect the score at all.  They are mere “dummy” moves: picking one of those simply burns a turn without changing any leaf or root bit.  However, burning turns (using up such `'?'` on internal nodes) can be used strategically to flip whose turn it is when we get around to assigning the root or the leaves.  
+
+We therefore split the game into two phases:
+
+1. **Root‐assignment phase**, as long as the root is still `?`.  
+2. **Leaf‐assignment phase**, once the root is fixed, each leaf `'?'` is assigned in turn by whoever’s move it is.
+
+Let
+
+- \(a_0\)=\# of leaves already fixed to `0`,  
+- \(a_1\)=\# of leaves already fixed to `1`,  
+- \(q\)=\# of leaves that are still `?`,  
+- \(d\)=\# of “dummy” `?` – i.e.\ internal vertices (non‐root, non‐leaf) that are `?`,  
+- \(r\)=1 if the root is `?`, else 0.  
+
+If the root is already fixed to \(R\in\{0,1\}\), the base‐score from the fixed leaves is
+
+\[
+   \text{base} \;=\;
+   \begin{cases}
+     a_1, & R=0,\\
+     a_0, & R=1,
+   \end{cases}
+\]
+
+and then the leaves get assigned in alternating fashion starting with Iris.  Since there are \(q\) leaves,
+
+- Iris gets \(\lceil q/2\rceil\) picks (each pick can force “mismatch” with the root and so give +1),
+- Dora gets \(\lfloor q/2\rfloor\) picks (each pick will match the root to give 0).
+
+Hence when the root is pre‐fixed,
+
+\[
+  \text{answer}
+  \;=\;
+  \text{base}
+  \;+\;\bigl\lceil \tfrac{q}{2}\bigr\rceil.
+\]
+
+---
+
+If the root is `?`, then both players fight over _who_ gets to set the root (and thus pick its bit in \(\{0,1\}\)).  Whoever sets the root also _controls_ which side starts the leaf‐assignment phase:
+
+- If _Iris_ sets the root, then the _next_ move is Dora’s, so Dora starts leaf‐assignment and Iris gets \(\lfloor q/2\rfloor\) leaves.
+- If _Dora_ sets the root, then Iris starts leaves and gets \(\lceil q/2\rceil\).
+
+Moreover when the root is finally set to \(R\), the fixed‐leaves contribution is
+
+\[
+  \text{base}_R
+  \;=\;
+  \begin{cases}
+    a_1,&R=0,\\
+    a_0,&R=1,
+  \end{cases}
+\]
+
+and Iris will choose \(R\) (if she is the one assigning the root) so as to _maximize_ \(\text{base}_R +\) (her leaf‐picks), while Dora (if she assigns the root) chooses \(R\) to _minimize_ that same quantity.
+
+Finally the interior `?`s (the \(d\) dummy moves) can be spent _before_ the root gets set, to flip whose turn it is at the crucial moment of root‐assignment.  A simple mini–minimax / DP shows that if one lets
+
+\[
+   X = \max(a_0,a_1)\;+\;\lfloor q/2\rfloor,
+   \qquad
+   Y = \min(a_0,a_1)\;+\;\lceil q/2\rceil,
+\]
+
+then (when \(r=1\)) the value of the game is
+
+\[
+   \text{answer}
+   =
+   \begin{cases}
+     X, & d\equiv0\pmod2,\\
+     \max(X,Y), & d\equiv1\pmod2.
+   \end{cases}
+\]
+
+Putting all cases together gives an \(O(n)\) per‐test solution once one has counted
+\(\;a_0,a_1,q,d\;\).
+
+---
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(in.readLine());
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine());
+            int[] deg = new int[n+1];
+            for (int i = 0; i < n-1; i++) {
+                StringTokenizer st = new StringTokenizer(in.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                deg[u]++;
+                deg[v]++;
+            }
+            String s = in.readLine();
+            
+            // Count leaves (i>1 with deg[i]==1), fixed leaves, leaf '?', total '?'
+            int a0 = 0, a1 = 0, leafQ = 0, totalQ = 0;
+            for (int i = 1; i <= n; i++) {
+                char c = s.charAt(i-1);
+                if (c == '?') totalQ++;
+                // leaf = deg[i]==1 and i!=1
+                if (i != 1 && deg[i] == 1) {
+                    if (c == '0')      a0++;
+                    else if (c == '1') a1++;
+                    else               leafQ++;
+                }
+            }
+
+            // How many non-root non-leaf '?' remain = dummy moves
+            boolean rootQ = (s.charAt(0) == '?');
+            int d = totalQ - (rootQ ? 1 : 0) - leafQ;
+
+            int answer;
+            if (!rootQ) {
+                // root is already fixed
+                int R = s.charAt(0) - '0';
+                int base = (R == 0 ? a1 : a0);
+                // Iris starts the leaf picks, she gets ceil(leafQ/2)
+                int irisLeaves = (leafQ + 1) / 2;
+                answer = base + irisLeaves;
+            } else {
+                // root is '?': two-phase minimax with d dummy moves
+                int Bmax = Math.max(a0, a1);
+                int Bmin = Math.min(a0, a1);
+                int floorHalf = leafQ / 2;
+                int ceilHalf  = (leafQ + 1) / 2;
+                int X = Bmax + floorHalf;   // if Iris manages root (and thus Dora starts leaves)
+                int Y = Bmin + ceilHalf;    // if Dora manages root (and thus Iris starts leaves)
+                if ((d & 1) == 0) {
+                    // even number of dummies → Iris can guarantee the X‐scenario
+                    answer = X;
+                } else {
+                    // odd number of dummies → she can force the better of X,Y
+                    answer = Math.max(X, Y);
+                }
+            }
+
+            out.println(answer);
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Counting leaves**  
+   A node \(i\neq1\) with \(\deg(i)=1\) is a leaf.  We count three types among leaves:
+   - `a0`: leaves fixed to `'0'`.
+   - `a1`: leaves fixed to `'1'`.
+   - `leafQ`: leaves still `?`.
+
+2. **Dummy moves**  
+   Any `?` that is neither the root (if the root was `?`) nor one of those `leafQ` leaves is a _dummy_–node.  Let `d` be their count.
+
+3. **Case 1:** root is already `0` or `1`  
+   Then the root’s bit is fixed.  The leaves are assigned in strict alternation, beginning with Iris, on the `leafQ` remaining leaves.  Iris therefore gets \(\lceil \tfrac{leafQ}{2}\rceil\) leaf‐assignments (each can be chosen to create a “mismatch” and yield +1 to the score).  Dora’s picks produce 0.  Add that to the base from the already-fixed leaves.
+
+4. **Case 2:** root is `?`  
+   Whichever player assigns the root gets to pick the root‐bit ​_and_​ forces the next move to be the _other_ player’s.  
+   - If Iris assigns the root, she makes it the bit that maximizes her fixed‐leaf base \(\max(a0,a1)\), and _then_ Dora starts the leaves → Iris gets \(\lfloor leafQ/2\rfloor\) more points.  Call that \(X\).  
+   - If Dora assigns the root, she forces \(\min(a0,a1)\) as the base, and Iris then starts the leaves → Iris gets \(\lceil leafQ/2\rceil\).  Call that \(Y\).  
+   Before root‐assignment both players may spend dummy‐moves to flip turn‐parity.  A small DP or direct parity argument shows that with \(d\) dummy moves available, the minimax value is
+   \[
+      \text{Ans}
+      = \begin{cases}
+         X, & d\text{ even},\\
+         \max(X,Y), & d\text{ odd}.
+       \end{cases}
+   \]
+
+This runs in \(O(n)\) per test (just one pass to compute degrees and then to tally the three leaf‐counts and the dummy‐count), which is more than fast enough for \(n\le10^5\) and up to \(t\) with total \(n\le2\cdot10^5\).

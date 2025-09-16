@@ -1,0 +1,134 @@
+**Analysis**
+
+We have \(n\) rectangles, where the \(i\)-th rectangle has width \(a_i\) (so \(a_i\) columns) and height \(b_i\) (so \(b_i\) rows).  We may color cells one by one; each time we have completely colored all the cells in one row of a rectangle, we gain 1 point, and similarly for each column completely colored we gain 1 point.  We want to accumulate at least \(k\) points total across all rectangles, using as few single‐cell colorings (operations) as possible.
+
+A key observation is that within a single rectangle of size \(a \times b\), if we decide to color \(x\) full rows and \(y\) full columns, we get \(x+y\) points, and the number of distinct cells we must color is
+\[
+  \underbrace{x\cdot a}_{\substack{\text{coloring }x\text{ rows}\\(\text{each has }a\text{ cells})}}
++ \underbrace{y\cdot b}_{\substack{\text{coloring }y\text{ columns}\\(\text{each has }b\text{ cells})}}
+- \underbrace{x\,y}_{\substack{\text{overlap of those }x\text{ rows}\\\phantom{\text{overlap }}\text{and }y\text{ columns}}}
+\;=\; x\,a \;+\; y\,b \;-\; x\,y.
+\]
+We can choose any \(0\le x\le b\), \(0\le y\le a\).  Letting \(p=x+y\), for each \(p\) between \(0\) and \(\min(a+b,k)\) we can compute the minimum cost
+\[
+  \text{rect\_dp}[p]
+  \;=\;\min_{x+y=p}\;\bigl[x\,a + y\,b - x\,y\bigr].
+\]
+That gives us, for this single rectangle, the minimal number of colored cells needed to earn exactly \(p\) points from it (where \(0\le p\le k\)).
+
+Once we have for every rectangle its array \(\text{rect\_dp}[\cdot]\), we are left with a standard bounded‐knapsack–style or “grouped knapsack” problem:
+
+We maintain a DP array
+\[
+  \text{dp}[j]
+  \;=\;\text{minimum total number of colored cells needed to get exactly }j\text{ points so far},
+\]
+for \(0\le j\le k\).  Initially \(\text{dp}[0]=0\) and \(\text{dp}[1\ldots k]=\infty\).  Then for each rectangle (its array \(\text{rect\_dp}\)), we form a new DP array \(\text{ndp}\) by
+
+```
+ ndp[0..k] = +∞
+ for j in [0..k]:
+   for p in [0..k]:
+     new_points = min(k, j + p);
+     ndp[new_points] = min(ndp[new_points], dp[j] + rect_dp[p]);
+ dp = ndp
+```
+
+Finally, after processing all \(n\) rectangles, \(\text{dp}[k]\) is the least number of single‐cell operations needed to earn \(\ge k\) points (we cap any total points above \(k\) back down to \(k\)).  If \(\text{dp}[k]\) remains \(\infty\), the task is impossible, and we print \(-1\).
+
+The time complexity per test is roughly
+- \(O(n\cdot (a_i+1)\cdot(b_i+1))\) to build all the \(\text{rect\_dp}\) tables (in the worst case each \(a_i,b_i\le 100\), so up to \(10^4\) per rectangle),
+- \(O(n\cdot k^2)\) to do the knapsack merges (\(k\le 100\)).
+
+Since \(\sum n\le 1000\) over all tests and \(k\le 100\), this easily fits within typical time limits.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int T = Integer.parseInt(br.readLine().trim());
+        final int INF = 1_000_000_000;
+
+        StringBuilder sb = new StringBuilder();
+        while (T-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int K = Integer.parseInt(st.nextToken());
+
+            // dp[j] = minimal operations needed to get exactly j points so far
+            int[] dp = new int[K+1];
+            Arrays.fill(dp, INF);
+            dp[0] = 0;
+
+            for (int i = 0; i < n; i++) {
+                st = new StringTokenizer(br.readLine());
+                int a = Integer.parseInt(st.nextToken()); // width (columns)
+                int b = Integer.parseInt(st.nextToken()); // height (rows)
+
+                // Build rect_dp[p] = minimal cost to earn exactly p points from this rectangle
+                int[] rect_dp = new int[K+1];
+                Arrays.fill(rect_dp, INF);
+                rect_dp[0] = 0;
+
+                // Try all combinations x rows, y columns
+                for (int x = 0; x <= b; x++) {
+                    for (int y = 0; y <= a; y++) {
+                        int p = x + y;
+                        if (p > K) continue;
+                        int cost = x*a + y*b - x*y;  // count of distinct cells colored
+                        rect_dp[p] = Math.min(rect_dp[p], cost);
+                    }
+                }
+
+                // Merge this rectangle's choices into the global dp
+                int[] ndp = new int[K+1];
+                Arrays.fill(ndp, INF);
+
+                for (int got = 0; got <= K; got++) {
+                    if (dp[got] == INF) continue;
+                    for (int add = 0; add <= K; add++) {
+                        if (rect_dp[add] == INF) continue;
+                        int to = got + add;
+                        if (to > K) to = K;
+                        ndp[to] = Math.min(ndp[to], dp[got] + rect_dp[add]);
+                    }
+                }
+
+                dp = ndp;  // move on
+            }
+
+            int ans = dp[K];
+            if (ans >= INF) sb.append(-1).append('\n');
+            else sb.append(ans).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Single-Rectangle DP (`rect_dp`)**  
+   For a rectangle of size \(a\times b\), if you color \(x\) rows and \(y\) columns you earn \(x+y\) points at a cost of 
+   \[
+     x\cdot a + y\cdot b \;-\; x\,y
+   \]
+   because the \(x\) rows each have \(a\) cells, the \(y\) columns each have \(b\) cells, and we subtract the \(x\,y\) double‐counted intersection cells.  
+   We loop \(0\le x\le b\), \(0\le y\le a\), compute \(p=x+y\) (capped to \(\le K\)), and keep the minimum cost for each \(p\).
+
+2. **Global Knapsack‐Style DP (`dp`)**  
+   We maintain `dp[j]` = minimal operations to gather exactly \(j\) points so far (points above \(K\) are merged into the state \(K\)).  Initially `dp[0]=0`, others ∞.  
+   For each rectangle’s `rect_dp`, we do a standard “combine choice” loop, resulting in an updated DP array, ensuring we end up with the minimal cost to get any total \(0\le j\le K\).
+
+3. **Answer**  
+   After processing all rectangles, `dp[K]` is the least cost to get at least \(K\) points.  If it is still ∞, we output \(-1\); otherwise we print that cost.
+
+This runs in \(O(n\cdot (a_i+1)(b_i+1) + n\cdot K^2)\), which suffices for \(n\le 1000\), \(a_i,b_i\le 100\), and \(K\le 100\).

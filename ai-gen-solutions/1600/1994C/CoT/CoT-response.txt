@@ -1,0 +1,219 @@
+**Analysis**
+
+We have an array a[1..n] of positive integers and a threshold x.  We must count the number of subarrays \[l..r\] such that, if a character starts with toxicity g=0 and “eats” the subarray from left to right, resetting g to zero whenever it would exceed x, then the final g after eating a[r] is **nonzero**.
+
+Equivalently, a subarray \[l..r\] is *bad* (i.e.\ final g = 0) exactly when, at the last step r,
+
+   g_{before_r} + a[r]  >  x  
+
+where g_{before_r} is the toxicity just before eating a[r].  In that case the character’s toxicity exceeds x and is reset to zero at index r, so final g = 0.  Otherwise, the final g>0.
+
+Define   
+ dp_r[l] = the character’s toxicity after eating a[l..r−1] (and doing all resets in-between).  
+
+We iterate r from 1..n.  At the start of round r we have stored dp_r[1..r], all ≤ x.  We want:
+
+1)  **Count** how many l∈[1..r] are such that  
+      dp_r[l]  >  (x − a[r])  
+   These are exactly the *bad* subarrays ending at r.
+
+2)  **Update** dp to dp_{r+1} by “eating” a[r]:  
+     dp_{r+1}[l] = 
+       dp_r[l] + a[r],   if  dp_r[l] + a[r]  ≤ x 
+       0,                otherwise.
+   (And dp_{r+1}[r+1] = 0, naturally.)
+
+All subarrays that start at l>r+1 will not yet have begun and we treat dp[l]=0 initially.  
+
+We keep a segment‐tree over indices 1..n (we never actually touch beyond r when we update or query).  In each node we store:
+
+ - minVal = minimum dp in that segment  
+ - maxVal = maximum dp in that segment  
+ - len    = number of leaves under the node  
+ - addTag = a lazy “add constant”  
+ - zeroTag= a lazy “set‐to‐zero” flag  
+
+We support two operations on a prefix [1..r] of the dp‐array:
+
+(a) **Query** the number of dp’s > T = x − a[r].  
+    If a node’s maxVal ≤ T, it contributes 0.  
+    If a node’s minVal > T, it contributes `len`.  
+    Otherwise we push down lazies and recurse.
+
+(b) **Update** add a[r] to each dp in [1..r], then immediately set to zero any dp that exceed x.  
+    In a node covering [L..R]:
+      • If maxVal + a[r] ≤ x, we can just add a[r] lazily.  
+      • Else if minVal + a[r] > x, *all* leaves in that node exceed x and so become zero: we clear any addTag, set zeroTag, and set minVal=maxVal=0.  
+      • Otherwise we push down and recurse.
+
+Each r costs O(log n) amortized.  Since ∑n ≤2⋅10^5, this is fast enough.
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final long INF = (long)1e18;
+    static int N;
+    static long X;
+    static long[] A;
+    // segment‐tree arrays
+    static long[] tMin, tMax, tAdd;
+    static boolean[] tZero;
+    
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        
+        int t = Integer.parseInt(br.readLine());
+        // We'll allocate once for the max possible N = 2e5
+        int MAXN = 200_000;
+        tMin  = new long[4 * MAXN + 10];
+        tMax  = new long[4 * MAXN + 10];
+        tAdd  = new long[4 * MAXN + 10];
+        tZero = new boolean[4 * MAXN + 10];
+        
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            N = Integer.parseInt(st.nextToken());
+            X = Long.parseLong(st.nextToken());
+            A = new long[N+1];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= N; i++) {
+                A[i] = Long.parseLong(st.nextToken());
+            }
+            
+            // build segment‐tree over [1..N], dp initial = 0
+            build(1, 1, N);
+            
+            long ans = 0;
+            for (int r = 1; r <= N; r++) {
+                long T = X - A[r];
+                long bad;
+                if (T < 0) {
+                    // if A[r] > X, then dp_r[l] >= 0 always, so dp_r[l] > T for all l
+                    bad = r;
+                } else {
+                    bad = query(1, 1, N, 1, r, T);
+                }
+                ans += (r - bad);
+                
+                // now update dp -> dp + A[r], and reset > X to 0, on [1..r]
+                update(1, 1, N, 1, r, A[r]);
+            }
+            
+            System.out.println(ans);
+        }
+    }
+    
+    // Build tree so that dp[..] = 0 initially
+    static void build(int o, int L, int R) {
+        tAdd[o] = 0;
+        tZero[o] = false;
+        tMin[o] = 0;
+        tMax[o] = 0;
+        if (L == R) {
+            return;
+        }
+        int mid = (L + R) >>> 1;
+        build(o<<1,     L, mid);
+        build(o<<1 | 1, mid+1, R);
+    }
+    
+    // Push down two kinds of lazy tags
+    static void pushDown(int o, int L, int R) {
+        if (tZero[o]) {
+            // set children to zero
+            int lc = o<<1, rc = o<<1|1;
+            tZero[lc] = tZero[rc] = true;
+            tAdd[lc] = tAdd[rc] = 0;
+            tMin[lc] = tMax[lc] = 0;
+            tMin[rc] = tMax[rc] = 0;
+            tZero[o] = false;
+        }
+        if (tAdd[o] != 0) {
+            long v = tAdd[o];
+            int lc = o<<1, rc = o<<1|1;
+            // add to children
+            tAdd[lc] += v;
+            tMin[lc] += v;
+            tMax[lc] += v;
+            tAdd[rc] += v;
+            tMin[rc] += v;
+            tMax[rc] += v;
+            tAdd[o] = 0;
+        }
+    }
+    
+    // Pull up after children change
+    static void pullUp(int o) {
+        tMin[o] = Math.min(tMin[o<<1], tMin[o<<1|1]);
+        tMax[o] = Math.max(tMax[o<<1], tMax[o<<1|1]);
+    }
+    
+    // Query how many dp[l]>T in [ql..qr]
+    static long query(int o, int L, int R, int ql, int qr, long T) {
+        if (qr < L || R < ql) return 0;
+        if (ql <= L && R <= qr) {
+            if (tMax[o] <= T) return 0;
+            if (tMin[o] >  T) return (R - L + 1);
+            // else we must go deeper
+        }
+        pushDown(o, L, R);
+        int mid = (L + R) >>> 1;
+        long cnt = query(o<<1,   L, mid, ql, qr, T)
+                 + query(o<<1|1, mid+1, R, ql, qr, T);
+        return cnt;
+    }
+    
+    // Update [ql..qr]: do “add = v; then any >X set to zero”
+    static void update(int o, int L, int R, int ql, int qr, long v) {
+        if (qr < L || R < ql) return;
+        if (ql <= L && R <= qr) {
+            // If even after adding v everything ≤X, just add
+            if (tMax[o] + v <= X) {
+                tAdd[o] += v;
+                tMin[o] += v;
+                tMax[o] += v;
+                return;
+            }
+            // If after adding v everything >X, zero them all
+            if (tMin[o] + v > X) {
+                tZero[o] = true;
+                tAdd[o] = 0;
+                tMin[o] = tMax[o] = 0;
+                return;
+            }
+            // Otherwise we need to recurse
+        }
+        pushDown(o, L, R);
+        int mid = (L + R) >>> 1;
+        update(o<<1,   L, mid, ql, qr, v);
+        update(o<<1|1, mid+1, R, ql, qr, v);
+        pullUp(o);
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1. We maintain for each starting index `l` the value  
+   `dp_r[l]` = toxicity **after** eating `a[l..r-1]` with resets.
+2. When we add the next mushroom `a[r]`, we do
+   ```
+   new_dp[l] = dp_r[l] + a[r]    if that ≤ x
+             = 0                otherwise.
+   ```
+3. The subarray `[l..r]` is *bad* exactly when
+   ```
+   dp_r[l] + a[r] > x
+   ```
+   i.e.\ `dp_r[l] > x - a[r]`.  
+   Thus the count of bad subarrays ending at `r` is simply
+   ```
+   # { l ≤ r : dp_r[l] > (x - a[r]) }.
+   ```
+4. We cumulatively sum `good += r − bad`, since there are `r` choices for `l∈[1..r]`.
+5. Both the “count dp_r[l] > T” and the “add‐then‐reset‐to‐zero” operations on the prefix `[1..r]` can be handled by a segment tree with lazy tags (one for range addition, one for range‐set‐to‐zero), each in O(log n).  Since ∑n ≤ 2·10^5 over all test cases, this runs well under the time limit.

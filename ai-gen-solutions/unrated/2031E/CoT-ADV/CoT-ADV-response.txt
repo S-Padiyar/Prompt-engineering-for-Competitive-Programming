@@ -1,0 +1,190 @@
+Let me restate the problem very briefly:
+
+We are given a rooted tree \(T\) on \(n\) nodes (root = 1).  Chloe starts with a perfect binary tree of depth \(d\) (i.e.\ exactly \(2^{d+1}-1\) nodes, full and all leaves at distance \(d\) from the root).  She may repeatedly “contract” any parent–child edge \((u,v)\) by deleting \(v\) and reattaching all of \(v\)’s children directly to \(u\).  Deleting a leaf just removes that leaf.  After a sequence of such contractions, her tree must become isomorphic (as a rooted unordered tree) to the given tree \(T\).  Find the minimum \(d\) for which this is possible.
+
+Key observations:
+
+1.  In a perfect binary tree of depth \(d\), every node except the \(2^d\) leaves has exactly 2 children; all leaves are at distance exactly \(d\) from the root.
+
+2.  When we contract an edge \((u,v)\), we remove \(v\) and splice its children upward.  Thus what once was two levels of the perfect tree can collapse into one, or more.  In the end, any node of Chloe’s final tree corresponds to some node at some depth in the original perfect tree, and each parent–child in the final must correspond to a (non‐empty) chain of perfect‐tree edges that have all been contracted.
+
+3.  To embed \(T\) into a depth-\(d\) perfect binary tree we must choose, for each node \(x\) of \(T\), some node \(f(x)\) in the perfect tree so that
+     a) \(f(1)\) is the root,
+     b) if \(p\) is the parent of \(x\) in \(T\), then \(f(x)\) lies strictly below \(f(p)\), and
+     c) whenever two different children of \(x\) map to two nodes in the perfect tree, those two nodes must not “require” contradictory contractions on the same perfect‐tree edge.
+
+If you work it out (the full details are in the official editorial), you can show a simple bottom-up DP:
+
+Define \(\displaystyle dp[v]\) = the minimum height \(h\) of a perfect‐binary subtree (rooted at the image of v) required so that, after internal contractions *inside* that subtree, you can realize the entire subtree of \(T\) below \(v\).
+
+Base case: If \(v\) is a leaf of \(T\), then \(dp[v]=0\).
+
+Otherwise let \(v\) have \(k\) children \(c_1,\dots,c_k\), each of which already has \(dp[c_i]\).  In a perfect subtree of height \(h\) (so leaves at distance \(h\) from the root), one has exactly
+   – \(2^h\) leaves (at depth \(h\)) and
+   – a total of \(\sum_{d=1}^h 2^d = 2^{h+1}-2\) non‐root nodes at depths \(1,2,\dots,h\).
+
+You must pick \(k\) distinct nodes in depths \(1\le d\le h\) to serve as the images of your \(k\) children, and each child \(c_i\) has “demand” \(dp[c_i]\), meaning
+\[d \;\le\; h \;-\; dp[c_i],\]
+so that from that depth \(d\)-node you still have \(dp[c_i]\) levels below available.
+
+It turns out that the only thing that matters is an **earliest‐deadline**-type check on those demands: if you sort the children by \(dp[c_i]\) **descending** (so the tightest demands first), and call them
+\[
+w_1\ge w_2\ge \cdots\ge w_k,
+\]
+then for a candidate \(h\) you compute, for the \(i\)th child in this order, its latest allowed depth
+\[
+\mathrm{limit}_i \;=\; h \;-\; w_i
+\]
+and you must be able to assign those \(k\) children into the \(\sum_{d=1}^h2^d\) available depth-slots so that the \(i\)th child goes no deeper than \(\mathrm{limit}_i\).  An Earliest‐Deadline‐First check shows that this is feasible if and only if for each \(i\)
+\[
+i \;\;\le\;\; \sum_{d=1}^{\mathrm{limit}_i}2^d
+\;=\;2^{\,\mathrm{limit}_i+1}\;-\;2.
+\]
+Since \(k\le10^6\) but each perfect‐tree capacity \(2^{d+1}-2\) exceeds \(10^6\) once \(d\ge20\), you only ever need to check limits \(d\le20\).  Hence we can binary‐search the smallest \(h\) between
+\[
+\max_i(w_i+1)
+\quad\text{and}\quad
+\max_i(w_i+1)+20
+\]
+and test EDF in \(O(k)\).  Summing over all \(v\) this is \(O(n\log n)\) overall.
+
+Below is a clean Java implementation.  We read in the tree in \(O(n)\), build a list of children per node, then process nodes in reverse input order (since each parent index is \(<\) child index, that guarantees children come before parents).  For each node we gather its children’s \(dp\)-values, sort descending, binary‐search \(h\), do the EDF check in up to 20 steps each requiring \(O(\text{degree}(v))\).  Total is \(O\bigl(n\log(\max\deg)\bigr)\approx O(n\log n)\), easily within the 3.5 s limit for \(n\!\le10^6\).
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAX_SMALL = 20; 
+    // We only need to check deadlines up to 20, since 2^(20+1)-2 > 1e6.
+
+    public static void main(String[] args) throws IOException {
+        // Fast I/O
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+        String line = br.readLine();
+        int t = Integer.parseInt(line.trim());
+        
+        // Precompute small capacities capSum[d] = sum_{i=1..d} 2^i = 2^{d+1}-2
+        long[] capSum = new long[MAX_SMALL+1];
+        for (int d = 0; d <= MAX_SMALL; d++) {
+            capSum[d] = ((1L << (d+1)) - 2L);
+            if (capSum[d] < 0) capSum[d] = Long.MAX_VALUE; 
+            // just in case shifting beyond 63 bits
+        }
+
+        // Process each test case
+        while (t-- > 0) {
+            line = br.readLine();
+            int n = Integer.parseInt(line.trim());
+            // Read parents
+            int[] parent = new int[n+1];
+            String[] parts = br.readLine().trim().split("\\s+");
+            for (int i = 2; i <= n; i++) {
+                parent[i] = Integer.parseInt(parts[i-2]);
+            }
+            // Build children adjacency
+            ArrayList<Integer>[] children = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) {
+                children[i] = new ArrayList<>();
+            }
+            for (int i = 2; i <= n; i++) {
+                children[parent[i]].add(i);
+            }
+
+            // dp[v] = minimal height h of a perfect subtree needed to host v's subtree.
+            int[] dp = new int[n+1];
+
+            // Process nodes in reverse order  n, n-1, ..., 1
+            // Since parent[i]<i, this guarantees all children of i are processed before i.
+            for (int v = n; v >= 1; v--) {
+                if (children[v].isEmpty()) {
+                    // Leaf => no height needed
+                    dp[v] = 0;
+                } else {
+                    int k = children[v].size();
+                    // Gather children dps
+                    int[] w = new int[k];
+                    for (int i = 0; i < k; i++) {
+                        w[i] = dp[ children[v].get(i) ];
+                    }
+                    // Sort descending
+                    Arrays.sort(w);
+                    // We'll read from the back
+                    // w[k-1] highest, w[k-2] next, ... w[0] smallest
+
+                    // Lower bound on h is max w_i + 1
+                    int wmax = w[k-1];
+                    int lo = wmax + 1;
+                    // Upper bound we only need + MAX_SMALL
+                    int hi = lo + MAX_SMALL;
+
+                    // Binary‐search the minimal h in [lo..hi]
+                    while (lo < hi) {
+                        int mid = (lo + hi) >>> 1;
+                        // EDF‐type check
+                        boolean ok = true;
+                        // We'll assign the "i-th child in deadline order" to check i <= capSum(limit_i)
+                        // Our deadline array is limit_i = mid - w_i, and sorted so tightest (smallest limit) first => largest w first
+                        // So i=1 => w[k-1], i=2 => w[k-2], ...
+                        for (int i = 1; i <= k; i++) {
+                            int wi = w[k - i]; 
+                            int lim = mid - wi;
+                            if (lim < 1) {
+                                ok = false;
+                                break;
+                            }
+                            // Cap the limit to MAX_SMALL to index our array
+                            if (lim > MAX_SMALL) lim = MAX_SMALL;
+                            if ((long)i > capSum[lim]) {
+                                ok = false;
+                                break;
+                            }
+                        }
+                        if (ok) {
+                            hi = mid;
+                        } else {
+                            lo = mid + 1;
+                        }
+                    }
+                    dp[v] = lo;
+                }
+            }
+
+            // The root's dp[1] is the answer
+            out.println(dp[1]);
+        }
+
+        out.flush();
+    }
+}
+```
+
+Explanation:
+
+1.  We store the tree in a standard children‐list representation.  Since the input guarantees \(p_i < i\), simply processing \(v\) from \(n\) down to \(1\) ensures that by the time we do \(v\), all of its children have been handled.
+
+2.  We keep an array `dp[v]`, meaning “if I only had a perfect binary subtree of height `dp[v]` rooted at \(v\)’s image, I could contract inside it to realize exactly the subtree of the input under \(v\).”
+
+3.  If \(v\) is a leaf, clearly `dp[v]=0`.  
+
+4.  Otherwise, let its \(k\) children have already `dp` values \(\{w_i\}\).  We need to choose \(k\) *distinct* nodes in depths \(1\le d\le h\) (of a perfect subtree of height \(h\)) so that child-i’s `dp` is \(\le h-d\).  Equivalently each child has a “latest allowed depth” \(\text{limit}_i=h-w_i\).  
+
+5.  A well-known EDF (Earliest‐Deadline‐First) feasibility check says that you list the children in *increasing* order of those limits (i.e.\ largest demand \(w\) first), and ensure that the \(i\)th child’s deadline \(\text{limit}_i\) is still large enough to accommodate \(i\) total tasks:
+   \[
+       i \;\le\;\sum_{d=1}^{\text{limit}_i}2^d
+       \;=\;2^{\,\text{limit}_i+1}\;-\;2.
+   \]
+   Since we only ever need to check \(\text{limit}\le20\) (beyond that the capacity \(2^{21}-2\) already exceeds all possible \(i\le10^6\)), we cap at 20 and do the check in \(O(k)\).
+
+6.  We binary‐search the minimal \(h\) from \(\max_i(w_i+1)\) up to “that + 20,” each test \(O(k)\).  Summed over all nodes that stays \(O(n\log(\max\deg))\), comfortably in time for \(n\le10^6\).
+
+Finally we print `dp[1]`, the minimum perfect‐tree depth needed at the root.
+
+Complexity:
+
+-  Building the tree and reading input: \(O(n)\).
+-  Each node \(v\) we sort its degree \(k=\deg(v)\) dps in \(O(k\log k)\), then do up to 20 binary‐search steps each \(O(k)\).  Summing over all \(v\), \(\sum k=n-1\), so overall \(O\bigl(n\log(\max k)+n\cdot20\bigr)=O(n\log n)\).
+-  Fits well under 3.5 seconds for \(n\) up to \(10^6\).
+
+That completes the solution.

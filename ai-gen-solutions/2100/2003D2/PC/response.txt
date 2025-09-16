@@ -1,0 +1,125 @@
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader(InputStream in) { br = new BufferedReader(new InputStreamReader(in)); }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens())
+                st = new StringTokenizer(br.readLine());
+            return st.nextToken();
+        }
+        int nextInt() throws IOException { return Integer.parseInt(next()); }
+        long nextLong() throws IOException { return Long.parseLong(next()); }
+    }
+
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader(System.in);
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            long m = in.nextLong();
+
+            // 1) Read sequences, compute pairs (a, b)
+            List<int[]> AB = new ArrayList<>(n);
+            for (int i = 0; i < n; i++) {
+                int l = in.nextInt();
+                int[] s = new int[l];
+                for (int j = 0; j < l; j++) s[j] = in.nextInt();
+                Arrays.sort(s);
+                int w = 1;
+                for (int j = 1; j < l; j++) {
+                    if (s[j] != s[j - 1]) {
+                        s[w++] = s[j];
+                    }
+                }
+                int a = 0, idx = 0;
+                while (idx < w && s[idx] == a) {
+                    idx++; a++;
+                }
+                int b = a + 1;
+                while (idx < w) {
+                    if (s[idx] < b) {
+                        idx++;
+                    } else if (s[idx] == b) {
+                        b++; idx++;
+                    } else {
+                        break;
+                    }
+                }
+                AB.add(new int[]{a, b});
+            }
+
+            // 2) Sort by a, group all bs for each distinct a
+            Collections.sort(AB, Comparator.comparingInt(x -> x[0]));
+            List<Integer> A = new ArrayList<>();
+            List<List<Integer>> BLists = new ArrayList<>();
+            {
+                int curA = Integer.MIN_VALUE;
+                List<Integer> curList = null;
+                for (int[] p : AB) {
+                    if (p[0] != curA) {
+                        curA = p[0];
+                        A.add(curA);
+                        curList = new ArrayList<>();
+                        BLists.add(curList);
+                    }
+                    curList.add(p[1]);
+                }
+            }
+
+            int pSize = A.size();
+            int maxA = A.get(pSize - 1);
+
+            // 3) Compute chainEnd[i] = max final reach starting from a_i
+            long[] chainEnd = new long[pSize];
+            for (int i = pSize - 1; i >= 0; i--) {
+                long best = Long.MIN_VALUE;
+                for (int b : BLists.get(i)) {
+                    int pos = Collections.binarySearch(A, b);
+                    if (pos >= 0) {
+                        best = Math.max(best, chainEnd[pos]);
+                    } else {
+                        best = Math.max(best, (long) b);
+                    }
+                }
+                chainEnd[i] = best;
+            }
+
+            // 4) f(a_i) = max(chainEnd[i], maxA)
+            long[] fA = new long[pSize];
+            for (int i = 0; i < pSize; i++) {
+                fA[i] = Math.max(chainEnd[i], (long) maxA);
+            }
+
+            // 5) Sum f(0..m)
+            long upTo = Math.min(m, maxA);
+            long totalCount = upTo + 1;
+
+            // count how many a_i <= upTo
+            int bsIdx = Collections.binarySearch(A, (int) upTo);
+            int cntA2 = (bsIdx >= 0 ? bsIdx + 1 : -bsIdx - 1);
+
+            long sumA2 = 0;
+            for (int i = 0; i < cntA2; i++) sumA2 += fA[i];
+
+            long sumLower = (totalCount - cntA2) * (long) maxA + sumA2;
+
+            long sumUpper = 0;
+            if (m > maxA) {
+                long t1 = m * (m + 1) / 2;
+                long t2 = (long) maxA * (maxA + 1) / 2;
+                sumUpper = t1 - t2;
+            }
+
+            out.println(sumLower + sumUpper);
+        }
+        out.flush();
+    }
+}
+```

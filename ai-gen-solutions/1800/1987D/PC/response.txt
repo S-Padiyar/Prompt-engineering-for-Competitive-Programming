@@ -1,0 +1,92 @@
+**Analysis**
+
+Alice and Bob are playing on a multiset of cake‐tastiness values \(a_1,a_2,\dots,a_n\).  Alice’s move must strictly increase her own previously eaten maximum, Bob’s move can delete (eat) any remaining cake.  Alice wants to **maximize** the number of cakes she eats; Bob wants to **minimize** that count.
+
+A well‐known optimal strategy in such a “take‐away” game is
+
+- **Alice** always takes the *smallest* cake that is strictly larger than her previous maximum (so as to “save” as many larger cakes as possible for future moves).
+- **Bob** always takes the *largest* remaining cake (so as to destroy Alice’s future high‐value opportunities).
+
+It can be shown that, under these two greedy rules, neither player can do better by deviating (Alice picking a larger choice earlier only reduces her future options, and Bob picking anything smaller than the maximum leaves larger ones that help Alice).  
+
+Hence one can simulate the two‐pointer process on the sorted array:
+
+1. Sort the cakes nondecreasing.
+2. Maintain two indices, `L` (the next candidate for Alice, starting at 0) and `R` (the next candidate for Bob, starting at n−1).
+3. Maintain `last` as the tastiness Alice last ate (initially 0, since all ai ≥ 1).
+4. Repeat:
+   - **Alice’s turn**: advance `L` until `L>R` or `a[L]>last`.  
+     - If `L>R`, Alice cannot move → end.
+     - Otherwise Alice eats `a[L]`, increment her count, set `last = a[L]`, do `L++`.
+   - **Bob’s turn** (if there are still cakes left): do `R--` (Bob eats the largest one).
+   - Repeat.
+5. The total count at the end is the optimal number of cakes Alice will eat.
+
+The sort is \(O(n\log n)\) and the two‐pointer sweep is \(O(n)\).  Since the sum of \(n\) over all testcases is up to 5000, this method runs comfortably within time limits.
+
+---
+
+```java
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.util.Arrays;
+import java.util.StringTokenizer;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            int[] a = new int[n];
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+            Arrays.sort(a);
+            
+            int L = 0, R = n - 1;
+            int last = 0;      // Alice's last eaten tastiness
+            int aliceCount = 0;
+            
+            while (true) {
+                // Alice's turn: pick the smallest > last
+                while (L <= R && a[L] <= last) {
+                    L++;
+                }
+                if (L > R) {
+                    // No valid move for Alice
+                    break;
+                }
+                // Alice eats a[L]
+                last = a[L];
+                aliceCount++;
+                L++;
+                
+                // Bob's turn: eat the largest remaining if any
+                if (L <= R) {
+                    R--;
+                } else {
+                    break;
+                }
+            }
+            
+            sb.append(aliceCount).append('\n');
+        }
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Sorting**: We only care about the multiset of remaining cakes, not their original positions or order, so we sort the array.
+2. **Alice’s Strategy**: By always taking the *smallest* cake that is strictly above her current `last`, she preserves as large a “pool” for future moves as possible.
+3. **Bob’s Strategy**: By deleting the *largest* available cake each of his turns, he minimizes Alice’s future “strictly larger” choices.
+4. **Two‐Pointer Simulation**:
+   - `L` scans from left to right to find Alice’s next valid pick.
+   - `R` scans from right to left to remove Bob’s picks.
+   - We alternate these removals until Alice can no longer move.
+5. **Result**: The counter `aliceCount` accumulated over Alice’s successful turns is the optimal number she can secure, while Bob plays to minimize it.

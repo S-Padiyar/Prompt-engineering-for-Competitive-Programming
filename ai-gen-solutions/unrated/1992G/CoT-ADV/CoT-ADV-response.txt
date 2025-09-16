@@ -1,0 +1,177 @@
+Problem Restatement
+
+We are given an implicit array a of length n where 
+a[i] = i  for i=1…n. 
+We must consider every subset S of that array (by indices).  Since the array is a permutation of 1…n, each subset is simply a subset of the set {1,2,…,n}.  For each subset S of size m=|S|, define:
+
+ MEX(S,k) = the k-th positive integer (strictly >0) not present in S, in ascending order.
+
+We must compute
+
+ MEOW(a) = Σ_{S⊆{1..n}} MEX(S, |S| + 1) 
+
+and output the result modulo 10^9+7.
+
+Input
+t  — number of test cases (1≤t≤10^4)  
+For each test case:  
+ n  (1≤n≤5000)  
+
+It is guaranteed that Σ(n^2) over all test cases ≤ 2.5⋅10^7.
+
+Output
+For each test case, output MEOW(a) mod 1 000 000 007.
+
+---
+
+Explanation and Key Observations
+
+1.  Since a = [1,2,…,n] with all distinct elements, every subset S of size m appears exactly once.
+2.  Let m = |S|.  Then we want the (m+1)-th missing positive integer from S.
+3.  There are two regimes:
+
+  (A)  If m+1 ≤ (n−m), i.e. 2m+1 ≤ n, then the (m+1)-th missing lies in [1..n].  
+       One can show that
+         ∑_{|S|=m} MEX(S,m+1)
+       equals
+         ∑_{x=m+1 to 2m+1}
+           x * C(x−1, (x−1)−(m)) * C(n−x, m−[(x−1)−m])
+         which, after change of variable t, becomes
+         ∑_{t=0..m}
+           (m+1+t) * C(m+t, t) * C(n−1−m−t, m−t).
+
+  (B)  If m+1 > (n−m), i.e. 2m+1 > n, then even after taking all n−m missing numbers in [1..n], we still need more.  The (m+1)-th missing is
+        n + ( (m+1) − (n−m) ) = 2m+1.
+       Since every subset of size m has the same MEX, its total contribution is
+         C(n,m) * (2m+1).
+
+4.  We just sum over m=0..n, picking the correct formula in each regime.
+5.  Precompute factorials and inverse factorials up to N=5000 to answer binomial coefficients in O(1).
+6.  Total work per test is O(n^2) in the worst case, and Σ(n^2)≤2.5·10^7 passes in ~2.5s in Java if done carefully.
+
+---
+
+Java Implementation
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+    static int MAXN = 5000;
+    static long[] fact, invFact;
+
+    public static void main(String[] args) throws IOException {
+        // Fast input
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int t = Integer.parseInt(st.nextToken());
+
+        // Precompute factorials and inverses up to MAXN
+        fact = new long[MAXN + 1];
+        invFact = new long[MAXN + 1];
+        fact[0] = 1;
+        for (int i = 1; i <= MAXN; i++) {
+            fact[i] = fact[i - 1] * i % MOD;
+        }
+        invFact[MAXN] = modInverse(fact[MAXN]);
+        for (int i = MAXN; i > 0; i--) {
+            invFact[i - 1] = invFact[i] * i % MOD;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        // Process each test
+        for (int _case = 0; _case < t; _case++) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long answer = 0;
+
+            // Split at m0 = floor((n-1)/2)
+            int m0 = (n - 1) / 2;
+
+            // Regime A: m <= m0, do the sum over t
+            for (int m = 0; m <= m0; m++) {
+                long sumM = 0;
+                // t goes from 0..m
+                // x = m+1+t
+                for (int tVar = 0; tVar <= m; tVar++) {
+                    int x = m + 1 + tVar;
+                    // C(m+t, t)
+                    long c1 = binom(m + tVar, tVar);
+                    // C(n - 1 - m - t, m - t)
+                    long c2 = binom(n - 1 - m - tVar, m - tVar);
+                    long term = ( (long)x * c1 % MOD ) * c2 % MOD;
+                    sumM = (sumM + term) % MOD;
+                }
+                answer = (answer + sumM) % MOD;
+            }
+
+            // Regime B: m > m0, MEX = 2m+1
+            for (int m = m0 + 1; m <= n; m++) {
+                long c = binom(n, m);
+                long mexVal = 2L * m + 1;
+                answer = (answer + c * mexVal) % MOD;
+            }
+
+            sb.append(answer).append('\n');
+        }
+
+        // Output all answers
+        System.out.print(sb.toString());
+    }
+
+    // Compute nCk mod using precomputed factorials
+    static long binom(int n, int k) {
+        if (k < 0 || k > n || n < 0) return 0;
+        return fact[n] * invFact[k] % MOD * invFact[n - k] % MOD;
+    }
+
+    // Fast exponentiation for modular inverse
+    static long modInverse(long x) {
+        long pow = MOD - 2;
+        long res = 1, base = x % MOD;
+        while (pow > 0) {
+            if ((pow & 1) == 1) {
+                res = (res * base) % MOD;
+            }
+            base = (base * base) % MOD;
+            pow >>= 1;
+        }
+        return res;
+    }
+}
+```
+
+Explanation of Key Steps
+
+1. **fact[] and invFact[]**  
+   We precompute `fact[i] = i! mod` and `invFact[i] = (i!)^{-1} mod` for i=0…MAXN.  
+   Then
+     C(n,k) = fact[n] * invFact[k] % MOD * invFact[n−k] % MOD  
+   in O(1) time per call.
+
+2. **Regime A (small m)**  
+   When `2m+1 ≤ n`, the (m+1)-th missing integer lies within [1..n].  One shows by a standard “choose positions for the t = x−m−1 elements in S among [1..x−1]” combinatorial argument that
+     
+     ∑_{|S|=m} MEX(S,m+1)
+       = ∑_{t=0..m}
+           (m+1+t) * C(m+t, t) * C(n−1−m−t, m−t).
+
+3. **Regime B (large m)**  
+   When `2m+1 > n`, we are forced to take all n−m missing in [1..n] and still need `(m+1)−(n−m)` more, which are simply the next integers n+1, n+2, … .  
+   Altogether the (m+1)-th missing is `2m+1`.  Every subset of size m has that same MEX, so the total from size-m subsets is  
+     C(n,m) * (2m+1).
+
+4. **Summation and Complexity**  
+   For each test with parameter n:
+   - We compute m up to floor((n−1)/2), and for each m we have an inner loop of O(m).  Thus O(n^2) per test in the worst case.  
+   - Sum of all n^2 over all tests ≤ 2.5×10^7, which runs in ~2 s in optimized Java.
+
+Time Complexity:  
+– Precompute factorials: O(MAXN).  
+– Each test: O(n^2).  
+– Total: O(Σ n^2) ≤ O(2.5×10^7).
+
+Space Complexity:  
+O(MAXN) for factorial and inverse factorial arrays.

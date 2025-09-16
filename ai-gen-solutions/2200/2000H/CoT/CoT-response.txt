@@ -1,0 +1,209 @@
+Here is a full Java solution using a randomized treap to maintain the “gaps” between present numbers.  We keep a TreeSet S of the present integers together with two sentinels at 0 and M + 1 (where M=2 000 000 is the maximum possible x in the input).  Every time we insert or remove x we find its two neighbours prev<S and next>S, delete the old gap (prev,next) from the treap, and insert the new gaps (prev,x) and (x,next) (or the inverse in case of a deletion).  Each gap is represented by its start position d=prev+1 and its length L=next−prev−1.  
+
+In the treap each node holds (key=d, val=L) and maintains the subtree‐maximum of val.  To answer “? k” we walk the treap in O(log n) time, always preferring to go left if the left child’s max≥k, otherwise checking the current node, otherwise going right.  If no node has val≥k, we report the sentinel M + 1.
+
+Total complexity is O((n+m) log n), which easily handles n,m up to 2·10^5 in 3 s.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+  static final int MAXX = 2000000;
+  static final int SENTINEL = MAXX + 1;
+  static Random rnd = new Random();
+
+  // Treap node
+  static class Node {
+    int key;     // gap start
+    int val;     // gap length
+    int mx;      // subtree maximum of val
+    int pri;     // heap priority
+    Node left, right;
+    Node(int k, int v){
+      key = k;
+      val = v;
+      mx = v;
+      pri = rnd.nextInt();
+    }
+  }
+
+  // recalc mx from children
+  static void update(Node t){
+    if(t == null) return;
+    t.mx = t.val;
+    if(t.left != null && t.left.mx > t.mx) t.mx = t.left.mx;
+    if(t.right!= null && t.right.mx > t.mx) t.mx = t.right.mx;
+  }
+
+  // split treap t into [< key] and [>= key]
+  static Node[] split(Node t, int key){
+    if(t == null) return new Node[]{null,null};
+    if(t.key < key){
+      Node[] sr = split(t.right, key);
+      t.right = sr[0];
+      update(t);
+      return new Node[]{t, sr[1]};
+    } else {
+      Node[] sl = split(t.left, key);
+      t.left = sl[1];
+      update(t);
+      return new Node[]{sl[0], t};
+    }
+  }
+
+  // merge two treaps a (all keys < keys in b) and b
+  static Node merge(Node a, Node b){
+    if(a == null) return b;
+    if(b == null) return a;
+    if(a.pri > b.pri){
+      a.right = merge(a.right, b);
+      update(a);
+      return a;
+    } else {
+      b.left = merge(a, b.left);
+      update(b);
+      return b;
+    }
+  }
+
+  // insert node nd (with unique key) into treap t
+  static Node insert(Node t, Node nd){
+    if(t == null) return nd;
+    if(nd.pri > t.pri){
+      Node[] sp = split(t, nd.key);
+      nd.left = sp[0];
+      nd.right = sp[1];
+      update(nd);
+      return nd;
+    }
+    else if(nd.key < t.key){
+      t.left = insert(t.left, nd);
+      update(t);
+      return t;
+    } else {
+      t.right = insert(t.right, nd);
+      update(t);
+      return t;
+    }
+  }
+
+  // erase the node with exactly key from t (it must exist)
+  static Node erase(Node t, int key){
+    // split into <key and >=key
+    Node[] a = split(t, key);
+    // split the >=key into =key and >key
+    Node[] b = split(a[1], key+1);
+    // drop b[0], which is the single-node treap with key
+    return merge(a[0], b[1]);
+  }
+
+  // find the minimum key in t whose val >= k, or return -1 if none
+  static int findFirst(Node t, int k){
+    if(t == null || t.mx < k) return -1;
+    if(t.left != null && t.left.mx >= k){
+      return findFirst(t.left, k);
+    }
+    if(t.val >= k) {
+      return t.key;
+    }
+    return findFirst(t.right, k);
+  }
+
+  public static void main(String[] args) throws IOException {
+    BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+    StringBuilder out = new StringBuilder();
+    int T = Integer.parseInt(in.readLine().trim());
+    while(T-- > 0){
+      int n = Integer.parseInt(in.readLine().trim());
+      StringTokenizer st = new StringTokenizer(in.readLine());
+      TreeSet<Integer> S = new TreeSet<>();
+      // sentinel 0 and MAXX+1
+      S.add(0);
+      S.add(SENTINEL);
+      for(int i=0;i<n;i++){
+        S.add(Integer.parseInt(st.nextToken()));
+      }
+      // build initial treap of gaps
+      Node root = null;
+      {
+        int prev = -1;
+        for(int x : S){
+          if(prev != -1){
+            int L = x - prev - 1;
+            if(L > 0){
+              int d = prev + 1;
+              root = insert(root, new Node(d, L));
+            }
+          }
+          prev = x;
+        }
+      }
+      int m = Integer.parseInt(in.readLine().trim());
+      for(int i=0;i<m;i++){
+        String line = in.readLine();
+        char type = line.charAt(0);
+        int v = Integer.parseInt(line.substring(2).trim());
+        if(type == '+'){
+          // insert v into S
+          int prev = S.lower(v);
+          int next = S.higher(v);
+          // remove old gap (prev, next)
+          int oldLen = next - prev - 1;
+          if(oldLen > 0){
+            root = erase(root, prev+1);
+          }
+          // add gap (prev, v)
+          int L1 = v - prev - 1;
+          if(L1 > 0){
+            root = insert(root, new Node(prev+1, L1));
+          }
+          // add gap (v, next)
+          int L2 = next - v - 1;
+          if(L2 > 0){
+            root = insert(root, new Node(v+1, L2));
+          }
+          S.add(v);
+        }
+        else if(type == '-'){
+          // remove v from S
+          int prev = S.lower(v);
+          int next = S.higher(v);
+          // remove gaps (prev,v) and (v,next)
+          int L1 = v - prev - 1;
+          if(L1 > 0){
+            root = erase(root, prev+1);
+          }
+          int L2 = next - v - 1;
+          if(L2 > 0){
+            root = erase(root, v+1);
+          }
+          // add gap (prev,next)
+          int L = next - prev - 1;
+          if(L > 0){
+            root = insert(root, new Node(prev+1, L));
+          }
+          S.remove(v);
+        }
+        else {
+          // query "? v" : find minimal d so that [d..d+v-1] is all missing
+          int ans = findFirst(root, v);
+          if(ans < 0) ans = SENTINEL;
+          out.append(ans).append('\n');
+        }
+      }
+    }
+    System.out.print(out);
+  }
+}
+```
+
+Explanation of the key ideas:
+
+1.  We keep a sorted set `S` of all present numbers plus sentinels at 0 and `M+1`.  
+2.  Any two consecutive elements `(a,b)` in `S` define a “gap” of missing numbers `a+1,…,b−1`.  We store this gap by its start `d=a+1` and its length `L=b−a−1`.  
+3.  All the gaps are stored in a treap keyed by `d`, and each node also keeps `val=L` plus a subtree‐maximum `mx`.  
+4.  To answer “? k”, we look in the treap for the leftmost node whose `L≥k` by descending: first go left if that child’s `mx≥k`, otherwise check the current node, otherwise go right.  If no gap in the treap is large enough, we return `M+1` (the infinite tail starts at `M+1`).  
+5.  On insertion of `x`, we remove the old gap that covered it, and insert the two new sub‐gaps.  On removal we do the inverse.  Each step is O(log n).  
+
+This runs in O((n+m)·log n) time and fits easily within the 3-second and 512 MB limits.

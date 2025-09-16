@@ -1,0 +1,312 @@
+**Analysis**
+
+Let us denote the Manhattan distance between two points \((x,y)\) and \((x',y')\) by
+\[
+  d_1\bigl((x,y),(x',y')\bigr)
+  = |x-x'|\;+\;|y-y'|\,. 
+\]
+We seek three distinct points \(A,B,C\) from the given set so that
+\[
+  d_1(A,B)=d_1(B,C)=d_1(C,A)=d,
+\]
+where \(d\) is a given even integer.
+
+---
+
+### 1) From Manhattan (\(L^1\)) to Chebyshev (\(L^\infty\)) by rotation
+
+A standard trick is to pass to the “rotated” coordinates
+\[
+   u = x + y,
+   \quad
+   v = x - y.
+\]
+One checks easily that
+\[
+  |x-x'| + |y-y'|
+  = \max\!\bigl(|u-u'|,\;|v-v'|\bigr).
+\]
+Hence in the \((u,v)\)-plane the condition
+\[
+  d_1\bigl((x,y),(x',y')\bigr) = d
+\]
+becomes
+\[
+  \max\!\bigl(|u - u'|,\;|v - v'|\bigr) \;=\; d,
+\]
+i.e.\ precisely the Chebyshev distance (= \(L^\infty\)-distance) of size \(d\).
+
+We are now looking for \emph{three} points \(P,Q,R\) in the \((u,v)\)–plane
+all pairwise at Chebyshev‐distance \(d\).  Equivalently, if one lets
+\[
+  u_{\min} = \min\{u_P,u_Q,u_R\},\quad
+  u_{\max} = \max\{u_P,u_Q,u_R\},\quad
+  v_{\min} = \min\{v_P,v_Q,v_R\},\quad
+  v_{\max} = \max\{v_P,v_Q,v_R\},
+\]
+then
+\[
+  u_{\max}-u_{\min}=d,
+  \quad
+  v_{\max}-v_{\min}=d,
+\]
+and each of the points \(P,Q,R\) lies on the boundary of the
+axis‐aligned square
+\[
+   [u_{\min},u_{\max}]\times[v_{\min},v_{\max}].
+\]
+Moreover, for the triangle to be “equilateral” in the \(L^\infty\)-sense
+(i.e.\ every pair at distance exactly \(d\)), it suffices that
+
+– two of the points share one extreme (say the same \(u\)=\(u_{\min}\))
+  and are \(\,d\)-apart in \(v\),  
+– the third point sits on the opposite side \(u=u_{\max}\) with its
+  \(v\)-coordinate between the two extremes.
+
+Symmetrically, one could have two points sharing the same \(v\)-coordinate
+(and \(\,d\)-apart in \(u\)) and the third on \(v\pm d\).
+
+Hence there are exactly two patterns of how one can pick three points
+all at Chebyshev‐distance \(d\):
+
+1. **Vertical‐extremes‐share pattern**  
+   Two points \(\bigl(u_0,v_0\bigr)\) and \(\bigl(u_0,v_0+d\bigr)\) share
+   the same \(u=u_0\) and differ by \(d\) in \(v\).  We then look for any
+   point \(\bigl(u_0\pm d,\;v\)\) with \(v_0\le v\le v_0+d\).  Such a
+   triple is automatically Chebyshev‐equilateral of side \(d\).
+
+2. **Horizontal‐extremes‐share pattern**  
+   Two points \(\bigl(u_0,v_0\bigr)\) and \(\bigl(u_0+d,v_0\bigr)\)
+   share the same \(v=v_0\) and differ by \(d\) in \(u\).  We then look
+   for any point \(\bigl(u,\;v_0\pm d)\) with \(u_0\le u\le u_0+d\).
+
+By checking both patterns we cover all possible equilateral
+triangles in \(L^\infty\) (and thus in the original Manhattan metric).
+
+---
+
+### 2) Data structures and complexity
+
+1.  **Read** the \(n\) points \((x_i,y_i)\), compute
+    \[
+      u_i = x_i + y_i,\quad v_i = x_i - y_i.
+    \]
+2.  Build two maps
+    - `mapU: u₀ ↦ list of (v, index)`,
+    - `mapV: v₀ ↦ list of (u, index)`.
+3.  Sort each list in `mapU[u]` by ascending `v` and each list in
+    `mapV[v]` by ascending `u`.  
+    Total size of all lists = \(n\), so sorting is \(O(n\log n)\).
+4.  **Pattern 1** (vertical extremes share \(u\)):
+    For each \(u_0\), scan its list of \((v,i)\).  For a point
+    \((v,i)\), binary‐search in that same list for \(v+d\).  If found an
+    index \(j\), we have two points at \((u_0,v)\) and \((u_0,v+d)\).
+    Then we try \(u_0+d\) and \(u_0-d\) in `mapU` to find any
+    \((v',k)\) with \(v\le v'\le v+d\).  A single extra binary‐search
+    there locates it in \(O(\log n)\).  If successful, we output the
+    triple of original indices.
+5.  **Pattern 2** (horizontal extremes share \(v\)) is analogous but
+    swapping roles of \(u,v\).
+6.  If neither pattern finds a triangle, print `0 0 0`.
+
+All steps run in \(O(n\log n)\) per test, and the total over all testcases
+is \(O\bigl((\sum n)\log n\bigr)\), with \(\sum n\le2\cdot10^5\).  This
+comfortably fits the time limit.
+
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class Pair {
+        int coord, idx;
+        Pair(int c, int i) { coord = c; idx = i; }
+    }
+    // find first position in list L where L[pos].coord >= value
+    static int lowerBound(List<Pair> L, int value) {
+        int lo = 0, hi = L.size();
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (L.get(mid).coord < value) lo = mid + 1;
+            else hi = mid;
+        }
+        return lo;
+    }
+
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            int d = in.nextInt();
+
+            // mapU: u0 -> list of (v, index), to handle "vertical extremes share u"
+            HashMap<Integer, List<Pair>> mapU = new HashMap<>();
+            // mapV: v0 -> list of (u, index), to handle "horizontal extremes share v"
+            HashMap<Integer, List<Pair>> mapV = new HashMap<>();
+
+            int[] U = new int[n];
+            int[] V = new int[n];
+            for (int i = 0; i < n; i++) {
+                int x = in.nextInt();
+                int y = in.nextInt();
+                int u = x + y;
+                int v = x - y;
+                U[i] = u;
+                V[i] = v;
+                mapU.computeIfAbsent(u, z -> new ArrayList<>()).add(new Pair(v, i + 1));
+                mapV.computeIfAbsent(v, z -> new ArrayList<>()).add(new Pair(u, i + 1));
+            }
+
+            // Sort all the lists
+            for (List<Pair> lst : mapU.values()) {
+                lst.sort(Comparator.comparingInt(a -> a.coord));
+            }
+            for (List<Pair> lst : mapV.values()) {
+                lst.sort(Comparator.comparingInt(a -> a.coord));
+            }
+
+            boolean found = false;
+
+            // ========== Pattern 1: vertical extremes share the same u ==========
+            outer1:
+            for (Map.Entry<Integer, List<Pair>> e : mapU.entrySet()) {
+                if (found) break;
+                int u0 = e.getKey();
+                List<Pair> list0 = e.getValue();
+                int sz0 = list0.size();
+
+                for (int pi = 0; pi < sz0; pi++) {
+                    Pair P = list0.get(pi);
+                    int vP = P.coord;
+                    int idxP = P.idx;
+
+                    // look for Q with v = vP + d in the same list
+                    int qpos = lowerBound(list0, vP + d);
+                    if (qpos < sz0 && list0.get(qpos).coord == vP + d) {
+                        int idxQ = list0.get(qpos).idx;
+
+                        // try the two possible opposite us: u0 + d and u0 - d
+                        for (int sign : new int[]{+1, -1}) {
+                            int u1 = u0 + sign * d;
+                            List<Pair> list1 = mapU.get(u1);
+                            if (list1 == null) continue;
+
+                            // we need any R with v in [vP, vP+d]
+                            int rpos = lowerBound(list1, vP);
+                            if (rpos < list1.size() &&
+                                list1.get(rpos).coord <= vP + d) {
+                                int idxR = list1.get(rpos).idx;
+                                out.printf("%d %d %d\n", idxP, idxQ, idxR);
+                                found = true;
+                                break outer1;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ========== Pattern 2: horizontal extremes share the same v ==========
+            if (!found) {
+                outer2:
+                for (Map.Entry<Integer, List<Pair>> e : mapV.entrySet()) {
+                    if (found) break;
+                    int v0 = e.getKey();
+                    List<Pair> list0 = e.getValue();
+                    int sz0 = list0.size();
+
+                    for (int pi = 0; pi < sz0; pi++) {
+                        Pair P = list0.get(pi);
+                        int uP = P.coord;
+                        int idxP = P.idx;
+
+                        // look for Q with u = uP + d in same list
+                        int qpos = lowerBound(list0, uP + d);
+                        if (qpos < sz0 && list0.get(qpos).coord == uP + d) {
+                            int idxQ = list0.get(qpos).idx;
+
+                            // try the two possible opposite vs: v0 + d and v0 - d
+                            for (int sign : new int[]{+1, -1}) {
+                                int v1 = v0 + sign * d;
+                                List<Pair> list1 = mapV.get(v1);
+                                if (list1 == null) continue;
+
+                                // we need any R with u in [uP, uP+d]
+                                int rpos = lowerBound(list1, uP);
+                                if (rpos < list1.size() &&
+                                    list1.get(rpos).coord <= uP + d) {
+                                    int idxR = list1.get(rpos).idx;
+                                    out.printf("%d %d %d\n", idxP, idxQ, idxR);
+                                    found = true;
+                                    break outer2;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (!found) {
+                out.println("0 0 0");
+            }
+        }
+
+        out.flush();
+        out.close();
+    }
+
+    // FastReader for speedy input
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader() {
+            br = new BufferedReader(new InputStreamReader(System.in));
+        }
+        String next() {
+            while (st == null || !st.hasMoreTokens()) {
+                try {
+                    String line = br.readLine();
+                    if (line == null) return null;
+                    st = new StringTokenizer(line);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            return st.nextToken();
+        }
+        int nextInt() {
+            return Integer.parseInt(next());
+        }
+    }
+}
+```
+
+**Explanation of the key steps**
+
+1. **Rotate** \((x,y)\to(u,v)=(x+y,\;x-y)\).  
+   In these new coordinates, the Manhattan distance
+   \(\lvert x-x'\rvert+\lvert y-y'\rvert\) becomes the Chebyshev (∞)‐distance
+   \(\max\{|u-u'|,|v-v'|\}\).
+
+2. We want three points pairwise at Chebyshev distance exactly \(d\).  Such
+   a triple must live on the boundary of an axis‐aligned \(d\times d\) square
+   in the \((u,v)\) plane, with one coordinate‐difference spanning the full
+   side \(d\), etc.
+
+3. Either
+   - two of the points share the same \(u\); their \(v\)‐coordinates differ
+     by exactly \(d\); and the third point lies at \(u\pm d\) with
+     \(v\) in the interval spanned.  
+   - or symmetrically, two share the same \(v\) and differ by \(d\) in \(u\),
+     and the third lies at \(v\pm d\) with its \(u\) in range.
+
+4. We implement both checks via hashing the points by their \(u\)-value
+   (to find “same-u” pairs) and by their \(v\)-value (to find “same-v”),
+   each in \(O(n\log n)\).  Once we find one valid triple, we output it and
+   move on.  If no triple is found, we print `0 0 0`.
+
+This runs in \(O\bigl(n\log n\bigr)\) per test, which is efficient for
+\(\sum n\le 2\cdot10^5\).

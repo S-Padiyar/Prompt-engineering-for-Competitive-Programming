@@ -1,0 +1,210 @@
+**Analysis**
+
+We are given the array
+```
+a[i] = i,   0 ≤ i ≤ n−1
+```
+and an integer \(k\).  A subarray \([l,r]\) is called *k–good* if every number in it has at most \(k\) ones in its binary representation.  Equivalently, define the boolean array
+
+\[
+   \mathrm{good}[i] = 
+     \begin{cases}
+       1, &\text{if \(\mathrm{bitcount}(i)\le k\),}\\
+       0, &\text{otherwise.}
+     \end{cases}
+\]
+
+Then a subarray \([l,r]\) is \(k\)–good exactly when \(\mathrm{good}[l],\dots,\mathrm{good}[r]\) are all 1.  It is a standard fact that if you have a \(0\!/1\) array and want the total number of all-ones subarrays, you can simply scan from left to right keeping track of the length of the current run of ones.  If at position \(i\) the current run of 1’s has length \(L\), then there are \(L\) subarrays that end at \(i\) and consist only of 1’s.  Summing \(L\) over all \(i\) gives the total number of all-ones subarrays.
+
+In our problem \(n\) can be up to \(10^{18}\), so we cannot afford an \(O(n)\) scan.  However, the key simplification is that
+\[
+   \mathrm{good}[i]\;=\;(\text{popcount}(i)\le k)
+\]
+depends on the binary representation of \(i\), and the integers from \(0\) to \(n-1\) can be partitioned into \(O(\log n)\) contiguous *aligned* blocks whose sizes are powers of two.  In each such block the pattern of good/bad depends only on:
+
+1. The *size* of the block, say \(2^q\).
+2. The popcount of the block’s starting offset (all numbers in the block have that many “high‐bit” ones added).
+
+We build a small dynamic‐programming table 
+
+```
+dp[q][d] = {
+    ans = number of k‐good subarrays in [0..2^q−1] assuming we allow popcount ≤ d,
+    pref = length of the 1’s‐prefix,
+    suf  = length of the 1’s‐suffix,
+    len  = 2^q
+}
+```
+
+for all \(0\le q\le 60\) and \(0\le d\le 60\).  (If \(d<0\) we treat the entire block as bad; if \(d\) is large enough, the entire block is good.)
+
+We can build `dp[q][d]` recursively.  The block \([0..2^{q+1}-1]\) splits into two halves of size \(2^q\): the first half has the same threshold \(d\), the second half has threshold \(d-1\) (because the leading bit contributes one more 1).  We know how to merge two blocks \(A\) and \(B\) in \(O(1)\) to get the total number of all‐ones subarrays and the new prefix/suffix lengths and total length.
+
+Once the DP table is precomputed, to solve for a given \(n,k\) we:
+
+1. Decompose \([0..n-1]\) into aligned power‐of‐two blocks:
+   - Suppose our current pointer is \(s\), remaining length is \(R = n-s\).
+   - Let \(p=\lfloor\log_2 R\rfloor\) and let \(z=\mathrm{ctz}(s)\).  Then we may take \(q=\min(p,z)\), and a block of size \(2^q\) starting at \(s\) is aligned and fully in the range.
+2. Let \(c = \mathrm{popcount}(s)\).  Hence in this block, positions \(s + x\) have popcount \(\mathrm{popcount}(x)+c\).  The threshold for “good” inside it becomes \(k-c\).  We look up `dp[q][k-c]` (or treat it all‐bad if \(k-c<0\)).
+3. We merge this block with our running answer in \(O(1)\).
+4. Advance \(s\) by \(2^q\) and repeat until \(s=n\).
+
+Since there are only \(O(\log n)\) blocks and each merge is \(O(1)\), each test runs in \(O(\log n)\approx O(60)\).  Precomputation of the \(61\times 61\) DP table is also negligible.
+
+Below is the complete Java implementation.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXQ = 60;
+    static final int MAXD = 60;
+    static final int MOD = 1000000007;
+
+    // Our DP‐table entry
+    static class DP {
+        long ans;   // # of good‐subarrays modulo MOD
+        long pref;  // length of 1‐prefix
+        long suf;   // length of 1‐suffix
+        long len;   // total length = 2^q
+        DP(long a, long p, long s, long l) {
+            ans = a; pref = p; suf = s; len = l;
+        }
+    }
+
+    // dp[q][d] = block [0..2^q−1], good iff popcount(i) ≤ d
+    static DP[][] dp = new DP[MAXQ+1][MAXD+1];
+
+    public static void main(String[] args) throws IOException {
+        precomputeDP();
+
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            long n = Long.parseLong(st.nextToken());
+            int k  = Integer.parseInt(st.nextToken());
+            sb.append(solve(n, k)).append('\n');
+        }
+        System.out.print(sb);
+    }
+
+    // Precompute dp[q][d] for 0 ≤ q ≤ 60, 0 ≤ d ≤ 60
+    static void precomputeDP() {
+        // Base: q = 0 => block size = 1, contains only i=0 with popcount=0
+        // If d>=0 then it's good; else bad
+        for (int d = 0; d <= MAXD; d++) {
+            dp[0][d] = new DP(1, 1, 1, 1);  // one element all‐good if d>=0
+        }
+        // Build up
+        for (int q = 1; q <= MAXQ; q++) {
+            long halfLen = 1L << (q - 1);
+            long fullLen = 1L << q;
+            for (int d = 0; d <= MAXD; d++) {
+                DP A = dp[q-1][d];
+                DP B = (d-1 >= 0 ? dp[q-1][d-1]
+                                : new DP(0, 0, 0, halfLen));  
+                // Merge A (threshold d) with B (threshold d-1)
+                long combAns = (A.ans + B.ans) % MOD;
+                long cross = ((A.suf % MOD) * (B.pref % MOD)) % MOD;
+                combAns = (combAns + cross) % MOD;
+                long combPref = (A.pref == A.len) ? (A.len + B.pref) : A.pref;
+                long combSuf  = (B.suf == B.len) ? (B.len + A.suf) : B.suf;
+                dp[q][d] = new DP(combAns, combPref, combSuf, fullLen);
+            }
+        }
+    }
+
+    // Solve one test: count # of k‐good subarrays of [0..n-1]
+    static long solve(long n, int k) {
+        long s = 0;        // current start
+        DP cur = new DP(0, 0, 0, 0); // empty so far
+
+        long N = n - 1;    // we index 0..N
+        while (s <= N) {
+            long rem = N - s + 1;         // how many left
+            int p = 63 - Long.numberOfLeadingZeros(rem);  // floor(log2(rem))
+            int z = Long.numberOfTrailingZeros(s);        // alignment
+            int q = Math.min(p, z);                     // block size = 2^q
+            long blockLen = 1L << q;
+
+            // popcount of the starting offset s
+            int c = Long.bitCount(s);
+            int th = k - c;   // new threshold
+            DP blk;
+            if (th < 0) {
+                // all‐bad block
+                blk = new DP(0, 0, 0, blockLen);
+            } else {
+                // use our precomputed dp
+                blk = dp[q][th];
+            }
+
+            // Merge (cur) with (blk)
+            long newAns = (cur.ans + blk.ans) % MOD;
+            long cross = ((cur.suf % MOD) * (blk.pref % MOD)) % MOD;
+            newAns = (newAns + cross) % MOD;
+
+            long newPref = (cur.pref == cur.len) ? (cur.len + blk.pref) : cur.pref;
+            long newSuf  = (blk.suf == blk.len)    ? (blk.len + cur.suf)  : blk.suf;
+            long newLen  = cur.len + blk.len;
+
+            cur = new DP(newAns, newPref, newSuf, newLen);
+
+            s += blockLen;
+        }
+        return cur.ans;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Decomposing the Range into Aligned Blocks**  
+   Any range \([0..n-1]\) can be partitioned into \(O(\log n)\) blocks of sizes powers of two, each aligned on its size boundary.  Concretely, if our current pointer is \(s\), and `rem = n-s`, we pick the largest power \(2^q\) so that
+   - \(s\) is divisible by \(2^q\) (alignment),
+   - \(s + 2^q - 1 \le n-1\) (fits in the range).
+
+   We do that by
+   ```java
+   int p = floor_log2(rem);
+   int z = ctz(s);
+   int q = min(p, z);
+   ```
+   which is both constant‐time and yields at most \(O(\log n)\) blocks.
+
+2. **Per‐Block DP Lookup**  
+   Inside a block \([s..s+2^q-1]\), each element is
+   \[
+     \mathrm{popcount}(s + x)
+       = \mathrm{popcount}(s) + \mathrm{popcount}(x).
+   \]
+   Thus whether it is “good” (popcount ≤ \(k\)) hinges on
+   \[
+     \mathrm{popcount}(x) \;\le\; k - \mathrm{popcount}(s).
+   \]
+   Precomputing for the canonical block \([0..2^q-1]\) all “good‐subarray” data for every possible threshold \(d=0..60\) is quite small (\(61\times61\) states).
+
+3. **Merging Two Blocks in \(O(1)\)**  
+   If you know for block \(A\) and block \(B\):
+   - \(\mathit{ans}_A\) = # of good subarrays inside \(A\) alone,
+   - \(\mathit{pref}_A\) = length of its 1‐prefix,
+   - \(\mathit{suf}_A\) = length of its 1‐suffix,
+   - \(\mathit{len}_A\) = total length \(=2^q\),
+
+   and similarly for \(B\), then to merge \(A\) + \(B\):
+   - Any good subarray is either entirely in \(A\), or entirely in \(B\), or crosses the boundary and is formed by suffix‐of‐\(A\) + prefix‐of‐\(B\).  
+   - So
+     \[
+       \mathit{ans}_{AB}
+       = \mathit{ans}_A + \mathit{ans}_B
+         + (\mathit{suf}_A)\times(\mathit{pref}_B).
+     \]
+   - The new prefix is either all of \(A\) plus \(B\)’s prefix (if \(A\) was all-good), or just \(A\)’s prefix.  And symmetrically for the suffix.
+
+4. **Modulus**  
+   All counts of subarrays are done modulo \(10^9+7\).  Prefix/suffix lengths may reach up to \(n\approx10^{18}\), so we store them in 64-bit `long`s, but whenever we multiply suffix\(_A\)\(\times\)prefix\(_B\) we first reduce each modulo \(10^9+7\) to stay within 64-bit range.
+
+This entire procedure runs in \(O(1)\) per aligned block, and there are only \(O(\log n)\) blocks, so each test is \(O(\log n)\approx O(60)\).  Precomputation is \(O(60^2)\), which is negligible.

@@ -1,0 +1,196 @@
+**Analysis**
+
+We have a rooted tree (root = 1).  Each vertex has a symbol in {0,1,?}.  A **leaf** is any vertex ≠ 1 of degree 1.  We form the value‐string on the path from root to each leaf; we count
+
+ weight(leaf) = (# of “10” substrings) − (# of “01” substrings)
+
+A short (and well‐known) fact about any 0/1‐string \(s\) is
+
+ (#“10”) − (#“01”) \;=\; s[1] − s[n]
+
+where we interpret ‘0’→0, ‘1’→1.  In our tree, \(s[1]\) is the root’s bit and \(s[n]\) is the leaf’s bit.  Hence
+
+ weight(leaf) ≠ 0
+ ⇔ s(root) ≠ s(leaf).
+
+So the *score* of the final full assignment is simply the number of leaves whose final bit differs from the root’s final bit.
+
+---
+
+**The two‐player game**
+
+- Iris and Dora alternate turning a ‘?’ into either ‘0’ or ‘1’, Iris goes first.
+- Iris tries to **maximize** the final score; Dora tries to **minimize** it.
+- Once all ‘?’’s are gone, we look at how many leaves “mismatch” the root.
+
+Call
+
+ • \(L_0\) = # of leaves already fixed to ‘0’.  
+ • \(L_1\) = # of leaves already fixed to ‘1’.  
+ • \(U\)   = # of leaves whose label is ‘?’.  
+ • \(m\)   = # of internal vertices (not root, not leaf) whose label is ‘?’.  
+
+Finally the root itself may be ‘0’, ‘1’, or ‘?’.
+
+We show that **only** the root and the leaves ever *really* affect the score.  Interior–‘?’ serve only as “dummy moves” that can be used to shift who gets to choose the root or who gets the first leaf‐assignment.
+
+We split into two main cases:
+
+1.  **Root is already fixed** to 0 or 1.
+    
+    Then we never touch the root.  The only important moves are the \(U\) leaves.  
+    - If no interior–‘?’ (i.e.\ \(m=0\)), Iris moves first on the leaves, so she gets \(\lceil U/2\rceil\) of them; Dora gets the other \(\lfloor U/2\rfloor\).  
+    - If \(m>0\), Iris could waste a first move on an internal ‘?’ to try to force Dora to move first on leaves.  But in fact Dora never wants to *waste* a move on a dummy when she can set a leaf to match the root.  One checks that the optimum is still Iris → leaves first → so Iris always gets \(\lceil U/2\rceil\).  
+
+    Thus if the root is fixed to \(r\in\{0,1\}\), the final score is
+
+      base  
+      = number of *already* mismatched leaves  
+      = \(\bigl(r=0?\;L_1\;:\;L_0\bigr)\)  
+
+    plus the contributions from the \(U\) leaves that Iris will secure, namely \(\lceil U/2\rceil\).
+
+2.  **Root is ‘?’**  
+    Now Iris can choose whether to assign the root **herself** right away (move 1), or waste move 1 on an internal ‘?’ to force Dora to assign the root (move 2).  
+   
+    - **Option A**: Iris sets the root at move 1 to the value \(r\) that *maximizes*  
+      
+          base(r) + floor(U/2)
+      
+      where \( \mathrm{base}(r)= (r=0?L_1:L_0)\), and then Dora moves first among the leaves, so Iris only gets \(\lfloor U/2\rfloor\) of them.
+      
+      Hence  
+         \(V_1=\max\bigl(L_1,L_0\bigr)\;+\;\lfloor U/2\rfloor.\)
+      
+    - **Option B**: Iris wastes her first move on an *internal* ‘?’, forcing Dora to assign the root at move 2.  Dora will choose \(r\) to *minimize*  
+      
+          base(r) + ceil(U/2)
+      
+      and then Iris starts among the leaves, so she secures \(\lceil U/2\rceil\).  
+
+      Hence  
+         \(V_2=\min\bigl(L_1,L_0\bigr)\;+\;\lceil U/2\rceil,\)
+      
+    but **Option B** is only available if there *is* at least one internal ‘?’ (i.e.\ \(m>0\)).
+
+Finally, when the root is ‘?’ we take
+
+   If \(m=0\):  answer = \(V_1\).  
+   Otherwise:   answer = \(\max(V_1,V_2)\).
+
+Putting everything together gives an \(O(n)\) pass per tree:
+
+1.  Read the tree, find the leaves (degree 1, excluding node 1).
+2.  Tally \(L_0,L_1,U\) from the leaves; tally \(m\) over interior ‘?’.
+3.  Apply the above formulas.
+
+Since \(\sum n\le2\cdot10^5\), an \(O(n)\) per test solution easily runs in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine());
+        // We will process each test in O(n).
+
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine());
+            List<Integer>[] adj = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) {
+                adj[i] = new ArrayList<>();
+            }
+
+            // Read edges
+            for (int i = 0; i < n-1; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken()), v = Integer.parseInt(st.nextToken());
+                adj[u].add(v);
+                adj[v].add(u);
+            }
+
+            // Read the string s[1..n]
+            char[] s = (" " + br.readLine()).toCharArray();
+
+            // 1) Identify leaves: i != 1 and adj[i].size() == 1
+            boolean[] isLeaf = new boolean[n+1];
+            for (int i = 2; i <= n; i++) {
+                if (adj[i].size() == 1) {
+                    isLeaf[i] = true;
+                }
+            }
+
+            // 2) Count L0, L1, U over leaves; and m over internal '?'
+            int L0 = 0, L1 = 0, U = 0, m = 0;
+            for (int i = 1; i <= n; i++) {
+                if (isLeaf[i]) {
+                    if (s[i] == '0')      L0++;
+                    else if (s[i] == '1') L1++;
+                    else                  U++;   // leaf '?'
+                } else {
+                    // either root=1 or internal
+                    if (i != 1 && s[i] == '?') {
+                        m++;  // internal '?'
+                    }
+                }
+            }
+
+            long ans = 0;
+            // CASE A: root is fixed
+            if (s[1] == '0' || s[1] == '1') {
+                // base = # of leaves != root
+                int base = (s[1] == '0' ? L1 : L0);
+                // Iris moves first on the U leaves => she secures ceil(U/2)
+                int takeLeaves = (U + 1) / 2;
+                ans = base + takeLeaves;
+            }
+            else {
+                // root == '?'
+                // Option 1: Iris sets root herself => Dora starts leaves => Iris gets floor(U/2)
+                long V1 = Math.max(L0, L1) + (U / 2);
+                if (m == 0) {
+                    // no dummy moves => Iris has to do Option1
+                    ans = V1;
+                } else {
+                    // Option 2: Iris forces Dora to set root => Iris starts leaves => she gets ceil(U/2)
+                    long V2 = Math.min(L0, L1) + ((U + 1) / 2);
+                    ans = Math.max(V1, V2);
+                }
+            }
+
+            System.out.println(ans);
+        }
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1.  **Weight of a leaf**  
+    For a path‐string \(s\) of 0/1,
+      
+      (#\,“10” ) − (#\,“01” ) = s[1] − s[last].
+      
+    Hence _a leaf has non-zero weight_ exactly when its label differs from the root’s label.
+
+2.  **Game‐theory reduction**  
+    - Only the root’s bit and leaves’ bits affect the final score.  
+    - Internal ‘?’ serve merely as “pass moves” that can shift who is _first_ to choose the root or first among the leaves.
+
+3.  **Case 1: root known**  
+    Iris always moves first _among_ the \(U\) leaf-‘?’s, so she secures \(\lceil U/2\rceil\) mismatches; add the base count of already-mismatched leaves.
+
+4.  **Case 2: root ‘?’**  
+    Iris can either
+    - set the root immediately (move 1) to her favorite bit ⇒ Dora then leads the \(U\) leaves ⇒ Iris gets \(\lfloor U/2\rfloor\), or  
+    - waste move 1 on an internal ‘?’ (if any exist) so Dora _must_ set the root ⇒ then Iris leads the leaves ⇒ Iris gets \(\lceil U/2\rceil\).  
+
+    She chooses the better of the two, subject to whether there *is* any internal ‘?’ to create that “dummy‐move” strategy.
+
+This runs in \(O(n)\) per test, which is easily within the 2 s / 256 MB limit for \(\sum n\le2\cdot10^5\).

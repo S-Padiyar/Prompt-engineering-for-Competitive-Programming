@@ -1,0 +1,200 @@
+**Analysis**
+
+We have \(n\) sequences \(S_1,\dots,S_n\).  We start with a non‐negative integer \(x\), and we may perform up to \(n\) operations; each operation chooses one sequence not used before and replaces
+\[
+   x \;\longleftarrow\; \mex\bigl(\{x\}\cup S_i\bigr).
+\]
+Let
+\[
+  f(k)=\max\{\,x_{\rm final}\mid x_{\rm initial}=k\}
+\]
+be the maximum final \(x\) we can reach if we start at \(k\).  We must compute
+\[
+  \sum_{k=0}^m f(k).
+\]
+
+---
+
+**Key observation (“two‐missing trick”)**
+
+Call \(\mu_i=\mex(S_i)\).  Then
+
+  1.  If our current \(x\neq\mu_i\), then \(\mex(\{x\}\cup S_i)=\mu_i\).  
+  2.  If \(x=\mu_i\), then \(\mex(\{x\}\cup S_i)\) is the *next* integer \(> \mu_i\) not in \(S_i\).
+
+Hence each sequence \(S_i\) gives us one “directed jump” of the form
+\[
+   \mu_i\;\longrightarrow\;p_i,
+\]
+where
+\[
+   \mu_i=\mex(S_i),\quad
+   p_i=\text{the next missing integer beyond }\mu_i.
+\]
+Because \(p_i>\mu_i\), these are edges in an acyclic graph on the non‐negative integers.
+
+If at any point our current \(x\) does not equal \(\mu_i\), applying \(S_i\) simply sets us to \(\mu_i\), which can never help exceed the best path that actually *follows* edges \(\mu_i\to p_i\).  Thus to *increase* \(x\) beyond its starting value \(k\), we must only follow those edges whose tail matches our current \(x\).
+
+Define
+\[
+  \mathrm{dp}[v]
+  =\max\{\,\text{largest integer reachable starting from }v\}
+  =\max\Bigl(v,\;\max_{(v\to u)\in E}\mathrm{dp}[u]\Bigr).
+\]
+Since all edges go from smaller to larger, one can compute \(\mathrm{dp}[v]\) for \(v\) from the maximum node down to \(0\).
+
+Finally, for \(k> \max\{\,\text{all nodes appearing as tails or heads}\}\), no edge is ever usable, so \(f(k)=k\).  
+
+Hence if \(\mathsf{M}\) is the maximum integer that appears either as some \(\mu_i\) or some \(p_i\), we do
+
+  1. Build an adjacency‐list for edges \(v\to u\).
+  2. Run a downward loop \(v=\mathsf{M},\dots,0\) and set
+     \[
+       \mathrm{dp}[v]
+       =\max\bigl(v,\;\max_{u\in\mathrm{adj}[v]}\mathrm{dp}[u]\bigr).
+     \]
+  3. Now
+     \[
+       f(k)=
+         \begin{cases}
+           \mathrm{dp}[k], & 0\le k\le \mathsf{M},\\
+           k,              & k>\mathsf{M}.
+         \end{cases}
+     \]
+  4. Finally
+     \[
+       \sum_{k=0}^m f(k)
+       =\sum_{k=0}^{\min(m,\mathsf{M})}\mathrm{dp}[k]
+        \;+\;
+        \sum_{k=\mathsf{M}+1}^m k.
+     \]
+
+The last sum is just an arithmetic series
+\(\sum_{k=a}^b k=\tfrac{b(b+1)}2-\tfrac{(a-1)a}2\).
+
+Each test case costs 
+- \(\sum_i|S_i|\log|S_i|\) to sort/unique the sequences, 
+- plus \(O(\mathsf{M} + \#\text{edges})\) to do the DP.  
+Since \(\sum_i|S_i|\le2\times10^5\) overall, this is fast enough.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        StringTokenizer stk;
+
+        int t = Integer.parseInt(in.readLine());
+        while (t-- > 0) {
+            stk = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(stk.nextToken());
+            long m = Long.parseLong(stk.nextToken());
+
+            // We will collect (mu -> p) edges
+            ArrayList<int[]> edges = new ArrayList<>();
+            int maxNode = 0;
+
+            for (int i = 0; i < n; i++) {
+                stk = new StringTokenizer(in.readLine());
+                int li = Integer.parseInt(stk.nextToken());
+                int[] a = new int[li];
+                for (int j = 0; j < li; j++) {
+                    a[j] = Integer.parseInt(stk.nextToken());
+                }
+
+                // sort + unique
+                Arrays.sort(a);
+                int write = 1;
+                for (int j = 1; j < li; j++) {
+                    if (a[j] != a[j - 1]) {
+                        a[write++] = a[j];
+                    }
+                }
+                // now unique sorted prefix is a[0..write-1)
+                // find mex = mu
+                int mu = 0;
+                while (mu < write && a[mu] == mu) {
+                    mu++;
+                }
+
+                // find next missing > mu
+                long p = (long)mu + 1;
+                int idx = mu; 
+                // we know a[idx] > mu or idx == write
+                while (idx < write && a[idx] == p) {
+                    p++;
+                    idx++;
+                }
+
+                // record edge mu -> p
+                edges.add(new int[]{mu, (int)p});
+                maxNode = Math.max(maxNode, Math.max(mu, (int)p));
+            }
+
+            // build adjacency
+            List<List<Integer>> adj = new ArrayList<>();
+            for (int i = 0; i <= maxNode; i++) {
+                adj.add(new ArrayList<>());
+            }
+            for (int[] e : edges) {
+                adj.get(e[0]).add(e[1]);
+            }
+
+            // dp[v] = max reachable from v
+            int[] dp = new int[maxNode + 1];
+            for (int v = maxNode; v >= 0; v--) {
+                int best = v;
+                for (int u : adj.get(v)) {
+                    best = Math.max(best, dp[u]);
+                }
+                dp[v] = best;
+            }
+
+            // sum up f(k)
+            long ans = 0;
+            int upTo = (int)Math.min(m, maxNode);
+            for (int k = 0; k <= upTo; k++) {
+                ans += dp[k];
+            }
+            if (m > maxNode) {
+                // add sum of k for k = maxNode+1 .. m
+                long R = m, L = maxNode + 1;
+                long sumR = R * (R + 1) / 2;
+                long sumL = (L - 1) * L / 2;
+                ans += (sumR - sumL);
+            }
+
+            sb.append(ans).append('\n');
+        }
+        System.out.print(sb.toString());
+    }
+}
+```
+
+**Explanation of Steps**
+
+1. **Forming the directed edges**  
+   For each sequence \(S\), let \(\mu=\mex(S)\).  Then the next‐missing integer above \(\mu\) is
+   \[
+     p \;=\;\bigl(\min\,\{\,x>\mu\mid x\notin S\}\bigr).
+   \]
+   We add a single directed edge \(\mu\to p\).  One can show that uses of the sequence that do not follow \(\mu\to p\) never help climb higher than simply *waiting* until one’s current value matches some \(\mu\).
+
+2. **Dynamic programming on the DAG**  
+   Since \(p>\mu\), these edges form an acyclic graph on non‐negative integers.  We define
+   \[
+     \dp[v]=\max\!\bigl(v,\;\max_{v\to u}\dp[u]\bigr),
+   \]
+   and compute it by iterating \(v\) down from the maximum node we ever saw back to \(0\).
+
+3. **Answering queries**  
+   - If \(k\le M\) (where \(M\) is our largest node), then \(f(k)=\dp[k]\).  
+   - If \(k>M\), then no edge starts at \(k\), so \(f(k)=k\).  
+   We sum \(f(0)+f(1)+\cdots+f(m)\) by splitting at \(M\).
+
+This runs in \(O\bigl(\sum_i|S_i|\log|S_i| + M + \#\mathrm{edges}\bigr)\), which is linear‐time given \(\sum|S_i|\)\(\le2\cdot10^5\).

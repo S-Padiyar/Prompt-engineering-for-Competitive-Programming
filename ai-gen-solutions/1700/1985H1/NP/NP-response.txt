@@ -1,0 +1,228 @@
+**Analysis**
+
+We have an \(n\times m\) grid of `.` and `#`.  A connected component of `#`‐cells is the usual 4-connected component (up/down/left/right).  We may do **at most one** operation: pick a row or a column and paint **every** cell in that row/column `#`.  We want to maximize the size of the largest `#`‐component after at most one such operation.
+
+Let us denote
+
+- \(\mathrm{origMax}\) = the size of the largest component in the original grid (with zero operations).
+- \(\mathrm{bestPaint}\) = the best we can do by painting exactly one row or column.
+
+In the end the answer is
+\[
+  \max(\mathrm{origMax}, \mathrm{bestPaint}).
+\]
+
+---
+
+**Step 1.  Precompute the original components**
+
+We first run a single BFS/DFS over the grid to label each `#`‐component with a component ID (1,2,…).  We also record the size of each component.  This takes \(O(nm)\) time in total.
+
+- We flatten the grid into a 1D array of length \(n\times m\).  
+- We keep an integer array `comp[i]` storing the component‐ID of cell \(i\), or 0 if it is `.`.
+- We keep an array `compSize[id]` storing the size of component `id`.
+- As we BFS each new unlabeled `#` cell, we assign it a new `id`, flood‐fill all cells of that component, and count how many there are.
+
+Let \(\mathrm{origMax}\) be the maximum over all `compSize[id]`.
+
+---
+
+**Step 2.  Simulate “paint a row”**
+
+If we paint row \(r\), then:
+
+1. We add \(m\) new `#` cells all in row \(r\).  
+2. Each of these new cells may attach to existing components immediately above or below it,
+   i.e.\ if cell \((r-1,j)\) or \((r+1,j)\) was already `#`, we will absorb that entire component.
+
+All the newly painted row is itself one big connected band.  So the size of the *new* big component
+formed by the painted row is
+\[
+   m \;+\; \sum_{\substack{\text{distinct old‐component}\\
+                         \text{IDs adjacent above/below}}} 
+         \bigl(\text{that component’s size}\bigr).
+\]
+
+We can scan columns \(j=0\ldots m-1\), look at the original cell \((r-1,j)\) and \((r+1,j)\) (if in
+bounds), pick out their component IDs, and sum up each (once) via a “last‐seen” stamp array
+to avoid double‐counting.  That costs \(O(m)\) work for each row, and there are \(n\) rows,
+so \(O(nm)\) total for “paint every row.”
+
+---
+
+**Step 3.  Simulate “paint a column”**
+
+Similarly, painting column \(c\) adds \(n\) new `#` cells in that column.  They may attach to the
+original components to the left or right (cells \((i,c-1)\), \((i,c+1)\)).  We do exactly the
+same “stamp” trick to sum each adjacent component’s size once.  Each column takes \(O(n)\),
+and there are \(m\) columns, so \(O(nm)\) again.
+
+---
+
+Overall time per test is \(O(nm)\).  Since the sum of \(nm\) over all test cases is \(\le10^6\),
+this runs in a couple of million operations in total, well within the 2 s limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder   sb = new StringBuilder();
+        int t = Integer.parseInt(br.readLine().trim());
+        
+        // Directions for 4-connected BFS
+        final int[] d4i = {-1, 1, 0, 0};
+        final int[] d4j = { 0, 0,-1, 1};
+        
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            char[][] grid = new char[n][];
+            for (int i = 0; i < n; i++) {
+                grid[i] = br.readLine().toCharArray();
+            }
+            
+            int N = n*m;               // total cells
+            int[] comp = new int[N];   // component id of each cell (0 if '.')
+            int[] compSize = new int[N+1]; // compSize[id] = size of component id
+            int origMax = 0;
+            
+            // BFS queue
+            int[] queue = new int[N];
+            
+            // 1) Label all components
+            int compCount = 0;
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < m; j++) {
+                    int idx = i*m + j;
+                    if (grid[i][j] == '#' && comp[idx] == 0) {
+                        // new component
+                        compCount++;
+                        comp[idx] = compCount;
+                        int sz = 1;
+                        
+                        // BFS
+                        int head = 0, tail = 0;
+                        queue[tail++] = idx;
+                        while (head < tail) {
+                            int cur = queue[head++];
+                            int ci = cur / m, cj = cur % m;
+                            for (int d = 0; d < 4; d++) {
+                                int ni = ci + d4i[d], nj = cj + d4j[d];
+                                if (0 <= ni && ni < n && 0 <= nj && nj < m) {
+                                    int nidx = ni*m + nj;
+                                    if (grid[ni][nj] == '#' && comp[nidx] == 0) {
+                                        comp[nidx] = compCount;
+                                        queue[tail++] = nidx;
+                                        sz++;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        compSize[compCount] = sz;
+                        origMax = Math.max(origMax, sz);
+                    }
+                }
+            }
+            
+            // We'll use a "lastUsed" stamp array to avoid double counting
+            int[] lastUsed  = new int[compCount+1];
+            int   timestamp = 0;
+            int   bestPaint = 0;
+            
+            // 2) Try painting each row
+            for (int i = 0; i < n; i++) {
+                timestamp++;
+                int sum = m;  // we get m new '#' cells
+                int stamp = timestamp;
+                
+                for (int j = 0; j < m; j++) {
+                    int idx = i*m + j;
+                    // check above
+                    if (i > 0) {
+                        int c = comp[idx - m];
+                        if (c != 0 && lastUsed[c] != stamp) {
+                            lastUsed[c] = stamp;
+                            sum += compSize[c];
+                        }
+                    }
+                    // check below
+                    if (i+1 < n) {
+                        int c = comp[idx + m];
+                        if (c != 0 && lastUsed[c] != stamp) {
+                            lastUsed[c] = stamp;
+                            sum += compSize[c];
+                        }
+                    }
+                }
+                bestPaint = Math.max(bestPaint, sum);
+            }
+            
+            // 3) Try painting each column
+            for (int j = 0; j < m; j++) {
+                timestamp++;
+                int sum = n;  // we get n new '#' cells
+                int stamp = timestamp;
+                
+                for (int i = 0; i < n; i++) {
+                    int idx = i*m + j;
+                    // check left
+                    if (j > 0) {
+                        int c = comp[idx - 1];
+                        if (c != 0 && lastUsed[c] != stamp) {
+                            lastUsed[c] = stamp;
+                            sum += compSize[c];
+                        }
+                    }
+                    // check right
+                    if (j+1 < m) {
+                        int c = comp[idx + 1];
+                        if (c != 0 && lastUsed[c] != stamp) {
+                            lastUsed[c] = stamp;
+                            sum += compSize[c];
+                        }
+                    }
+                }
+                bestPaint = Math.max(bestPaint, sum);
+            }
+            
+            // Final answer for this test
+            sb.append(Math.max(origMax, bestPaint)).append('\n');
+        }
+        
+        // Output all at once
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of key points**
+
+1. **Component labeling**  
+   We flatten the grid to 1D (`idx = i*m + j`) and run a standard BFS to assign a unique ID to each connected component of `#`.  We also record the size of each component.
+
+2. **Painting a row**  
+   - When you paint row \(r\), you immediately get \(m\) new `#` cells along that row.  
+   - Each new cell \((r,j)\) may connect to a pre‐existing component directly above \((r-1,j)\) or directly below \((r+1,j)\).  
+   - Since the entire painted row is one long connected segment, *all* such adjacent components become part of *one merged component*.  
+   - We must add *each* adjacent old component’s size **once**.  To avoid double‐counting, we use a `lastUsed[compID]` array with an incrementing `timestamp` for each row.
+
+3. **Painting a column**  
+   - Analoguously, painting column \(c\) gives \(n\) new cells \((i,c)\).  
+   - They can attach to components to the left \((i,c-1)\) or right \((i,c+1)\).  
+   - Again we sum each touched component’s size once via the same stamp technique.
+
+4. **Answer**  
+   The best one‐row paint or one‐column paint is `bestPaint`.  But we could also choose to do *no* operation if the grid already has a large component.  Hence we take
+   \[
+     \max(\text{origMax}, \text{bestPaint}) 
+   \]
+   as the final answer.
+
+This runs in \(O(nm)\) per test and easily handles up to a total of \(10^6\) cells over all tests within the 2 second limit.

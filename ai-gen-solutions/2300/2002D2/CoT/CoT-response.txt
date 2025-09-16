@@ -1,0 +1,148 @@
+Here is a Java solution.  It precomputes binary‐lifting parents and depths in O(n log n), then keeps track of 
+S = ∑_{i=1 to n−1} dist(p[i], p[i+1]).  One can show that p[1..n] is a valid DFS‐order iff p[1]=1 and
+
+   S + depth[p[n]] == 2·(n−1).
+
+Each swap at positions x,y only affects at most four adjacent “distances” f[i]=dist(p[i],p[i+1]), so we update S in O(log n) per updated f[i].  Overall runtime over all tests is O((∑n)·log n + ∑q·log n), which is fine for ∑n≤3·10^5, ∑q≤10^5.
+
+```java
+import java.io.*;
+import java.util.StringTokenizer;
+
+public class Main {
+    static final int MAXN = 300000 + 5;
+    static final int LOG = 19;  // since 2^18 = 262144 < 300000 < 2^19
+    static int[][] up = new int[LOG][MAXN];
+    static int[] depth = new int[MAXN];
+    static int[] parent = new int[MAXN];
+    static int[] p = new int[MAXN];
+    static int[] f = new int[MAXN];
+    static int n, q;
+
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        PrintWriter out = new PrintWriter(new BufferedOutputStream(System.out));
+        int t = in.nextInt();
+        while (t-- > 0) {
+            n = in.nextInt();
+            q = in.nextInt();
+            // read parents a2..an
+            parent[1] = 0;
+            depth[1] = 0;
+            up[0][1] = 0;
+            for (int i = 2; i <= n; i++) {
+                int par = in.nextInt();
+                parent[i] = par;
+                depth[i] = depth[par] + 1;
+                up[0][i] = par;
+            }
+            // build binary lifting
+            for (int k = 1; k < LOG; k++) {
+                for (int i = 1; i <= n; i++) {
+                    up[k][i] = up[k - 1][ up[k - 1][i] ];
+                }
+            }
+            // read permutation p[1..n]
+            for (int i = 1; i <= n; i++) {
+                p[i] = in.nextInt();
+            }
+            // build initial sum of distances
+            long S = 0;
+            for (int i = 1; i < n; i++) {
+                f[i] = dist(p[i], p[i+1]);
+                S += f[i];
+            }
+            // process queries
+            for (int qi = 0; qi < q; qi++) {
+                int x = in.nextInt();
+                int y = in.nextInt();
+                // positions where f[] depends on p[x] or p[y]:
+                int[] idxs = { x - 1, x, y - 1, y };
+                // subtract old
+                for (int idx : idxs) {
+                    if (idx >= 1 && idx < n) {
+                        S -= f[idx];
+                    }
+                }
+                // swap in the permutation
+                int tmp = p[x];
+                p[x] = p[y];
+                p[y] = tmp;
+                // recompute those f[] and add back
+                for (int idx : idxs) {
+                    if (idx >= 1 && idx < n) {
+                        f[idx] = dist(p[idx], p[idx + 1]);
+                        S += f[idx];
+                    }
+                }
+                // check validity: need p[1]==1 and S + depth[p[n]] == 2*(n-1)
+                if (p[1] == 1 && S + depth[p[n]] == 2L * (n - 1)) {
+                    out.println("YES");
+                } else {
+                    out.println("NO");
+                }
+            }
+        }
+        out.flush();
+        out.close();
+    }
+
+    // LCA by binary lifting
+    static int lca(int u, int v) {
+        if (depth[u] < depth[v]) {
+            int t = u; u = v; v = t;
+        }
+        // lift u up to depth[v]
+        int diff = depth[u] - depth[v];
+        for (int k = 0; k < LOG; k++) {
+            if ((diff & (1 << k)) != 0) {
+                u = up[k][u];
+            }
+        }
+        if (u == v) return u;
+        for (int k = LOG - 1; k >= 0; k--) {
+            if (up[k][u] != up[k][v]) {
+                u = up[k][u];
+                v = up[k][v];
+            }
+        }
+        return parent[u]; // or up[0][u]
+    }
+
+    static int dist(int u, int v) {
+        int w = lca(u, v);
+        return depth[u] + depth[v] - 2 * depth[w];
+    }
+
+    // fast input
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader() {
+            br = new BufferedReader(new InputStreamReader(System.in));
+        }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens())
+                st = new StringTokenizer(br.readLine());
+            return st.nextToken();
+        }
+        int nextInt() throws IOException {
+            return Integer.parseInt(next());
+        }
+    }
+}
+```
+
+Explanation of the key idea:
+
+1.  In any DFS of a rooted tree starting at 1, if you record each vertex on first entry, then for consecutive vertices `p[i]`,`p[i+1]` one travels along the unique path between them.  The sum
+     ∑_{i=1..n−1} dist(p[i],p[i+1]) plus the final ascent back from `p[n]` to the root (which is `depth[p[n]]`)
+     is exactly twice the number of edges, i.e. 2·(n−1).
+
+2.  Hence if and only if `p[1] = 1` and
+     ∑_{i=1..n−1} dist(p[i],p[i+1]) + depth[p[n]] == 2·(n−1),
+     the permutation can be realized by **some** DFS ordering (since children can be visited in any order).
+
+3.  When we swap two positions `x,y` in `p`, only at most four adjacent distances change: those at indices `x−1, x, y−1, y`.  We subtract out their old contributions, swap, recompute those four, and restore the sum — all in O(log n) per distance because we use LCA by binary‐lifting. 
+
+Thus each query costs O(log n), and precomputation is O(n log n), which easily fits the given bounds.

@@ -1,0 +1,212 @@
+**Analysis**
+
+We have to maintain a dynamic set \(S\subseteq\{1,2,\dots,2\,000\,000\}\) of integers, initially of size \(n\), under three kinds of operations:
+
+1. Insert \(x\) into \(S\).  
+2. Remove \(x\) from \(S\).  
+3. Query the *\(k\)-load* of \(S\): the smallest positive integer \(d\) such that none of \(d,d+1,\dots,d+(k-1)\) lie in \(S\).  
+
+Equivalently, we regard the *missing*-array 
+\[
+    M[i]=
+    \begin{cases}
+      1,&i\not\in S,\\
+      0,&i\in S,
+    \end{cases}
+    \quad i=1,2,\dots,2\,000\,000,
+\]
+and we wish to find the leftmost block of \(k\) consecutive ones in \(M\).  If no such block of length \(k\) exists entirely inside \([1,2\,000\,000]\), the answer is \(2\,000\,001\).
+
+A standard way to find the earliest block of \(k\) consecutive ones is to build a segment tree over \([1\ldots N]\) (with \(N=2\,000\,000\)) that stores, for each node covering an interval \([L,R]\),
+
+- `pref =` length of the longest prefix of `1`'s in \([L,R]\),
+- `suf =` length of the longest suffix of `1`'s in \([L,R]\),
+- `best =` length of the longest contiguous all-`1` subinterval inside \([L,R]\).
+
+Then
+
+- **Point updates** (flip \(M[x]\) between \(0\) and \(1\)) take \(O(\log N)\), since we only modify one leaf and then pull up the three values `(pref,suf,best)` on the path to the root.
+- **\(k\)-load query** can be answered by descending the tree in \(O(\log N)\):  
+  - if the best in the root is \(<k\) then we answer \(N+1\);
+  - otherwise we look in the left child if its `best` is \(\ge k\);  
+    if not, we check whether left's suffix plus right's prefix gives \(\ge k\);  
+    if so we compute the crossing‐block start;  
+    else descend into the right child.
+
+However, \(N=2\,000\,000\) is large, and building a full static segment‐tree of size \(\approx 4N\) for each test would be too big and too slow if done \(T\) times (up to \(10^4\) tests).  Instead, we use a *dynamic* (implicit) segment tree:
+
+- We never explicitly build all \(4N\) nodes.  
+- We store nodes in large preallocated arrays up to \(\approx 8.5\times 10^6\) or so, enough for all point‐updates across the entire run (the total of initial inserts plus further inserts/removes is \(\le 4\times 10^5\), each point‐update creating at most \(O(\log N)\) new nodes).  
+- An absent child‐pointer means “that entire segment is uniform \(1\) (missing)”.  When we need to update or traverse, we allocate (“newNode”) that child, initializing it to the all-`1` state for its subinterval length.
+
+Thus all updates and queries are \(O(\log N)\approx 21\) steps, and the total memory remains under the 512 MB limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    // Maximum value in the universe
+    static final int N = 2_000_000;
+    // Enough nodes to handle up to ~4e5 updates * log2(N) ~ 8.4e6
+    static final int MAXNODES = 8_500_000;
+
+    // Arrays for the implicit segment tree
+    static int[] lc = new int[MAXNODES];
+    static int[] rc = new int[MAXNODES];
+    static int[] pref = new int[MAXNODES];
+    static int[] suf  = new int[MAXNODES];
+    static int[] best = new int[MAXNODES];
+    static int poolPtr = 0; // next free node index
+
+    // Allocate a new node, initialize to "all-1" on a segment of given length
+    static int newNode(int len) {
+        int id = ++poolPtr;
+        lc[id] = rc[id] = 0;
+        pref[id] = suf[id] = best[id] = len;
+        return id;
+    }
+
+    /**
+     * Point-update: set M[pos] = val (0 or 1).
+     * node==0 means "this segment is all-1" and a node must be allocated.
+     * Returns the root index of the (sub)tree after update.
+     */
+    static int update(int node, int L, int R, int pos, int val) {
+        if (node == 0) {
+            node = newNode(R - L + 1);
+        }
+        if (L == R) {
+            // leaf
+            if (val == 1) {
+                pref[node] = suf[node] = best[node] = 1;
+            } else {
+                pref[node] = suf[node] = best[node] = 0;
+            }
+            return node;
+        }
+        int mid = (L + R) >>> 1;
+        if (pos <= mid) {
+            lc[node] = update(lc[node], L, mid, pos, val);
+        } else {
+            rc[node] = update(rc[node], mid + 1, R, pos, val);
+        }
+        // Pull up
+        int leftId  = lc[node],  rightId = rc[node];
+        int lLen = mid - L + 1,   rLen = R - mid;
+        // left child's data or default if missing
+        int lp = (leftId == 0 ? lLen : pref[leftId]);
+        int ls = (leftId == 0 ? lLen : suf[leftId]);
+        int lb = (leftId == 0 ? lLen : best[leftId]);
+        // right child's data or default if missing
+        int rp = (rightId == 0 ? rLen : pref[rightId]);
+        int rs = (rightId == 0 ? rLen : suf[rightId]);
+        int rb = (rightId == 0 ? rLen : best[rightId]);
+
+        pref[node] = (lp == lLen ? lLen + rp : lp);
+        suf[node]  = (rs == rLen ? rLen + ls : rs);
+        best[node] = Math.max(Math.max(lb, rb), ls + rp);
+
+        return node;
+    }
+
+    /**
+     * Find the leftmost position d in [L..R] where there is a
+     * block of k consecutive 1's (missing) in M.  We assume best[node]>=k.
+     * If node==0, that entire interval is all-1, so the answer is L.
+     */
+    static int query(int node, int L, int R, int k) {
+        if (node == 0) {
+            // entire [L..R] is all-1
+            return L;
+        }
+        if (L == R) {
+            // leaf and best[node]>=k implies k==1
+            return L;
+        }
+        int mid = (L + R) >>> 1;
+        int leftId  = lc[node];
+        int rightId = rc[node];
+        int lLen = mid - L + 1, rLen = R - mid;
+
+        int lb = (leftId  == 0 ? lLen : best[leftId]);
+        if (lb >= k) {
+            // we can fit the block entirely in the left child
+            return query(leftId, L, mid, k);
+        }
+        int ls = (leftId  == 0 ? lLen : suf[leftId]);
+        int rp = (rightId == 0 ? rLen : pref[rightId]);
+        if (ls + rp >= k) {
+            // a block that crosses mid
+            return mid - ls + 1;
+        }
+        // otherwise it must fit in the right child
+        return query(rightId, mid + 1, R, k);
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(new BufferedOutputStream(System.out));
+        int t = Integer.parseInt(in.readLine().trim());
+        
+        while (t-- > 0) {
+            // reset the root for this test
+            int root = 0;
+            // read initial set
+            int n = Integer.parseInt(in.readLine().trim());
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) {
+                int x = Integer.parseInt(st.nextToken());
+                // mark M[x]=0 (present)
+                root = update(root, 1, N, x, 0);
+            }
+
+            int m = Integer.parseInt(in.readLine().trim());
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(in.readLine());
+                char op = st.nextToken().charAt(0);
+                int v = Integer.parseInt(st.nextToken());
+                if (op == '+') {
+                    // insert v => M[v]=0
+                    root = update(root, 1, N, v, 0);
+                } else if (op == '-') {
+                    // remove v => M[v]=1
+                    root = update(root, 1, N, v, 1);
+                } else {
+                    // query k-load
+                    int k = v;
+                    // if the root's best < k, answer is N+1
+                    int b = (root == 0 ? N : best[root]);
+                    if (b < k) {
+                        out.println(N + 1);
+                    } else {
+                        int ans = query(root, 1, N, k);
+                        out.println(ans);
+                    }
+                }
+            }
+        }
+
+        out.flush();
+        out.close();
+    }
+}
+```
+
+**Explanation of Key Ideas**
+
+1.  We reduce the problem to finding the earliest length-\(k\) run of *missing* integers in \([1\ldots N]\), where \(N=2{,}000{,}000\).  
+2.  We maintain a segment tree on the binary array \(M\), where \(M[x]=1\) iff \(x\not\in S\), else \(0\).  
+3.  Each node stores  
+    - `pref`: longest prefix of 1’s in its segment,  
+    - `suf`: longest suffix of 1’s,  
+    - `best`: longest contiguous subarray of 1’s.  
+4.  A **point update** (flip a single \(M[x]\)) takes \(O(\log N)\).  
+5.  A **\(k\)-load query** also takes \(O(\log N)\):  
+   - if the root’s `best` is \(<k\), answer \(N+1\),  
+   - otherwise we descend to find the leftmost qualifying block.  
+6.  To avoid allocating a full static tree of size \(\approx 4N\), we use a *dynamic* (implicit) segment tree in large arrays.  A child pointer of 0 means “that child subtree is uniformly 1’s,” and is only allocated on demand, initialized to all‐1.  
+
+This yields \(O((n+m)\log N)\) time, comfortably fits the 3 s time limit and the 512 MB memory limit.

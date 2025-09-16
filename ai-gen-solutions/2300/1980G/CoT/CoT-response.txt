@@ -1,0 +1,285 @@
+**Analysis**
+
+We have a tree on \(n\) vertices with edge-weights \(w_e\).  We must process two kinds of queries:
+
+1.  “\(\widehat{}\;y\)”:  XOR **every** edge‐weight in the tree with \(y\).
+2.  “\(?\;v\;x\)”:  We imagine adding an extra edge \((v,u)\) of weight \(x\) for some \(u\neq v\).  That creates exactly one cycle, whose XOR‐sum of edge‐weights is
+\[
+   \bigl(\text{XOR‐sum of tree‐edges on the path }v\to u\bigr)
+   \;\oplus\; x.
+\]
+We get to choose \(u\neq v\) to **maximize** that cycle‐XOR.
+
+---
+
+### 1) Rewriting the cycle‐XOR
+
+Fix a root (say vertex 1) and let
+\[
+   f[i] \;=\;
+   \bigoplus_{\text{edges on the unique path }1\to i} w_e
+\]
+be the XOR‐prefix from the root to \(i\).  Then the XOR of the edges on the path \(v\to u\) is
+\[
+   f[v]\;\oplus\;f[u].
+\]
+Thus the cycle‐XOR, if we add \((v,u)\) of weight \(x\), is
+\[
+   \bigl(f[v]\oplus f[u]\bigr)\;\oplus\;x
+   \;=\;\bigl(f[u]\bigr)\;\oplus\;\bigl(f[v]\oplus x\bigr).
+\]
+Hence for a query “\(?\;v\;x\)” we must compute
+\[
+   \max_{u\neq v}\bigl\{\,f[u]\oplus (\,f[v]\oplus x)\bigr\}.
+\]
+Define
+\[
+   t_0 = f[v]\;\oplus\;x,
+\]
+and we want \(\max_{u\neq v}(f[u]\oplus t_0)\).  The only subtlety is we cannot pick \(u=v\).  
+
+---
+
+### 2) Handling the “\(\widehat{}\;y\)”‐updates
+
+When **every** edge‐weight \(w_e\) is XOR’ed by the same \(y\), each \(f[i]\) becomes
+\[
+   f[i]_{\mathrm{new}}
+   = \bigoplus_{e\in(1\to i)}(w_e\oplus y)
+   =\Bigl(\!\!\bigoplus_{e\in(1\to i)}w_e\Bigr)
+    \;\oplus\;(y\;\text{applied once per edge}). 
+\]
+Since the path \(1\to i\) has exactly \(\mathrm{depth}(i)\) edges, we get
+\[
+  f[i]_{\mathrm{new}}
+  =f[i]_{\mathrm{old}}
+  \;\oplus\;
+  \bigl(\mathrm{depth}(i)\bmod 2\bigr)\;y.
+\]
+Thus **all** odd‐depth vertices’ \(f[i]\) get XOR’ed by a running “odd‐tag,” call it \(\mathit{tagOdd}\).  Even‐depth vertices stay unchanged.  
+
+We only need to maintain that single integer \(\mathit{tagOdd}\).  Internally we keep the **original** \(f[i]\) in our data‐structure; when resolving a query we adjust by \(\mathit{tagOdd}\) if our chosen vertex \(u\) has odd depth, and likewise adjust \(t_0\) by \(\mathit{tagOdd}\) if \(v\) is odd depth.  One finds carefully that the final answer to 
+\[
+   \max_{u\neq v} \bigl(f[u]_{\mathrm{new}}\oplus t_{\mathrm{new}}\bigr)
+\]
+boils down to two tries—one for even-depth \(f\)-values, one for odd—and a small XOR by \(\mathit{tagOdd}\) on the “cross‐parity” side.
+
+---
+
+### 3) Data‐structure
+
+We use a binary‐trie of all \(f[i]\) values, but we keep two **count**‐fields in each node:
+- `cnt[0]` = how many even-depth values pass through
+- `cnt[1]` = how many odd-depth values pass through
+
+Insertion or deletion of a single \(f[i]\) does \(30\) steps (we only need bits \(29\ldots0\) since weights \(\le10^9\)).  
+A max‐XOR query with target \(t\) but restricted to parity \(p\in\{0,1\}\) also does \(30\) steps, always choosing a child branch that still has a positive `cnt[p]` if possible.
+
+To forbid \(u=v\) in the “same‐parity” branch, we simply remove \((f[v],p)\) from the trie temporarily, run the query, then re‐insert it.  Since each removal/insertion is \(O(30)\), the overall complexity is
+
+\- Building the trie of \(n\) values: \(O(n\cdot30)\).  
+\- Each “\(\widehat{ }\;y\)” update: \(O(1)\).  
+\- Each “\(?\;v\;x\)” query: \(O(30)\) — at most one remove, one re‐insert, one XOR‐max‐lookup, plus one more lookup for “other” parity.  
+
+With \(\sum n,\sum m\le2\cdot10^5\), this easily runs in time.  
+We allocate one big static array of about \(6.3\times10^6\) trie‐nodes so the memory fits well under the 512 MB limit (each node holds two children plus two counts).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXNODE = 6300000;
+    // For each node in the trie:
+    //   child[node][0 or 1] = index of that bit-child (0 if none)
+    //   cnt[node][0 or 1]   = how many values of even/odd‐depth pass here
+    static int[][] child = new int[MAXNODE][2];
+    static int[][] cnt   = new int[MAXNODE][2];
+    static int    totNodes = 1;  // next free trie‐node index
+    
+    // Insert or delete one fValue with parity p (0=even depth,1=odd depth)
+    static void trieUpdate(int root, int fValue, int p, int delta) {
+        // delta = +1 to insert, -1 to delete
+        int node = root;
+        cnt[node][p] += delta;
+        for (int bit = 29; bit >= 0; --bit) {
+            int b = (fValue >>> bit) & 1;
+            if (child[node][b] == 0) {
+                child[node][b] = totNodes++;
+            }
+            node = child[node][b];
+            cnt[node][p] += delta;
+        }
+    }
+    
+    // Query max XOR of t0 with any fValue of parity p in this trie
+    // Returns -1 if no such value
+    static int trieQuery(int root, int t0, int p) {
+        int node = root;
+        if (cnt[node][p] == 0) return -1;  // no values with parity p
+        int ans = 0;
+        for (int bit = 29; bit >= 0; --bit) {
+            int tb = (t0 >>> bit) & 1;
+            // we'd like to go to child[1-tb] if it has any p‐values
+            int want = 1 - tb;
+            if (child[node][want] != 0 && cnt[child[node][want]][p] > 0) {
+                ans |= (1 << bit);
+                node = child[node][want];
+            } else {
+                node = child[node][1 - want];
+            }
+        }
+        return ans;
+    }
+    
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        int T = Integer.parseInt(br.readLine().trim());
+        
+        // Adjacency storage for the tree
+        int[] head = new int[200_005];
+        int[] to   = new int[400_005];
+        int[] wgt  = new int[400_005];
+        int[] nxt  = new int[400_005];
+        
+        // f[i] = XOR‐prefix from root=1 to i
+        // depth[i] in the tree, we only care depth%2
+        int[] f = new int[200_005];
+        int[] depth = new int[200_005];
+        
+        StringBuilder output = new StringBuilder();
+        while (T-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            
+            // build adjacency
+            Arrays.fill(head, 1, n+1, -1);
+            int eidx = 0;
+            for (int i = 1; i < n; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                int w = Integer.parseInt(st.nextToken());
+                to[eidx] = v; wgt[eidx] = w; nxt[eidx] = head[u]; head[u] = eidx++;
+                to[eidx] = u; wgt[eidx] = w; nxt[eidx] = head[v]; head[v] = eidx++;
+            }
+            
+            // BFS to compute f[] and depth[]
+            Deque<Integer> dq = new ArrayDeque<>();
+            dq.add(1);
+            f[1] = 0;
+            depth[1] = 0;
+            boolean[] seen = new boolean[n+1];
+            seen[1] = true;
+            while (!dq.isEmpty()) {
+                int u = dq.poll();
+                for (int ed = head[u]; ed != -1; ed = nxt[ed]) {
+                    int v = to[ed];
+                    if (!seen[v]) {
+                        seen[v] = true;
+                        depth[v] = depth[u] + 1;
+                        f[v] = f[u] ^ wgt[ed];
+                        dq.add(v);
+                    }
+                }
+            }
+            
+            // Build a brand‐new trie for this test
+            int root = totNodes++;  
+            
+            // Insert all f[i], keep track of how many even/odd
+            int[] sz = new int[2];
+            for (int i = 1; i <= n; i++) {
+                int p = (depth[i] & 1);
+                trieUpdate(root, f[i], p, +1);
+                sz[p]++;
+            }
+            
+            int tagOdd = 0;  // the running XOR‐tag for odd‐depth f[i]
+            
+            // Process queries
+            for (int qi = 0; qi < m; qi++) {
+                st = new StringTokenizer(br.readLine());
+                String op = st.nextToken();
+                if (op.charAt(0) == '^') {
+                    int y = Integer.parseInt(st.nextToken());
+                    tagOdd ^= y; 
+                } else {
+                    int v = Integer.parseInt(st.nextToken());
+                    int x = Integer.parseInt(st.nextToken());
+                    int p = (depth[v] & 1);
+                    
+                    // t0 = f[v] ^ x in the *original*‐f sense
+                    int t0 = f[v] ^ x;
+                    
+                    // Case 1: pick u of SAME parity p, but we must not pick v itself.
+                    // If sz[p]>1, we can safely remove v, query, restore.
+                    int bestSame = -1;
+                    if (sz[p] > 1) {
+                        trieUpdate(root, f[v], p, -1);
+                        sz[p]--;
+                        bestSame = trieQuery(root, t0, p);
+                        trieUpdate(root, f[v], p, +1);
+                        sz[p]++;
+                    }
+                    
+                    // Case 2: pick u of OPPOSITE parity 1-p
+                    int bestOpp = -1;
+                    if (sz[1-p] > 0) {
+                        bestOpp = trieQuery(root, t0, 1 - p);
+                    }
+                    
+                    // The cycle‐XOR if we pick same‐parity u is exactly bestSame.
+                    // If we pick opposite‐parity u, the real XOR is bestOpp ^ tagOdd.
+                    int ansSame = (bestSame < 0 ? Integer.MIN_VALUE : bestSame);
+                    int ansOpp  = (bestOpp  < 0 ? Integer.MIN_VALUE : (bestOpp ^ tagOdd));
+                    int ans = Math.max(ansSame, ansOpp);
+                    
+                    output.append(ans).append(' ');
+                }
+            }
+            output.append('\n');
+        }
+        
+        System.out.print(output);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1.  **Prefix‐XOR array \(f[i]\).**  We root the tree at vertex 1 and do a BFS/DFS to set
+    \[
+       f[i]\;=\;\bigoplus\limits_{\text{edges on }1\to i} w_e,
+       \quad  
+       \text{depth}[i]\;=\;\text{number of edges on }1\to i.
+    \]
+
+2.  **Handling “\(\widehat{}\;y\)” updates.**  
+    XOR’ing every edge‐weight by \(y\) flips \(f[i]\) by \(y\) if and only if \(\mathrm{depth}(i)\) is odd.  
+    We keep a single integer `tagOdd` which is the XOR of all such \(y\)-updates so far:  
+      \[
+         f[i]_{\mathrm{current}}
+         = f[i]_{\mathrm{original}}
+         \;\oplus\;
+         \bigl(\mathrm{depth}(i)\bmod 2\bigr)\,\text{tagOdd}.
+      \]
+
+3.  **Answering “\(?\;v\;x\)” queries.**  
+    We want
+    \(\displaystyle
+       \max_{u\neq v}\Bigl(\,f[u]_{\mathrm{current}}
+         \;\oplus\;(f[v]_{\mathrm{current}}\oplus x)\Bigr).
+    \)
+    Setting
+    \[
+      t_0 = f[v]_{\mathrm{original}}\oplus x
+    \]
+    and noting that if \(u\) has the same parity depth mod 2 as \(v\), the two “tags” cancel, while if parity differs we must finally XOR with `tagOdd`.  
+    Hence we maintain a single binary‐trie of all original \(f[u]\) but with **two** counters in each node: how many even‐depth vs odd‐depth values pass there.  We can then do one max‐XOR lookup restricted to parity “\(=v\)” (temporarily removing \(v\) itself to avoid \(u=v\)), and one max‐XOR lookup restricted to parity “\(\neq v\).”
+
+This runs in \(O((n+m)\times30)\) time and uses about \(6.3\times10^6\) trie‐nodes, well within CF’s 512 MB/2.5 s limits.

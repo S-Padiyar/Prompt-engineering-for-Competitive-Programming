@@ -1,0 +1,2 @@
+Malformed secondary AI response for Problem ID 1987E, round 1:
+“Your deficit‐allocation logic is incorrect: after eating slack from high‐r children you immediately buy at rate r from the min‐r child even if it still has unused slack at cost 1. To fix it, treat each child as two “segments”—first up to s[c] units at cost 1, then infinite units at cost r[c]—put all segments in one list, sort by cost ascending, and buy exactly D units in that order, updating b[c] and s[c] accordingly. Please rewrite the solution accordingly and return one block of Java code.”

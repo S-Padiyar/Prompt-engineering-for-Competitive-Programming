@@ -1,0 +1,177 @@
+**Analysis**
+
+We have \(n\) strings (each of length \(m\)), and we want to pick a subsequence of these \(n\) strings (in their original order) to concatenate into one big string \(S\).  Call
+
+- \(x\) = the number of disjoint subsequences `"narek"` that Narek can greedily extract from \(S\).  Each full `"narek"` gives him \(+5\) points.
+- \(T\) = the total count in \(S\) of the letters `n`, `a`, `r`, `e`, or `k`.  Every such letter not used in a full `"narek"` (or even those used in an *incomplete* final attempt) gives ChatGPT \(+1\) point each.
+
+Thus the net score is
+
+\[
+\text{score} \;=\; 5x \;-\;(T - 5x)
+\;=\;10x \;-\; T.
+\]
+
+We wish to choose a subset of the \(n\) strings (in order) to maximize \(10x - T\).
+
+---
+
+### Key observation: 5-state DP
+
+Because `"narek"` has length 5, we keep a DP with 5 states, indexed by how many characters of `"narek"` we have *already* matched in our partial (unfinished) subsequence.  Call those states \(0,1,2,3,4\).  
+
+- State \(j\) means “we have just matched the prefix `narek[0..j-1]`, and are now waiting for `narek[j]`\).  
+- Whenever we reach \(j=5\), that means we completed one full `"narek"`, we add \(+1\) to the count of completed subsequences, and reset \(j\to0\).
+
+We maintain
+```
+dp[j] = the best value of  (10 * (#whole 'narek' so far) - totalPatternLettersSoFar)
+        if we end up in state j
+        after choosing some subset of the processed strings.
+```
+
+We initialize
+
+```
+dp[0] = 0
+dp[1..4] = -∞
+```
+
+and process the strings one by one.  For each new string \(s\), we do:
+
+1.  Precompute, for each incoming state \(j\in\{0,1,2,3,4\}\), what happens if we *append* \(s\) to our current large string when we are in state \(j\):
+   
+   - Let \(x_j\) = how many *full* `"narek"` completions occur while scanning \(s\) starting in partial state \(j\).
+   - Let `endState[j]` = the final partial state (a number in \(\{0,1,2,3,4\}\)) after scanning \(s\).
+   - Let \(T_s\) = the total number of pattern letters (`n`,`a`,`r`,`e`,`k`) in \(s\).
+
+   We can find these in \(O(m)\) per string by simulating the 5-state automaton.
+
+2.  We build a new DP array `newDp[]` initially copied from `dp[]` (representing the choice of *skipping* \(s\)).  
+   Then for each old state \(j\) with `dp[j]` not \(-\infty\), we consider *taking* \(s\):
+
+   ```
+   newState = endState[j]
+   gain = dp[j] + 10*x_j - T_s
+   newDp[newState] = max(newDp[newState], gain)
+   ```
+
+3.  We then set `dp = newDp` and move on to the next string.
+
+At the end, the answer is \(\max_{0\le j<5} dp[j]\).
+
+The time per string is \(O(m\cdot 5)\) to build the transition data plus \(O(5)\) to update the DP, and since the sum of \(n\cdot m\) over all test cases is up to \(10^6\), this easily runs in under 2 s.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder out = new StringBuilder();
+        
+        // The target pattern "narek"
+        char[] pattern = {'n','a','r','e','k'};
+        // Map each letter 'a'..'z' to its index in pattern or -1
+        int[] patIndex = new int[26];
+        Arrays.fill(patIndex, -1);
+        for (int i = 0; i < 5; i++) {
+            patIndex[pattern[i] - 'a'] = i;
+        }
+
+        final int NEG_INF = -(int)1e9;
+        
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            
+            // dp[j] = best value ending in partial-state j
+            int[] dp = new int[5];
+            for (int j = 1; j < 5; j++) dp[j] = NEG_INF;
+            dp[0] = 0;
+            
+            // Process each string
+            for (int i = 0; i < n; i++) {
+                String s = in.readLine();
+                
+                // Count T_s = how many of 'n','a','r','e','k' in s
+                int T_s = 0;
+                for (char c : s.toCharArray()) {
+                    if (patIndex[c - 'a'] != -1) {
+                        T_s++;
+                    }
+                }
+                
+                // Precompute transitions for each starting state j = 0..4
+                int[] endState = new int[5];
+                int[] fullCount = new int[5];
+                
+                for (int start = 0; start < 5; start++) {
+                    int idx = start;
+                    int completed = 0;
+                    for (char c : s.toCharArray()) {
+                        if (c == pattern[idx]) {
+                            idx++;
+                            if (idx == 5) {
+                                completed++;
+                                idx = 0;
+                            }
+                        }
+                    }
+                    endState[start] = idx;
+                    fullCount[start] = completed;
+                }
+                
+                // New DP array (copy for the "skip" case)
+                int[] newDp = dp.clone();
+                
+                // Try taking this string from each old state
+                for (int oldSt = 0; oldSt < 5; oldSt++) {
+                    if (dp[oldSt] == NEG_INF) continue;
+                    int ns = endState[oldSt];
+                    int gain = dp[oldSt] + 10 * fullCount[oldSt] - T_s;
+                    newDp[ns] = Math.max(newDp[ns], gain);
+                }
+                
+                // Commit
+                dp = newDp;
+            }
+            
+            // The answer is the best over all end-states
+            int ans = NEG_INF;
+            for (int j = 0; j < 5; j++) {
+                ans = Math.max(ans, dp[j]);
+            }
+            out.append(ans).append('\n');
+        }
+        
+        System.out.print(out.toString());
+    }
+}
+```
+
+**Explanation of the main steps**
+
+1. We map each letter `a..z` to its index in the pattern `"narek"` or \(-1\) if it is not one of `n,a,r,e,k`.
+2. We keep a DP array of size 5, where `dp[j]` is the best possible value  
+   \(\bigl(10\cdot(\#\text{full "narek"}) - T\bigr)\)  
+   when in the partial-match state \(j\).
+3. For each input string \(s\):
+   - We count `T_s`, the total number of pattern-letters in `s`.
+   - We simulate scanning `s` for each possible start state \(j\in[0..4]\).  
+     That yields
+     - `fullCount[j]` = how many complete `"narek"` subsequences one picks up in `s`
+     - `endState[j]` = final partial state after scanning `s`
+   - We build a new DP by either *skipping* \(s\) (keep the old dp) or *taking* \(s\):
+     ```
+     newDp[ endState[j] ] 
+       = max( newDp[ endState[j] ], dp[j] + 10*fullCount[j] - T_s )
+     ```
+4. In the end, the maximum over `dp[0..4]` is the answer for that test case.
+
+This runs in \(O\bigl(\sum n\cdot m\cdot 5\bigr)\) overall, which is \(\le 5\times10^6\) for the worst input, well within the 2 s time limit.

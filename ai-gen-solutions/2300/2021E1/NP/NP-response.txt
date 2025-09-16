@@ -1,0 +1,265 @@
+**Analysis**
+
+We have an undirected connected graph on \(n\) vertices and \(m\) edges, each edge \((u,v)\) carrying a “latency” (weight) \(w\).  Among the \(n\) vertices, \(p\) of them are “special” in that they need internet service.  We may place up to \(k\) servers on any \(k\) of the \(n\) vertices, and then each special‐vertex \(s\) chooses exactly one of the placed servers as its “provider.”  The cost (latency) that \(s\) experiences is the maximum edge‐weight along the unique path in the graph from \(s\) to its chosen server.  We want, for each \(k=1,2,\dots,n\), to place up to \(k\) servers so as to minimize the sum of the latencies of all \(p\) special vertices.
+
+Key observations:
+
+1.  **Minimax‐path metric = MST porosity metric.**  In any graph, the minimum over all paths of \(\max\{\text{edge‐weight on the path}\}\) between two vertices is realized by the unique path between them in any minimum‐spanning tree (MST).  In other words, if one builds an MST of the graph, then the “bottleneck distance”  
+   \[
+     d_{\min\max}(u,v)\;=\;\min_{\pi\,:u\to v}\;\max_{e\in\pi}w(e)
+   \]
+   is exactly the maximum edge weight along the unique \(u\to v\) path in the MST.
+
+2.  **Reconstruction (ultrametric) tree.**  If we run Kruskal’s MST algorithm, every time we merge two components at edge‐weight \(w\), we can think of building a binary “reconstruction tree” node labeled by \(w\), whose two children are the two old component‐roots.  In the end we obtain a rooted binary tree with \(2n-1\) nodes (the original \(n\) leaves plus \(n-1\) internal merges), where every leaf corresponds to an original vertex (latency \(0\)) and every internal node has a label \(w\).  One checks that the bottleneck distance between two leaves \(u,v\) is exactly the label of \(\mathrm{LCA}(u,v)\) in that reconstruction tree.  This makes the metric ultrametric.
+
+3.  **Dynamic programming on the reconstruction tree.**  Let us root that reconstruction tree at its final merge.  We want to choose up to \(k\) leaves as server‐locations.  Each special leaf \(s\) will be “served” at the LCA of \(s\) with the nearest chosen leaf in the tree, and it pays the LCA’s label.  
+   
+   We do a bottom‐up DP.  At any node \(u\) (which represents some union of leaves), let
+   \[
+     \begin{aligned}
+       \mathrm{dp0}_u[b] 
+         &=\text{ minimal cost in subtree \(u\) if we place 0 centers inside \(u\),}
+                  \\[-.5ex]
+         &\quad\text{and leave exactly \(b\) special‐leaves in \(u\) unserved (to be served above \(u\)).}\\
+       \mathrm{dp1}_u[c] 
+         &=\text{ minimal cost in subtree \(u\) if we place \(c>0\) centers inside \(u\) and}
+                  \\[-.5ex]
+         &\quad\text{serve *all* specials of \(u\) already inside \(u\).}
+     \end{aligned}
+   \]
+   At a leaf \(u\), if it is special, we have
+     dp0\[1\]=0 (no center, one special left unserved),
+     dp1\[1\]=0 (one center→itself, no cost),
+     dp0\[0\]=0 (we may also leave zero specials if we do nothing there, that just costs 0).
+   If it is not special, we have only dp0\[0\]=0 and dp1\[1\]=0 (we may place a center there, but it serves no special).
+
+   When we merge two children \(v\), \(w\) at a new node \(u\) whose edge‐weight label is \(W\), we convolve their \(\mathrm{dp0}\)/\(\mathrm{dp1}\) pairs.  One carefully handles the four logical cases of how many centers in \(v\) vs.\ \(w\), and how many unserved specials remain, and when at \(u\) those unserved specials get matched to centers in the sibling‐subtree (thus paying \(W\) each).  A correct double‐convolution in \(O((\ell_v{+}s_v)\times(\ell_w{+}s_w))\) time per merge (where \(\ell\) is leaf‐count, \(s\) special‐count) leads to an overall \(O(n^3)\) since there are \(n{-}1\) merges and \(\sum n^2\le10^8\).  
+
+   At the root, \(\mathrm{dp1}_{\mathrm{root}}[c]\) is precisely the minimum cost if we place exactly \(c\) centers in the whole tree (hence *all* specials are served).  We read off those values for \(c=1,2,\dots,n\).  Once \(c\ge p\), one can obviously serve each special by its own center for cost \(0\), so all further entries are zero.
+
+Because \(n\le400\), \(m\le400\), and \(\sum n^3\le10^8\), this \(O(n^3)\) per test approach comfortably runs in 2 s.  
+
+Below is a concise Java implementation using the above ideas.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final long INF = (long)1e18;
+    static int n, m, p;
+    static int[] special;
+    
+    // For the reconstruction tree we will have up to 2n-1 nodes:
+    static int MAX = 800;
+    static int[] leftSon = new int[MAX], rightSon = new int[MAX];
+    static long[] label = new long[MAX];
+    static int[] dsu = new int[MAX];
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter pw = new PrintWriter(System.out);
+        int T = Integer.parseInt(br.readLine().trim());
+        
+        while (T-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            n = Integer.parseInt(st.nextToken());
+            m = Integer.parseInt(st.nextToken());
+            p = Integer.parseInt(st.nextToken());
+            
+            special = new int[n+1];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < p; i++) {
+                int s = Integer.parseInt(st.nextToken());
+                special[s] = 1;
+            }
+            
+            // Read edges
+            Edge[] edges = new Edge[m];
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                long w = Long.parseLong(st.nextToken());
+                edges[i] = new Edge(u, v, w);
+            }
+            Arrays.sort(edges);
+            
+            // Initialize DSU
+            int tot = n;  // We'll create internal nodes numbered n+1, n+2, ...
+            for (int i = 1; i <= 2*n; i++) {
+                dsu[i] = i;
+                leftSon[i] = rightSon[i] = 0;
+                label[i] = 0;
+            }
+            
+            // Build reconstruction tree by Kruskal
+            for (Edge e : edges) {
+                int ru = find(e.u);
+                int rv = find(e.v);
+                if (ru != rv) {
+                    tot++;
+                    label[tot] = e.w; // internal node's label
+                    leftSon[tot] = ru;
+                    rightSon[tot] = rv;
+                    dsu[ru] = tot;
+                    dsu[rv] = tot;
+                    dsu[tot] = tot;
+                }
+            }
+            
+            // The root is the dsu-find of any leaf, say 1:
+            int root = find(1);
+            
+            // Now do the DP on that binary tree:
+            DP res = dfs(root);
+            
+            // res.dp1[c] is min cost using exactly c centers, all specials covered.
+            // Once c >= p, cost is 0 (we can place a center at each special).
+            for (int c = 1; c <= n; c++) {
+                long ans = INF;
+                if (c < res.dp1.length) ans = res.dp1[c];
+                if (c >= p) ans = 0;  // can always zero out if we have at least p centers
+                pw.print(ans + (c == n ? "\n" : " "));
+            }
+            
+            // clear special marks
+            for (int i = 1; i <= n; i++) special[i] = 0;
+        }
+        
+        pw.flush();
+    }
+    
+    // DSU find with path‐compression
+    static int find(int x) {
+        if (dsu[x] != x) dsu[x] = find(dsu[x]);
+        return dsu[x];
+    }
+    
+    // The DP return: dp0[b] = cost if 0 centers in subtree, b specials left unserved
+    //                dp1[c] = cost if c>0 centers in subtree and all specials served
+    // plus leafCount, specialCount.
+    static class DP {
+        long[] dp0, dp1;
+        int leafCount, specCount;
+    }
+    
+    static DP dfs(int u) {
+        DP cur = new DP();
+        
+        // If it's a leaf
+        if (leftSon[u] == 0 && rightSon[u] == 0) {
+            // leafCount = 1
+            cur.leafCount = 1;
+            cur.specCount = special[u];
+            
+            // dp0 size = specCount+1
+            cur.dp0 = new long[cur.specCount + 1];
+            Arrays.fill(cur.dp0, INF);
+            
+            // dp1 size = leafCount+1 = 2
+            cur.dp1 = new long[cur.leafCount + 1];
+            Arrays.fill(cur.dp1, INF);
+            
+            // case: no center, 0 specials unserved
+            cur.dp0[0] = 0;
+            // if leaf is special, we can leave it unserved:
+            if (cur.specCount == 1) cur.dp0[1] = 0;
+            // place 1 center => serve itself at cost 0
+            cur.dp1[1] = 0;
+            
+            return cur;
+        }
+        
+        // otherwise internal node
+        DP L = dfs(leftSon[u]);
+        DP R = dfs(rightSon[u]);
+        
+        cur.leafCount = L.leafCount + R.leafCount;
+        cur.specCount = L.specCount + R.specCount;
+        
+        cur.dp0 = new long[cur.specCount + 1];
+        cur.dp1 = new long[cur.leafCount + 1];
+        Arrays.fill(cur.dp0, INF);
+        Arrays.fill(cur.dp1, INF);
+        
+        long W = label[u];  // cost to serve at this merge
+        
+        // Case 4: c=0 centers overall in u => combine dp0 of children
+        for (int bL = 0; bL <= L.specCount; bL++) {
+            if (L.dp0[bL] >= INF) continue;
+            for (int bR = 0; bR <= R.specCount; bR++) {
+                if (R.dp0[bR] >= INF) continue;
+                int b = bL + bR;
+                long cost = L.dp0[bL] + R.dp0[bR];
+                if (cost < cur.dp0[b]) cur.dp0[b] = cost;
+            }
+        }
+        
+        // Case 2: cv>0, cw=0 => we place cv centers in L, none in R
+        // any unserved in R must now be served at u, paying W each
+        for (int cL = 1; cL <= L.leafCount; cL++) {
+            if (L.dp1[cL] >= INF) continue;
+            for (int bR = 0; bR <= R.specCount; bR++) {
+                if (R.dp0[bR] >= INF) continue;
+                long cost = L.dp1[cL] + R.dp0[bR] + W * bR;
+                if (cost < cur.dp1[cL]) cur.dp1[cL] = cost;
+            }
+        }
+        
+        // Case 3: cv=0, cw>0
+        for (int cR = 1; cR <= R.leafCount; cR++) {
+            if (R.dp1[cR] >= INF) continue;
+            for (int bL = 0; bL <= L.specCount; bL++) {
+                if (L.dp0[bL] >= INF) continue;
+                long cost = R.dp1[cR] + L.dp0[bL] + W * bL;
+                if (cost < cur.dp1[cR]) cur.dp1[cR] = cost;
+            }
+        }
+        
+        // Case 1: cv>0 && cw>0 => all specials in both subtrees are served below
+        for (int cL = 1; cL <= L.leafCount; cL++) {
+            if (L.dp1[cL] >= INF) continue;
+            for (int cR = 1; cR <= R.leafCount; cR++) {
+                if (R.dp1[cR] >= INF) continue;
+                int c = cL + cR;
+                long cost = L.dp1[cL] + R.dp1[cR];
+                if (cost < cur.dp1[c]) cur.dp1[c] = cost;
+            }
+        }
+        
+        return cur;
+    }
+    
+    // Edge structure + sort by weight
+    static class Edge implements Comparable<Edge> {
+        int u, v;
+        long w;
+        Edge(int u, int v, long w) { this.u = u; this.v = v; this.w = w; }
+        public int compareTo(Edge o) {
+            return Long.compare(this.w, o.w);
+        }
+    }
+}
+```
+
+**Explanation of the Main Steps**
+
+1. **Build the MST via Kruskal**, but *also* maintain a “reconstruction tree.”  Whenever Kruskal merges two components \(A\), \(B\) at edge‐weight \(w\), we create a fresh internal node \(x\) with label `label[x]=w` and children pointing to the two current roots of \(A\) and \(B\).  This yields a rooted binary tree with \(2n-1\) nodes: the original \(n\) vertices as leaves (labelled 1..\(n\), label=0) plus \(n-1\) internal merges (label>0).
+
+2. **Ultrametric property.**  For any two original vertices \(u,v\), their “bottleneck distance” \(\min_{\pi}\max_{e\in\pi}w(e)\) in the graph coincides with the label at their LCA in the reconstruction tree.  Hence the problem of assigning each special to the nearest server (in the minimax sense) turns into a tree‐LCA cost problem.
+
+3. **DP on the tree.**  We do a post‐order (DFS) on the reconstruction tree.  At each node \(u\) we maintain two arrays
+
+    - `dp0[b] =` the minimum total cost in the subtree of \(u\) if we place **zero** server‐leaves under \(u\) and hence leave exactly \(b\) special‐leaves **unserved** (so they must climb above \(u\) to find a server).
+    - `dp1[c] =` the minimum total cost if we place **exactly** \(c>0\) server‐leaves under \(u\) and thereby manage to serve *all* special‐leaves under \(u\) **within** that subtree.
+
+    When two children \(v\), \(w\) merge at a node labelled \(W\), we do a 4‐way convolution:
+    1. **(0, 0)** combine `dp0` of both children to get `dp0` of the parent,
+    2. **(>0, 0)** i.e.\ servers in the left child only → any unserved specials in the right child get served at cost \(W\) each,
+    3. **(0, >0)** symmetrically,
+    4. **(>0, >0)** servers in both children serve all specials below them without ever having to pay \(W\).
+
+4. **Extract answers.**  At the root, `dp1[c]` is exactly the cost if we use \(c\) servers in total (and thus serve all specials).  We print `dp1[1],dp1[2],…,dp1[n]`.  Of course as soon as \(c\ge p\) we can just put a server on each special and get cost \(0\).
+
+This runs in \(O(n^3)\) per test, which is fine up to \(n\approx400\) under a 2 s limit.

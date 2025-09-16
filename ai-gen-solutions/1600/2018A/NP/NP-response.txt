@@ -1,0 +1,186 @@
+**Analysis**
+
+We have n types of cards. For each type i we already have a_i cards (0≤a_i≤10¹⁰), and we may buy up to k more cards (k≤10¹⁶), of any types we wish.  After buying, we must split _all_ our cards (the originals plus the ones purchased) into decks so that:
+
+1. All decks have the same size, say x.
+2. No deck has two cards of the same type.
+
+We wish to make x as large as possible.
+
+---
+
+Key observations:
+
+1. **Deck‐size ≤ n.**  
+   Each deck has x distinct cards, and there are only n types, so obviously 0 < x ≤ n.
+
+2. **Number of decks t and type‐counts ≤ t.**  
+   Let after buying we have new counts \(b_i\ge a_i\).  We will have some integer number of decks \(t\), each of size \(x\).  Hence total cards
+   \[
+     \sum_i b_i \;=\; t\cdot x.
+   \]
+   Furthermore, since in each deck you can use at most one card of type i, you must have
+   \[
+     b_i \;\le\; t
+     \quad\text{for every }i,
+   \]
+   otherwise you would have `b_i>t` cards of type i but only \(t\) decks, so you couldn't place them all without repeating a type in some deck.
+
+3. **No discarding, only buying.**  
+   We cannot discard cards, so \(b_i\ge a_i\).  Buying costs are
+   \[
+     \sum_i (b_i - a_i)\;\le\;k.
+   \]
+
+Putting these together, for a chosen deck‐size x we look for some integer number of decks t for which all conditions can be met:
+
+- \(t\) must be large enough that no original pile \(a_i\) exceeds it:
+  
+  \[
+    t \;\ge\; \max_i\,a_i =: M.
+  \]
+
+- We must have enough total cards (original + bought) to fill \(t\) decks of size \(x\):
+  
+  \[
+    t\cdot x \;-\;\sum_i a_i \;\ge 0
+    \quad\text{(buy nonnegative number of cards)}
+  \]
+  
+  and
+  \[
+    t\cdot x \;-\;\sum_i a_i \;\le k
+    \quad\text{(we cannot spend more than \(k\) coins).}
+  \]
+
+- Finally \(x\le n\).
+
+Thus for a fixed \(x\in[1,n]\) define
+
+\[
+  \mathrm{SA} = \sum_{i=1}^n a_i,
+  \quad
+  M = \max_{i=1}^n a_i.
+\]
+
+We need an integer \(t\) satisfying
+
+1. \(t\ge M\),
+2. \(t\,x \ge \mathrm{SA}\),
+3. \(t\,x \le \mathrm{SA} + k\).
+
+That is,
+
+\[
+  t \;\ge\; \max\!\bigl(M,\;\lceil \tfrac{\mathrm{SA}}{x}\rceil \bigr),
+  \quad
+  t \;\le\; \Bigl\lfloor \tfrac{\mathrm{SA}+k}{x}\Bigr\rfloor.
+\]
+
+If there is any integer \(t\) in that range, then deck‐size \(x\) is _achievable_; otherwise it is not.
+
+Since \(x\le n\le 2\cdot10^5\), we can binary‐search on \(x\) in \([1,n]\).  For each candidate \(x\) we compute
+
+- \(\mathrm{low}_t = \max\bigl(M,\;\lceil\mathrm{SA}/x\rceil\bigr)\),
+- \(\mathrm{high}_t = \lfloor(\mathrm{SA}+k)/x\rfloor\).
+
+If \(\mathrm{low}_t\le \mathrm{high}_t\), then \(x\) is feasible; otherwise it is not.  We pick the maximum feasible \(x\).  Each feasibility check is \(O(1)\), so the total per test is \(O(n + \log n)\), and over all tests still fits well within the limits.
+
+---
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+            
+            long[] a = new long[n];
+            st = new StringTokenizer(in.readLine());
+            long sumA = 0, maxA = 0;
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+                sumA += a[i];
+                if (a[i] > maxA) {
+                    maxA = a[i];
+                }
+            }
+            
+            // Binary search for the largest deck-size x in [1..n]
+            int lo = 1, hi = n;
+            while (lo < hi) {
+                int mid = (lo + hi + 1) >>> 1;  // upper middle
+                if (can(mid, sumA, maxA, k)) {
+                    lo = mid;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            
+            sb.append(lo).append('\n');
+        }
+        
+        System.out.print(sb);
+    }
+    
+    /**
+     * Check if deck-size x is feasible.
+     * We need an integer t such that:
+     *   t >= maxA
+     *   t >= ceil(sumA / x)
+     *   t <= floor((sumA + k) / x)
+     */
+    static boolean can(int x, long sumA, long maxA, long k) {
+        // minimal t we require
+        long need1 = maxA;
+        long need2 = (sumA + x - 1) / x;   // ceil(sumA / x)
+        long lowT = Math.max(need1, need2);
+        // maximal t allowed by our budget
+        long highT = (sumA + k) / x;
+        return lowT <= highT;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Reading Input**  
+   We read the number of test cases \(t\).  For each test we read:
+   - \(n\), the number of card‐types.
+   - \(k\), the maximum number of cards we may buy.
+   - An array \(a_1,\dots,a_n\) giving the current counts of each type.
+
+2. **Precompute \(\mathrm{sumA}\), \(\mathrm{maxA}\)**  
+   We compute
+   \[
+     \mathrm{sumA} = \sum_i a_i,\quad
+     \mathrm{maxA} = \max_i a_i.
+   \]
+
+3. **Binary‐Search over \(x\in[1,n]\)**  
+   We want the maximum deck‐size \(x\).  For each trial \(x\) we check feasibility in \(O(1)\) by seeing if there exists
+   \[
+     t \;\in\; \Bigl[\max\!\bigl(\maxA,\lceil\mathrm{sumA}/x\rceil\bigr)\,,\;
+                       \bigl\lfloor(\mathrm{sumA}+k)/x\bigr\rfloor\Bigr].
+   \]
+   If that interval is nonempty, \(x\) is feasible, otherwise it is not.
+
+4. **Why This Works**  
+   - We must have exactly \(t\) decks, each of size \(x\), so total cards \(\sum b_i = t\,x\).  
+   - We cannot exceed \(k\) purchases, so \(t\,x - \mathrm{sumA} \le k\).  
+   - Also no deck may contain two cards of the same type, and we must use _all_ cards we own (we cannot discard).  Hence for each type \(i\) with final count \(b_i\ge a_i\), we need \(b_i \le t\).  In particular \(a_i \le t\) for each \(i\), so \(t\ge\maxA\).  
+   - Finally, to use all original cards we must have \(t\,x\ge \mathrm{sumA}\).  
+
+That leads precisely to the two‐sided bound on \(t\).  Binary‐search on \(x\) is efficient because \(n\le2\cdot10^5\) and the sum of all \(n\)'s over all tests is also \(\le2\cdot10^5\).
+
+This solves the problem in \(O((\sum n)\log n)\) time, well within the limits.

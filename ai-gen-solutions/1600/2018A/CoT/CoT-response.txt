@@ -1,0 +1,166 @@
+**Analysis**
+
+We have \(n\) types of cards, with \(a_i\) cards of value \(i\).  We may buy up to \(k\) additional cards of any types we like (still values in \([1\ldots n]\)), then we must split *all* our cards into decks so that:
+
+1. Every deck has the *same* size \(s\).
+2. No deck contains two cards of the same value.
+3. We use *all* cards (including those we bought).
+
+We want to maximize the deck‐size \(s\).
+
+---
+
+**Key observations**
+
+1.  After buying, let the total number of cards be
+   \[
+     T \;=\;\sum_{i=1}^n a_i\;+\;\text{(number bought)}\;\le\;\sum a_i + k.
+   \]
+   We must partition those \(T\) cards into decks each of size \(s\).  So the number of decks is
+   \[
+     m \;=\; \frac{T}{s}
+   \]
+   which must be an integer.
+
+2.  Because no deck may contain two cards of the same value, *each* type \(i\) can contribute *at most* one card to each deck.  Hence in total across all \(m\) decks, type \(i\) can contribute at most \(m\) cards.  But we must use *all* cards we hold.  Thus if we hold \(b_i\) cards of type \(i\), we need
+   \[
+     b_i \;\le\; m
+     \quad\text{for each }i,
+   \]
+   otherwise the “extra” cards of that type cannot be assigned to any deck.
+
+   Since \(b_i = a_i + (\text{bought of type }i)\), and we may only buy nonnegative numbers, we get the requirement
+   \[
+     a_i \;\le\; m
+     \quad\text{for every }i,
+   \]
+   i.e.
+   \[
+     m \;\ge\;\max_i\,a_i.
+   \]
+
+3.  Finally, to make the total number of cards equal to \(m\cdot s\), we must buy exactly
+   \[
+     \sum_i b_i \;-\;\sum_i a_i
+     \;=\;m\,s \;-\;\sum_i a_i
+     \;\le\; k.
+   \]
+   Summarizing, for a chosen deck‐size \(s\) and a chosen number of decks \(m\), the necessary and sufficient conditions to be able to buy cards and then partition are:
+
+   (i)  \(m\ge \max_{i}a_i\).  
+   (ii) \(\sum a_i \;\le\; m\,s\;\le\;\sum a_i + k\).  
+   (iii) \(m\,s\) is an integer multiple of \(s\) by definition of \(m\).
+
+4.  Since \(m\,s \ge \sum a_i\), we get
+   \[
+     m \;\ge\; \bigl\lceil\frac{\sum a_i}{s}\bigr\rceil,
+   \]
+   and from \(m\,s \le \sum a_i + k\) we get
+   \[
+     m \;\le\;\Bigl\lfloor\frac{\sum a_i + k}{s}\Bigr\rfloor.
+   \]
+   We also need
+   \[
+     m \;\ge\;\max_i a_i.
+   \]
+   So define
+   \[
+     L(s) \;=\;\max\!\Bigl(\max_i a_i,\;\bigl\lceil\tfrac{\sum a_i}{s}\bigr\rceil\Bigr),
+     \quad
+     R(s) \;=\;\Bigl\lfloor\tfrac{\sum a_i + k}{s}\Bigr\rfloor.
+   \]
+   Then \(s\) is *feasible* exactly when \(L(s)\le R(s)\).
+
+5.  Finally, one can show feasibility is monotonic in \(s\):  if a certain \(s\) is feasible, then any smaller \(s'\!<s\) is also feasible.  Thus we can binary‐search on \(s\) in the range \([1\ldots n]\) to find the maximum feasible deck‐size.
+
+---
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.StringTokenizer;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(in.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+
+            st = new StringTokenizer(in.readLine());
+            long sumA = 0;
+            long maxA = 0;
+            for (int i = 0; i < n; i++) {
+                long a = Long.parseLong(st.nextToken());
+                sumA += a;
+                if (a > maxA) maxA = a;
+            }
+
+            // Binary search for the maximum feasible s in [1..n]
+            int left = 1, right = n, ans = 1;
+            while (left <= right) {
+                int mid = (left + right) >> 1;
+                if (isFeasible(mid, sumA, maxA, k)) {
+                    ans = mid;
+                    left = mid + 1;
+                } else {
+                    right = mid - 1;
+                }
+            }
+
+            sb.append(ans).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+
+    /**
+     * Check if a deck size s is feasible.
+     *
+     * We need some integer m such that
+     *   (1) m >= maxA
+     *   (2) ceil(sumA/s) <= m <= floor((sumA + k)/s)
+     *
+     * Denote
+     *   L = max( maxA, ceil(sumA/s) )
+     *   R =     floor((sumA + k)/s)
+     * Then s is feasible iff L <= R.
+     */
+    static boolean isFeasible(int s, long sumA, long maxA, long k) {
+        // Compute ceil(sumA / s)
+        long low1 = (sumA + s - 1) / s;
+        long L = Math.max(maxA, low1);
+        long R = (sumA + k) / s;
+        return L <= R;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Reading Input**  
+   We read \(t\) test‐cases.  For each, we read \(n\), \(k\), then the array \(a\) of length \(n\).
+
+2. **Precompute**  
+   - `sumA = a_1 + a_2 + ⋯ + a_n`  
+   - `maxA = max(a_1, a_2, …, a_n)`
+
+3. **Checking Feasibility**  
+   For a candidate deck‐size `s`, we must find an integer \(m\) so that all the conditions listed above are met.  This reduces to checking
+   \[
+     \max\!\Bigl(\maxA,\;\lceil sumA/s\rceil\Bigr)
+     \;\;\le\;
+     \lfloor (sumA + k)/s\rfloor.
+   \]
+
+4. **Binary Search**  
+   Since feasibility of \(s\) is monotonic in \(s\) (every smaller \(s\) remains feasible if a larger \(s\) is feasible), we can binary‐search \(s\) in \([1..n]\) for the maximum feasible value in \(O(\log n)\) steps per test.
+
+This runs in \(O(n + \log n)\) per test, which is efficient for \(\sum n \le 2\cdot 10^5\) and up to \(10^4\) test‐cases.

@@ -1,0 +1,166 @@
+**Analysis**
+
+We have a text string \(s\) of length \(n\) over an alphabet of size \(c\le18\).  Words in the language have length at most \(k\), and each word’s “case” is determined uniquely by its last character.  Equivalently, if we pick a set \(E\) of letters to be the allowed word‐end letters, then we must be able to cut the string \(s\) into consecutive blocks (words) of length \(\le k\), each ending in one of those letters in \(E\).
+
+We want to choose \(E\subseteq\{0,1,\dots,c-1\}\) of minimum size so that such a segmentation is possible.  A well–known necessary and sufficient condition for segmentability (with max word length \(k\)) is:
+
+1.  **No gap constraint**:  in *every* window of \(k\) consecutive letters of the text, at least one letter must come from \(E\).  Otherwise you would have a run of \(k\) letters none of which can end a word, so you cannot place a cut in that window.
+
+2.  **End‐of‐string constraint**: the very last letter \(s_n\) must itself lie in \(E\), so that the final short word (of length \(\le k\)) can legally end in an allowed case.
+
+Thus the problem reduces to a small‐universe hitting‐set: we have a universe of \(c\) letters, and we have a collection of sets
+
+-  for each window of length \(k\), \(W_i = \{\text{letters in positions }i,i+1,\dots,i+k-1\}\);
+-  one more set \(W_{\mathrm{end}} = \{\,s_n\}\).
+
+We want the smallest \(E\) that “hits” every \(W_i\): that is, \(E\cap W_i\neq\emptyset\) for all \(i\).
+
+Since \(c\le18\), we can represent subsets of letters by bitmasks \(0\le M<(1\ll c)\).  We define:
+
+-  For each window \(W_i\), let 
+   \[
+     M_i = \sum_{x\in W_i} 2^x
+     \quad\text{(the bitmask of letters in that window).}
+   \]
+  Its complement w.r.t.\ the full \(c\)-bit mask \((1\ll c)-1\) is
+  \[
+     A_i \;=\;\bigl((1\ll c)-1\bigr)\;\oplus\;M_i,
+  \]
+  the set of letters *not* appearing in that window.
+-  A candidate end‐set \(E\) (bitmask) *fails* to hit \(W_i\) exactly when \(E\cap W_i=\emptyset\), i.e.\ when \(E\subseteq A_i\).  
+
+Hence if we mark `bad[A_i] = true`, then *any* \(E\) which is a subset of \(A_i\) is invalid.  Finally we do the same for the one‐letter end‐window \(\{s_n\}\), i.e.\ compute 
+\[
+   A_{\mathrm{end}} \;=\; ((1\ll c)-1)\;\oplus\;(1\ll (s_n)),
+\]
+and `bad[A_end] = true`.
+
+After gathering all these “bad” masks \(A\), we then mark every submask of each bad \(A\) itself as invalid (because any \(E\subseteq A\) fails that constraint).  In the end we scan all masks \(E\in[0,2^c)\), ignore those marked invalid, and take the one with smallest popcount.
+
+Because \(\sum 2^c\le2^{18}\approx2.6\times10^5\) and \(\sum n\le2^{18}\), the total clearing and mask–scanning runs in a few \(10^5\)-\(10^6\) steps overall, which is perfectly fine for \(t\le10^4\).
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        // Fast input
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(br.readLine().trim());
+        // We will reuse two boolean arrays up to size 2^18.
+        final int MAXC = 18;
+        final int MAXMASK = 1 << MAXC;
+        boolean[] bad = new boolean[MAXMASK];
+        boolean[] invalid = new boolean[MAXMASK];
+
+        while (t-- > 0) {
+            String[] parts = br.readLine().split(" ");
+            int n = Integer.parseInt(parts[0]);
+            int c = Integer.parseInt(parts[1]);
+            int k = Integer.parseInt(parts[2]);
+            String s = br.readLine().trim();
+
+            int fullMask = (1 << c) - 1;
+            int Msize = 1 << c;  // we'll only use [0..Msize-1]
+            
+            // Clear bad[] and invalid[] up to Msize
+            for (int m = 0; m < Msize; m++) {
+                bad[m] = false;
+                invalid[m] = false;
+            }
+
+            // Build the windows of length k (or if k > n, just the whole string once).
+            int[] freq = new int[c];
+            int windowMask = 0;
+
+            if (k >= n) {
+                // Only one window: the entire string [0..n-1]
+                for (int i = 0; i < n; i++) {
+                    int letter = s.charAt(i) - 'A';
+                    if (++freq[letter] == 1) {
+                        windowMask |= (1 << letter);
+                    }
+                }
+                int A = fullMask ^ windowMask;
+                bad[A] = true;
+            } else {
+                // Build first window [0..k-1]
+                for (int i = 0; i < k; i++) {
+                    int letter = s.charAt(i) - 'A';
+                    if (++freq[letter] == 1) {
+                        windowMask |= (1 << letter);
+                    }
+                }
+                // Slide from i=0..n-k
+                bad[fullMask ^ windowMask] = true;
+                for (int i = 1; i <= n - k; i++) {
+                    // remove s[i-1], add s[i+k-1]
+                    int oldLet = s.charAt(i - 1) - 'A';
+                    if (--freq[oldLet] == 0) {
+                        windowMask &= ~(1 << oldLet);
+                    }
+                    int newLet = s.charAt(i + k - 1) - 'A';
+                    if (++freq[newLet] == 1) {
+                        windowMask |= (1 << newLet);
+                    }
+                    bad[fullMask ^ windowMask] = true;
+                }
+            }
+
+            // Also enforce final‐letter constraint: s[n-1] must be in E
+            int lastLetter = s.charAt(n - 1) - 'A';
+            int Aend = fullMask ^ (1 << lastLetter);
+            bad[Aend] = true;
+
+            // Mark all submasks of a bad mask as invalid
+            for (int A = 0; A < Msize; A++) {
+                if (bad[A]) {
+                    // iterate all submasks of A
+                    int sub = A;
+                    do {
+                        invalid[sub] = true;
+                        sub = (sub - 1) & A;
+                    } while (sub != A);
+                }
+            }
+
+            // Scan for the valid mask with minimal popcount
+            int answer = c;  // at worst, we need all c letters
+            for (int m = 0; m < Msize; m++) {
+                if (!invalid[m]) {
+                    int pc = Integer.bitCount(m);
+                    if (pc < answer) {
+                        answer = pc;
+                        if (answer == 0) break; // can't do better than 0
+                    }
+                }
+            }
+
+            out.println(answer);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Windows & “bad” masks**  
+   We slide a window of length \(k\) over the string \(s\).  For each window we compute the bitmask \(M\) of letters present; its complement \(A = (\text{all-ones})\oplus M\) is the set of *forbidden* letters (those not appearing in the window).  If we chose an ending‐set \(E\subseteq A\), then \(E\) would have no letter in the window, so we could not cut a word there.  Hence every \(E\subseteq A\) is invalid; we mark `bad[A] = true`.
+
+2. **Final‐letter requirement**  
+   Even if all length-\(k\) windows have a cut possibility, to cover the final (shorter) tail \((\le k\)) we *must* end on \(s_n\).  Thus we also mark the single-letter window \(\{s_n\}\) in the same fashion.
+
+3. **Submask sweeping**  
+   Once we know which coarse masks `bad[A]` occur, *any* submask of such an \(A\) is also invalid.  We enumerate all submasks of each such \(A\) by the standard  `for (sub=A; ; sub=(sub-1)&A)` trick.
+
+4. **Min‐popcount**  
+   Finally we scan all masks \(0\ldots2^c-1\), ignore those marked invalid, and keep the minimum bit‐count.  That is our answer.
+
+Because \(c\le18\) the mask‐size \(2^c\) is at most about \(2.6\times10^5\).  The total work over all test cases is comfortably within the limits.

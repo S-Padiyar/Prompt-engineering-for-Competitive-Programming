@@ -1,0 +1,316 @@
+**Analysis**
+
+We have a bag of \(n\) balls, of which the first \(k\) are _special_ (denote them by “S”) and the remaining \(m=n-k\) are _ordinary_ (denote them by “N”).  Each ball \(i\) carries a value \(v_i\).  Alice and Bob take turns drawing a random ball (uniform among what remains), adding its value to their own score and then:
+
+- If the drawn ball was **special**, the same player plays again.
+- If it was **ordinary**, the turn passes to the other player.
+
+Alice starts first.
+
+We want each player’s _expected_ total score at the end of the game, modulo \(10^9+7\), under the usual convention of writing an expectation as a fraction \(\tfrac{P}{Q}\) and outputting \(P\cdot Q^{-1}\bmod (10^9+7)\).
+
+---
+
+### 1. Reformulation as a random 0/1-string
+
+It is well known that picking balls one by one _without_ replacement, each time uniformly from what remains, is equivalent to taking a _uniform random permutation_ of all balls and revealing them in order.  If we only look at the sequence of **types** (S or N) in that permutation, it is just a uniform random binary string of length \(n\) containing \(k\) S’s and \(m=n-k\) N’s.
+
+Call that random string
+\[
+   T_1 T_2 \dots T_n,\quad\text{where }T_i\in\{\mathrm S,\mathrm N\}.
+\]
+We deal with two issues:
+
+1.  **Which positions go to Alice, which to Bob?**  
+    Every time we see an “N” we switch players; an “S” does _not_ switch.  Hence if we let
+    \[
+      \text{player at position }i = 
+      \begin{cases}
+        \text{Alice}, & \text{if the number of N’s in }T_1\ldots T_{i-1}\text{ is even},\\
+        \text{Bob},   & \text{if that number is odd},
+      \end{cases}
+    \]
+    then \(T_i\) is assigned (and its value added) to that player.
+
+2.  **Linearity of expectation.**  
+    By linearity of expectation, the expected total score of Alice is
+    \[
+      \sum_{i=1}^n v_i \,\Pr(\text{Alice gets ball }i).
+    \]
+    But all special balls are symmetric, and all ordinary balls are symmetric.  Let
+    \[
+      S_{\rm sum}=\sum_{i=1}^k v_i,\quad
+      N_{\rm sum}=\sum_{i=k+1}^n v_i.
+    \]
+    Then if \(p_S\) is the probability that _a given special ball_ goes to Alice, and \(p_N\) the probability that _a given ordinary ball_ goes to Alice, we get
+    \[
+      \mathbb E[\text{Alice's score}]
+        \;=\; S_{\rm sum}\,p_S \;+\; N_{\rm sum}\,p_N.
+    \]
+
+    Similarly Bob’s expectation is
+    \[
+      \mathbb E[\text{Bob's score}]
+        = (S_{\rm sum}+N_{\rm sum}) \;-\;\mathbb E[\text{Alice's score}].
+    \]
+
+---
+
+### 2. Combinatorial‐probability for \(p_S\) and \(p_N\)
+
+One can do an elaborate hypergeometric calculation for 
+\[
+   p_S=\Pr(\text{Alice gets a fixed S in a random string}),
+\]
+but there is a slicker “runs and segments” argument:
+
+-  In any binary string of \(k\) S's and \(m\) N's, the N’s naturally split the S's into \(m+1\) _segments_:
+  
+  \[
+     \underbrace{SSS\dots }_{\text{segment }0}
+     N
+     \underbrace{SS\dots }_{\text{segment }1}
+     N
+     \dots
+     N
+     \underbrace{S\dots }_{\text{segment }m}.
+  \]
+  
+-  The \(j\)th N (for \(1\le j\le m\)) is taken by exactly the same player who took the entire segment _before_ it, and afterwards the turn flips.
+
+-  Thus the  \(i\)-th segment of S’s all go to Alice if \(i\) is even, to Bob if \(i\) is odd.  There are \(m+1\) segments, labeled \(0,1,\dots,m\).
+
+-  Since the original string is uniform among all \(\binom{n}{k}\) possibilities, the _expected_ size of each segment is the same:
+  \[
+     \mathbb E[\text{segment}_i]\;=\;\frac{k}{m+1}
+     \quad(\text{for every }i=0,\dots,m).
+  \]
+  Hence the _expected_ number of S’s that Alice gets is
+  \[
+     \sum_{\substack{i=0\\i\text{ even}}}^{m}\mathbb E[\text{segment}_i]
+     \;=\;
+     \Bigl(\#\{i\le m:i\text{ even}\}\Bigr)\;\frac{k}{m+1}\,.
+  \]
+  One counts:
+  - If \(m\) is even, say \(m=2t\), the even indices among \(0,1,\dots,2t\) are \(0,2,4,\dots,2t\), i.e.\ \(t+1\) many.  
+    Thus
+    \[
+      \Pr(\text{Alice gets a given S}) \;=\;
+      p_S
+      \;=\;
+      \frac{t+1}{m+1}
+      \;=\;
+      \frac{\tfrac m2+1}{m+1}
+      \;=\;
+      \frac{m+2}{2\,(m+1)}.
+    \]
+  - If \(m\) is odd, say \(m=2t+1\), then even indices among \(0,\dots,2t+1\) are \(0,2,\dots,2t\), exactly \(t+1\) many, so
+    \[
+      p_S = \frac{t+1}{2t+2} = \frac12.
+    \]
+
+-  Meanwhile **every** N\(_j\) (the \(j\)-th N in the string) is claimed by the same player as segment \(j-1\).  So Alice gets exactly those N’s with \(j-1\) even, i.e.\ \(j\) odd.  Hence out of the \(m\) ordinary balls,
+  \[
+    \#\{\text{N’s to Alice}\}
+      = \#\{j=1,\dots,m : j\text{ odd}\}
+      = \Bigl\lceil\frac m2\Bigr\rceil.
+  \]
+  Therefore
+  \[
+     p_N
+     \;=\;
+     \frac{\lceil m/2\rceil}{m}
+     \;=\;
+     \begin{cases}
+       \tfrac12, &m\text{ even},\\
+       \frac{(m+1)/2}{m}=\frac{m+1}{2m}, &m\text{ odd}.
+     \end{cases}
+  \]
+
+Thus we have simple closed‐form fractions:
+
+1.  \(m=n-k\).
+
+2.  If \(m\) is even
+    \[
+      p_S \;=\; \frac{m+2}{2\,(m+1)}, 
+      \quad
+      p_N \;=\; \frac12,
+    \]
+    while if \(m\) is odd
+    \[
+      p_S \;=\;\frac12,
+      \quad
+      p_N \;=\;\frac{m+1}{2\,m}.
+    \]
+
+Then
+\[
+  \mathbb E[\text{Alice}]
+    = S_{\rm sum}\,p_S + N_{\rm sum}\,p_N
+\]
+with all arithmetic done modulo \(10^9+7\) in the sense of “fraction times inverse.”
+
+Finally
+\[
+  \mathbb E[\text{Bob}]
+    = (S_{\rm sum}+N_{\rm sum})
+      \;-\;\mathbb E[\text{Alice}].
+\]
+
+All that remains is to implement it carefully, doing one or two modular inverses per test.  The total number of tests is up to \(2\cdot10^5\), and \(\sum n\le 5\cdot10^5\), so an \(O(n)\) scan plus \(O(\log\,10^9)\) per test for the inverses is perfectly fine.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+
+    // fast exponentiation a^e mod
+    static long modPow(long a, long e) {
+        long res = 1 % MOD;
+        a %= MOD;
+        while (e > 0) {
+            if ((e & 1) != 0) res = (res * a) % MOD;
+            a = (a * a) % MOD;
+            e >>= 1;
+        }
+        return res;
+    }
+
+    // modular inverse via Fermat: a^(MOD-2) mod
+    static long inv(long a) {
+        return modPow(a, MOD - 2);
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            // read n,k
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+            int m = n - k;  // number of ordinary balls
+
+            // read values
+            long sumSpecial = 0, sumOrdinary = 0;
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) {
+                long v = Long.parseLong(st.nextToken());
+                if (i <= k) sumSpecial = (sumSpecial + v) % MOD;
+                else          sumOrdinary = (sumOrdinary + v) % MOD;
+            }
+
+            // build fraction pS = p0_num/p0_den, pN = p1_num/p1_den
+            long p0_num, p0_den;
+            long p1_num = 0, p1_den = 1;  // for ordinary
+
+            if ((m & 1) == 0) {
+                // m even
+                // p_S = (m+2) / (2*(m+1)) ,  p_N = 1/2
+                p0_num = m + 2L;
+                p0_den = 2L * (m + 1L) % MOD;
+                if (m > 0) {
+                    p1_num = 1;
+                    p1_den = 2;
+                }
+            } else {
+                // m odd
+                // p_S = 1/2 , p_N = (m+1)/(2*m)
+                p0_num = 1;
+                p0_den = 2;
+                if (m > 0) {
+                    p1_num = m + 1L;
+                    p1_den = 2L * m % MOD;
+                }
+            }
+
+            // compute Alice = sumSpecial * pS + sumOrdinary * pN  (all mod)
+            long inv_p0 = inv(p0_den);
+            long aliceSpecial = (sumSpecial % MOD) * (p0_num % MOD) % MOD * inv_p0 % MOD;
+
+            long aliceOrd = 0;
+            if (m > 0) {
+                long inv_p1 = inv(p1_den);
+                aliceOrd = (sumOrdinary % MOD) * (p1_num % MOD) % MOD * inv_p1 % MOD;
+            }
+            long alice = (aliceSpecial + aliceOrd) % MOD;
+
+            // Bob = totalSum - Alice
+            long total = (sumSpecial + sumOrdinary) % MOD;
+            long bob = (total - alice + MOD) % MOD;
+
+            System.out.println(alice + " " + bob);
+        }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Permutation↔Sequential Draw**  
+   Drawing without replacement uniformly at each step is equivalent to taking a uniform random permutation of the balls and revealing them one by one.
+
+2. **Runs of S’s and N’s**  
+   - The \(m\) ordinary balls (N) act as “switches” of turn, so they break up the special balls (S) into \(m+1\) runs (segments).  
+   - Alice takes segment \(0\), Bob takes segment \(1\), Alice segment \(2\), etc.  
+   - In expectation, each of the \(m+1\) segments has size \(\tfrac{k}{m+1}\).  Thus the _expected_ number of S’s Alice gets is
+     \[
+       \sum_{\substack{0\le i\le m \\ i\text{ even}}}\frac{k}{m+1}
+       = \frac{\bigl|\{\,i\le m: i\text{ even}\}\bigr|}{m+1}\;k.
+     \]
+     One easily counts that this fraction is
+     \[
+       p_S = \Pr(\text{Alice gets any given special})
+            = \begin{cases}
+               \tfrac{m+2}{2(m+1)}, & m\text{ even},\\
+               \tfrac12,            & m\text{ odd}.
+              \end{cases}
+     \]
+
+3. **Ordinary Balls**  
+   - The \(j\)-th ordinary ball in the sequence goes to the player who just finished segment \(j-1\).  Hence Alice gets exactly the odd-numbered ordinary balls \(j=1,3,5,\dots\).  
+   - Thus out of \(m\), she gets \(\bigl\lceil m/2\bigr\rceil\), so
+     \[
+       p_N = \frac{\lceil m/2\rceil}{m}
+            = \begin{cases}
+               \tfrac12,           & m\text{ even},\\
+               \frac{m+1}{2m},      & m\text{ odd}.
+              \end{cases}
+     \]
+
+4. **Putting it all together**  
+   - Let 
+     \[
+       S_{\rm sum}=\sum_{i=1}^k v_i,\quad N_{\rm sum}=\sum_{i=k+1}^n v_i.
+     \]
+     Then
+     \[
+       \mathbb E[\text{Alice}]
+         = S_{\rm sum}\,p_S + N_{\rm sum}\,p_N
+     \]
+     and
+     \[
+       \mathbb E[\text{Bob}]
+         = (S_{\rm sum}+N_{\rm sum}) \;-\;\mathbb E[\text{Alice}].
+     \]
+   - We compute each of \(p_S,p_N\) as a fraction \(\tfrac{p_{\rm num}}{p_{\rm den}}\) modulo \(10^9+7\) (using modular inverses).
+
+This runs in \(O(n)\) total over all testcases plus \(O(\log\,10^9)\) time per inverse, well within the limits. 
+
+---
+
+**Complexity**
+
+- We read all \(n\) values in \(O(n)\) total.
+- For each test, we do a constant amount of arithmetic plus up to two modular inverses \(\,O(\log MOD)\).
+- Overall time: \(O\bigl(\sum n + t\log MOD\bigr)\), where \(\sum n\le 5\cdot10^5\) and \(t\le 2\cdot10^5\).  
+- Memory: \(O(n)\) to store input lines, plus \(O(1)\) auxiliary.
+
+This is well within the 2-second / 256 MB limits.

@@ -1,0 +1,182 @@
+**Analysis**
+
+We need to turn the array \(a_1,a_2,\dots,a_n\) into a non‐decreasing array
+by applying the operation
+
+​    “pick an index \(i\) and replace  
+​      \(a_i\) with \((a_i)^2\)” 
+
+■  Each time you square, you replace the current value \(x\) by \(x^2\),  
+   i.e.\ if you do that \(k\) times, the result is \(x^{2^k}\).  
+
+■  Squaring a number \(\ge2\) makes it strictly larger.  
+   Squaring \(1\) keeps it \(1\).  
+
+We want the **minimum total** number of squarings so that  
+\[
+   b_1 \le b_2 \le \cdots \le b_n,
+\]
+where \(b_i = a_i\) after you have squared it some (possibly zero) times.
+
+A direct approach of actually keeping track of the huge numbers \(b_i\) will overflow any native type, since repeated squaring grows ridiculously fast.  Instead, we work entirely in **logs**:
+
+Let
+\[
+  L_{i} = \ln(b_i).
+\]
+Then if we square \(a_i\) exactly \(k\) times, we turn
+\[
+  b_i = a_i \;\longrightarrow\; a_i^{2^k},
+\]
+so
+\[
+  L_i = \ln\bigl(a_i^{2^k}\bigr)
+      = 2^k \,\ln(a_i).
+\]
+
+We enforce the non‐decreasing property
+\[
+  b_i \;\ge\; b_{i-1}
+  \quad\Longleftrightarrow\quad
+  L_i \;\ge\; L_{i-1}.
+\]
+
+We process the array left to right, keeping track of
+\[
+   \text{prevLog} = L_{i-1}.
+\]
+For the first element \(a_1\), no operations are needed:  
+\[
+   \text{prevLog} = \ln(a_1).
+\]
+(If \(a_1=1\) we set \(\text{prevLog}=0\).)
+
+For each subsequent \(a_i\):
+
+1.  If \(a_i=1\):  
+    ‐ We can never increase 1 by squaring, so if \(\text{prevLog}>0\) we can’t reach it; we must declare impossible.  
+    ‐ Otherwise \(\text{prevLog}\) remains \(0\).  
+
+2.  If \(a_i\ge2\), let
+    \[
+      A = \ln(a_i).
+    \]
+   (a)  If \(A \ge \text{prevLog}\), we need \(k=0\) squarings; set  
+        \(\text{prevLog}=A\).  
+
+   (b)  Otherwise we must solve
+        \[
+          2^k\;A \;\ge\;\text{prevLog},
+        \]
+        so
+        \[
+          2^k \;\ge\;\frac{\text{prevLog}}{A},
+          \quad
+          k \;=\;\bigl\lceil\log_2\!\bigl(\tfrac{\text{prevLog}}{A}\bigr)\bigr\rceil.
+        \]
+        We then add \(k\) to our total operation count, and set
+        \(\text{prevLog}=2^k\cdot A\).
+
+Because \(\ln(a_i)\le\ln(10^6)\approx13.8\) and each \(k\) remains fairly small, all intermediate \(\text{prevLog}\) stay well under the overflow threshold for double‐precision logs.  Thus we never actually square big integers, we only do a handful of \(\log\)-arithmetic steps per element.
+
+Total work is \(O(n)\) per test, which is fine up to \(\sum n=2\cdot10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine().trim());
+        final double EPS = 1e-12;
+        // Precompute 1/ln(2) for log2 conversions
+        final double INV_LN2 = 1.0 / Math.log(2.0);
+
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            st = new StringTokenizer(br.readLine());
+            long[] a = new long[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+
+            long ops = 0;
+            boolean impossible = false;
+
+            // Initialize prevLog = ln(a[0]) or 0 if a[0]==1
+            double prevLog = (a[0] == 1 ? 0.0 : Math.log(a[0]));
+
+            for (int i = 1; i < n; i++) {
+                if (a[i] == 1) {
+                    // We can never raise 1.  If prevLog > 0, we cannot match or exceed.
+                    if (prevLog > EPS) {
+                        impossible = true;
+                        break;
+                    }
+                    // else prevLog stays 0
+                } else {
+                    // a[i] >= 2
+                    double A = Math.log(a[i]);
+                    if (A + EPS >= prevLog) {
+                        // no squaring needed
+                        prevLog = A;
+                    } else {
+                        // we need k so that 2^k * A >= prevLog
+                        double ratio = prevLog / A;
+                        // compute log2(ratio)
+                        double lg2 = Math.log(ratio) * INV_LN2;
+                        // take ceil, with a small epsilon to avoid fp-errors
+                        int k = (int) Math.ceil(lg2 - 1e-15);
+                        if (k < 1) k = 1;
+
+                        ops += k;
+                        // new prevLog = A * 2^k
+                        // Math.scalb(x,n) == x * 2^n
+                        prevLog = Math.scalb(A, k);
+                    }
+                }
+            }
+
+            if (impossible) {
+                sb.append("-1\n");
+            } else {
+                sb.append(ops).append('\n');
+            }
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1.  **Working in logs.**  
+    Instead of ever squaring big integers, we keep  
+    \(\text{prevLog} = \ln(b_{i-1})\).  
+    If we square \(a_i\) \(k\) times we get \(b_i = a_i^{2^k}\), so  
+    \(\ln(b_i)=2^k\ln(a_i)\).
+
+2.  **Greedy left‐to‐right.**  
+    At position \(i\) we know the required lower‐bound \(\text{prevLog}\).  
+    We choose the minimal \(k\ge0\) so that  
+    \[
+       2^k\,\ln(a_i)\;\ge\;\text{prevLog}.
+    \]
+    Then we update \(\text{prevLog}=2^k\ln(a_i)\).
+
+3.  **Handling \(a_i=1\).**  
+    Squaring 1 leaves it 1 (\(\ln(1)=0\)), so if \(\text{prevLog}>0\) already,  
+    we cannot reach or exceed it—**impossible**.  Otherwise we stay at \(\text{prevLog}=0\).
+
+4.  **Complexity.**  
+    Each array entry costs \(O(1)\) time (just a few logarithms and a `ceil`).  
+    Total \(O(n)\) per test, fine up to \(\sum n=2\cdot10^5\).
+
+This solves the problem in time and handles extremely rapid growth of squares by staying in the log‐domain.

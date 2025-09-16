@@ -1,0 +1,114 @@
+Below is an O(n)‐time implementation for the easy version (x=n), which correctly counts exactly those positions j that can, via some sequence of merges, end up as the sole survivor.  
+
+Key quantities:
+
+  • pref[i] = a[1]+…+a[i]  
+  • suff[i] = a[i]+…+a[n]  
+  • maxT[i] = max over k≤i of (a[k]+pref[k])  
+  • maxV[i] = max over k≥i of (a[k] − pref[k−1])  
+
+From these we derive for each j:
+
+  Lneed[j] = max(0,  maxT[j−1] − pref[j−1] )  
+  Rneed[j] = max(0,  pref[j] + maxV[j+1] )
+
+Then check two pure‐side scenarios:
+
+  A) “Eat all left first, then all right”  
+     requires   a[j] ≥ Lneed[j]   AND   a[j] + pref[j−1] ≥ Rneed[j]
+
+  B) “Eat all right first, then all left”  
+     requires   a[j] ≥ Rneed[j]   AND   a[j] + suff[j+1] ≥ Lneed[j]
+
+If either A or B holds, j can be the sole survivor.  We count those j.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+  public static void main(String[] args) throws IOException {
+    BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+    StringTokenizer st = new StringTokenizer(in.readLine());
+    int t = Integer.parseInt(st.nextToken());
+    StringBuilder out = new StringBuilder();
+
+    while (t-- > 0) {
+      st = new StringTokenizer(in.readLine());
+      int n = Integer.parseInt(st.nextToken());
+      // (x = n in this easy version, so we only need f(n))
+      long[] a = new long[n+2];
+      st = new StringTokenizer(in.readLine());
+      for (int i = 1; i <= n; i++) {
+        a[i] = Long.parseLong(st.nextToken());
+      }
+
+      // 1) prefix sums
+      long[] pref = new long[n+2];
+      for (int i = 1; i <= n; i++) {
+        pref[i] = pref[i-1] + a[i];
+      }
+      // 2) suffix sums
+      long[] suff = new long[n+3];
+      for (int i = n; i >= 1; i--) {
+        suff[i] = suff[i+1] + a[i];
+      }
+
+      // 3) maxT[i] = max_{k≤i} (a[k] + pref[k])
+      long[] maxT = new long[n+2];
+      maxT[1] = a[1] + pref[1];
+      for (int i = 2; i <= n; i++) {
+        long val = a[i] + pref[i];
+        maxT[i] = Math.max(maxT[i-1], val);
+      }
+
+      // 4) maxV[i] = max_{k≥i} (a[k] - pref[k-1])
+      long[] maxV = new long[n+3];
+      maxV[n+1] = Long.MIN_VALUE;
+      for (int i = n; i >= 1; i--) {
+        long v = a[i] - pref[i-1];
+        maxV[i] = Math.max(v, maxV[i+1]);
+      }
+
+      int cnt = 0;
+      for (int j = 1; j <= n; j++) {
+        // compute minimal needed strengths on each side
+        long Lneed = 0;
+        if (j > 1) {
+          Lneed = maxT[j-1] - pref[j-1];
+          if (Lneed < 0) Lneed = 0;
+        }
+        long Rneed = 0;
+        if (j < n) {
+          Rneed = pref[j] + maxV[j+1];
+          if (Rneed < 0) Rneed = 0;
+        }
+
+        // A) eat left first, then right
+        boolean canA = (a[j] >= Lneed)
+                    && (a[j] + pref[j-1] >= Rneed);
+        // B) eat right first, then left
+        boolean canB = (a[j] >= Rneed)
+                    && (a[j] + suff[j+1] >= Lneed);
+
+        if (canA || canB) {
+          cnt++;
+        }
+      }
+
+      out.append(cnt).append("\n");
+    }
+
+    System.out.print(out);
+  }
+}
+```
+
+Explanation of correctness in brief:
+
+- Lneed[j] is exactly the minimum starting strength S at position j required to absorb all balls 1..j−1 in pure descending‐index order.
+- Rneed[j] is exactly the minimum S needed to absorb all balls j+1..n in ascending‐index order.
+- If you can either
+   • start at j with S=a[j], absorb the entire left block (so that your strength grows to a[j]+pref[j−1]), and then have at least Rneed[j] to sweep the right;  
+   • or start at j, absorb the entire right block first (so you need a[j]≥Rneed[j]), grow to a[j]+suff[j+1], and then have ≥Lneed[j] to sweep the left,  
+  then one can interleave merges to absorb everything.  Any surviving index j must satisfy one of those two scenarios, and testing them takes O(1) per j after O(n) preprocessing.  Overall O(n) per test.

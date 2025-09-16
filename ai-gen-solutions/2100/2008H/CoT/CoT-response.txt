@@ -1,0 +1,193 @@
+**Analysis**
+
+We have an array a of length n (with 1 ≤ a[i] ≤ n), and a query parameter x.  We may repeatedly choose any element a[i] ≥ x and subtract x from it.  In order to make the eventual median as small as possible, one will always subtract x as many times as possible from every a[i] (i.e. replace each a[i] by a[i] mod x).  Hence the final multiset after “crushing” by x is
+
+  b[i] = a[i] mod x.
+
+We then need the median (1‐based) of the multiset {b[i]}.  If n is odd the median index is (n+1)/2; if n is even the “median” is at position n/2+1.
+
+Thus each query boils down to:
+
+  • Let F[v] = the frequency of v in the original array (for v=1…n).  
+  • Form the remainders multiset b[i]=v mod x (with each v occurring F[v]‐times).  
+  • Find the k-th smallest remainder, where k = (n+1)/2 (if odd n) or k = n/2+1 (if even n).
+
+If we let  
+ Sₓ(r) = the number of elements v (counting multiplicity F[v]) whose remainder v mod x ≤ r,  
+
+then the answer to query x is the smallest r in [0..x−1] such that Sₓ(r) ≥ k.
+
+A direct approach that for each x builds an array B[0..x−1] of counts of each remainder B[r] = ∑_{m: m·x+r ≤ n} F[m·x+r] and then does a prefix‐sum to find the first prefix ≥ k is O(n) per x, which is too large if we have many distinct x (up to n).
+
+However, we can compute Sₓ(r) “on the fly” in O(n/x) time by using prefix‐sums over the frequencies F[v]:
+
+1.  Build a prefix‐sum array P so that  
+ P[t] = ∑_{v=1}^t F[v], with P[0]=0.
+
+2.  Then for any x and any r:
+
+   Sₓ(r) = ∑_{k=0..⌊n/x⌋} ∑_{m=0..r} F[k·x + m]
+
+   We implement this as:
+
+   let sum=0;  
+   for k=0,1,2,… while k·x ≤ n:
+     let low = k·x, high = min(n, k·x + r).
+     if (low==0)  sum += P[high];
+     else         sum += P[high] - P[low-1];
+
+   After that sum = Sₓ(r).
+
+Each such Sₓ(r) costs O(⌊n/x⌋) time.  We then binary‐search r in [0..x−1] (about O(log x) steps), each step costing O(n/x).  Hence the cost per x is O((n/x)·log x).  Summing over all x from 1..n gives roughly
+
+  ∑_{x=1..n} (n/x · log x)  = n · ∑_{x=1..n} (log x)/x
+
+which is known to be O(n (log n)²).  With n≤10⁵, this ends up around a few ×10⁷ integer‐ops total, which is acceptable in an efficient Java implementation (and vastly better in C++).
+
+Hence the plan per test case is:
+
+1.  Read n, q, and the array a[1..n].  
+2.  Build frequency F[1..n] and prefix‐sum P[0..n].  
+3.  Read the q query‐values x, collect the unique ones (so we only do each x once).  
+4.  For each unique x:
+    - If x==1, the remainders are all 0 ⇒ median=0.
+    - Otherwise do a binary search on r∈[0..x−1]:
+      ‑ In each step compute Sₓ(r) in O(n/x) via prefix sums.  
+      ‑ Compare to k=(n+1)/2 (or n/2+1 if even) and move left/right.  
+5.  Store the result for each x in an array ans[x].  
+6.  Answer the q queries in original order from ans[x].
+
+The overall complexity per test is about O(n + q + ∑_{x∈distinct} (n/x·log x)), well within the constraints.
+
+Below is an implementation in Java.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            // Read n, q
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int q = Integer.parseInt(st.nextToken());
+
+            // Read array a and build frequency F[1..n]
+            int[] F = new int[n + 1];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                int v = Integer.parseInt(st.nextToken());
+                F[v]++;
+            }
+
+            // Build prefix-sum P[0..n]
+            int[] P = new int[n + 1];
+            for (int i = 1; i <= n; i++) {
+                P[i] = P[i - 1] + F[i];
+            }
+
+            // Read queries and record unique x's
+            int[] queries = new int[q];
+            boolean[] seenX = new boolean[n + 1];
+            List<Integer> uniqueX = new ArrayList<>();
+
+            for (int i = 0; i < q; i++) {
+                int x = Integer.parseInt(br.readLine().trim());
+                queries[i] = x;
+                if (!seenX[x]) {
+                    seenX[x] = true;
+                    uniqueX.add(x);
+                }
+            }
+
+            // Prepare answer array
+            int[] ans = new int[n + 1];  // only ans[x] for seen x used
+
+            // The median position we want
+            int medianPos = (n % 2 == 1) ? (n + 1) / 2 : (n / 2 + 1);
+
+            // Process each distinct x
+            for (int x : uniqueX) {
+                if (x == 1) {
+                    // Everything mod 1 is 0 ⇒ median is 0
+                    ans[x] = 0;
+                    continue;
+                }
+
+                // Binary search for smallest r in [0..x-1] with Sx(r) >= medianPos
+                int lo = 0, hi = x - 1, best = x - 1;
+                while (lo <= hi) {
+                    int mid = (lo + hi) >>> 1;
+
+                    // Compute Sx(mid) = # of v with (v mod x) <= mid
+                    int cnt = 0;
+                    // We sum for k=0.. while k*x <= n
+                    for (int k = 0; ; k++) {
+                        int base = k * x;
+                        if (base > n) break;
+                        int upper = base + mid;
+                        if (upper > n) upper = n;
+                        // Sum F[base+1..upper] = P[upper] - P[base]
+                        cnt += P[upper] - (base == 0 ? 0 : P[base]);
+                        if (cnt >= medianPos) break;  // early exit
+                    }
+
+                    if (cnt >= medianPos) {
+                        best = mid;
+                        hi = mid - 1;
+                    } else {
+                        lo = mid + 1;
+                    }
+                }
+
+                ans[x] = best;
+            }
+
+            // Output answers in original query order
+            for (int x : queries) {
+                sb.append(ans[x]).append(' ');
+            }
+            sb.append('\n');
+
+            // Clear the seen[] marks for the next test
+            for (int x : uniqueX) {
+                seenX[x] = false;
+            }
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Frequency and Prefix‐Sum**  
+   We build `F[v] =` how many times `v` appears in the original array, and then prefix sums `P[i] = ∑_{j=1..i}F[j]`.
+
+2. **Computing Sₓ(r) in O(n/x) time**  
+   To count how many elements `v` have `v mod x ≤ r`, notice that for each integer `k ≥ 0`, the values  
+     `v = k·x + m  (m=0..r)`  
+   all have remainder ≤ r.  We simply sum up the frequencies of `v` in those intervals.  Using prefix sums:
+   
+     Sₓ(r) = ∑_{k: k·x≤n} ( P[min(n, k·x+r)] – P[k·x – 1] )  
+   where for `k=0` the `k·x–1` term is treated as 0.
+
+3. **Binary‐search on r**  
+   Since `Sₓ(r)` is non‐decreasing in `r`, we can binary‐search in `[0..x−1]` to find the minimal `r` for which `Sₓ(r) ≥ medianPos`.
+
+4. **Complexity**  
+   For each `x`, the binary‐search takes O(log x) steps, each step O(n/x) time to compute `Sₓ(*)`.  Summing over all distinct `x` (up to n) yields about  
+   
+     ∑_{x=1..n} (n/x · log x) = O( n (log n)² )  
+   
+   which is roughly a few ×10⁷ operations for n=10⁵ — fast enough in optimized Java or C++.
+
+Thus each test is handled in time proportional to `O(n + q + n (log n)²)`, well within the problem’s limits.

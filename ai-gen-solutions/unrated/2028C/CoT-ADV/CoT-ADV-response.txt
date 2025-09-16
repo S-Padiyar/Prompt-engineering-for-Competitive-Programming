@@ -1,0 +1,153 @@
+**Problem Restatement**
+
+We have a cake consisting of n adjacent sections, with tastiness values a₁,a₂,…,aₙ.  There are m creatures, each requiring a contiguous piece of cake whose total tastiness is at least v.  Alice will make exactly m + 1 contiguous pieces (by placing m cuts among the n−1 possible cut‐points); she will give one piece to each creature (order doesn’t matter) and keep the remaining piece for herself (her piece may be empty).  Alice wants every creature to be happy (each gets sum ≥ v) and, under that constraint, maximize the tastiness of the piece she keeps.  If it’s impossible to satisfy all creatures, answer −1.
+
+**Constraints**
+
+- 1 ≤ m ≤ n ≤ 2·10⁵, 1 ≤ v, aᵢ ≤ 10⁹
+- Sum of n over all test cases ≤ 2·10⁵
+- Up to 10⁴ test cases
+
+**Key Insight and Greedy Approach**
+
+Because all aᵢ are positive, if the beasts (creatures) must each get a segment of total tastiness ≥ v, it is optimal for Alice to let them grab the *shortest possible* qualifying segments, so as to leave the *largest contiguous middle chunk* for herself.  Concretely:
+
+1. **From the left** we simulate greedily cutting off segments as soon as their cumulative sum ≥ v.  Record the cut‐off positions  
+   L₁ < L₂ < … < L_A,  
+   where Lₖ is the index where the kᵗʰ beast‐piece from the left would end.  We also set L₀ = 0 (no left pieces).
+
+2. **From the right** we do the same, scanning backwards and recording  
+   R₁ > R₂ > … > R_B,  
+   where Rₖ is the *starting* index of the kᵗʰ beast‐piece from the right (i.e. if you scan right→left, you accumulate and as soon as you reach ≥ v you declare a piece covering [Rₖ..previousCut-1]).  We set R₀ = n+1 (no right pieces).
+
+If in total A + B < m, we cannot supply m creatures at all ⇒ answer −1.
+
+Otherwise we try all splits of the form “i pieces from the left, m−i pieces from the right,” for i = 0…m.  We need i ≤ A and (m−i) ≤ B; then the beasts’ segments occupy exactly
+
+ • [1..Lᵢ]  (i segments, extracted greedily from the left)  
+ • [R_{m−i}..n]  ((m−i) segments, greedily from the right)
+
+These two blocks must be disjoint, i.e.  
+ Lᵢ < R_{m−i}.  
+
+Then Alice’s piece is the contiguous middle chunk  
+ [Lᵢ+1 .. R_{m−i}−1],  
+whose sum is  
+ pref[R_{m−i}−1] − pref[Lᵢ].  
+
+We take the maximum over all valid i.  If none is valid, answer −1; otherwise output that maximum (possibly zero if the middle chunk is empty).
+
+This runs in O(n) per test (two greedy scans + one linear sweep over i).  Total O(∑n).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            long v = Long.parseLong(st.nextToken());
+
+            long[] a = new long[n+1];
+            st = new StringTokenizer(in.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+
+            // Prefix sums for fast subarray sum queries
+            long[] pref = new long[n+1];
+            for (int i = 1; i <= n; i++) {
+                pref[i] = pref[i-1] + a[i];
+            }
+
+            // Greedily cut from the left
+            // L[k] = position where the k-th segment (sum>=v) ends.
+            ArrayList<Integer> L = new ArrayList<>();
+            L.add(0);  // L[0] = 0 means "no left segments"
+            long sum = 0;
+            for (int i = 1; i <= n; i++) {
+                sum += a[i];
+                if (sum >= v) {
+                    L.add(i);
+                    sum = 0;
+                }
+            }
+            int A = L.size() - 1;  // number of full segments we got from left
+
+            // Greedily cut from the right
+            // R[k] = starting index of the k-th segment from the right
+            ArrayList<Integer> R = new ArrayList<>();
+            R.add(n + 1);  // R[0] = n+1 means "no right segments"
+            sum = 0;
+            for (int i = n; i >= 1; i--) {
+                sum += a[i];
+                if (sum >= v) {
+                    R.add(i);
+                    sum = 0;
+                }
+            }
+            int B = R.size() - 1;  // number of full segments from right
+
+            // If even greedily we can't muster m segments total, impossible
+            if (A + B < m) {
+                out.println(-1);
+                continue;
+            }
+
+            // Try splitting beasts segments i from left, m-i from right
+            long ans = -1;
+            // i ranges from max(0, m-B) to min(A, m)
+            int from = Math.max(0, m - B);
+            int to   = Math.min(A, m);
+            for (int i = from; i <= to; i++) {
+                int j = m - i;      // segments from right
+                int leftEnd  = L.get(i);      // last index used by left beasts
+                int rightBeg = R.get(j);      // first index used by right beasts
+                // Beasts regions must be disjoint
+                if (leftEnd < rightBeg) {
+                    // Alice's chunk is [leftEnd+1 .. rightBeg-1]
+                    int lo = leftEnd + 1;
+                    int hi = rightBeg - 1;
+                    long candidate = (lo <= hi
+                                      ? pref[hi] - pref[leftEnd]
+                                      : 0L);
+                    if (candidate > ans) ans = candidate;
+                }
+            }
+
+            out.println(ans);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**How It Works**
+
+1. We build a prefix sum `pref[]` so that the sum of any interval `[L..R]` is `pref[R]−pref[L−1]`.
+2. We greedily peel off segments from the left: keep a running `sum`; whenever it reaches ≥ v, we cut and record that endpoint in `L`.  This yields the *shortest possible* i-th segment for each i.
+3. Similarly, peel off from the right to get `R`.
+4. If `A + B < m`, even using all greedy segments there aren’t enough → impossible.
+5. Otherwise for each way to allocate `i` beasts on the left and `m−i` on the right (so that `i ≤ A` and `m−i ≤ B`), we check that the left block `1…L[i]` and right block `R[m−i]…n` do not overlap (`L[i] < R[m−i]`).  Alice’s piece is the gap between them, from `L[i]+1` to `R[m−i]−1`.  We compute that sum in O(1) via prefix sums and take the maximum.
+6. If no split is valid, we print `−1`; otherwise we print the maximum (possibly zero).
+
+**Complexity**
+
+- Building the prefix sums: O(n)
+- Greedy scan from left: O(n)
+- Greedy scan from right: O(n)
+- Trying all i from 0…m: O(m) ⊆ O(n)
+- Overall per test case: O(n).  
+Sum of n over all tests ≤ 2·10⁵ ⇒ total O(2·10⁵), which easily fits in time.
+
+Space is O(n) for the arrays and lists.

@@ -1,0 +1,180 @@
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class Node {
+        int l, r, len, maxlen, priority;
+        Node left, right;
+        Node(int l, int r, Random rng) {
+            this.l = l; this.r = r;
+            this.len = r - l + 1;
+            this.maxlen = this.len;
+            this.priority = rng.nextInt();
+        }
+    }
+
+    static void update(Node t) {
+        if (t == null) return;
+        t.len = t.r - t.l + 1;
+        int m = t.len;
+        if (t.left != null && t.left.maxlen > m) m = t.left.maxlen;
+        if (t.right != null && t.right.maxlen > m) m = t.right.maxlen;
+        t.maxlen = m;
+    }
+
+    static Node[] split(Node t, int key) {
+        if (t == null) return new Node[]{null, null};
+        if (t.l <= key) {
+            Node[] sr = split(t.right, key);
+            t.right = sr[0];
+            update(t);
+            return new Node[]{t, sr[1]};
+        } else {
+            Node[] sl = split(t.left, key);
+            t.left = sl[1];
+            update(t);
+            return new Node[]{sl[0], t};
+        }
+    }
+
+    static Node merge(Node a, Node b) {
+        if (a == null) return b;
+        if (b == null) return a;
+        if (a.priority > b.priority) {
+            a.right = merge(a.right, b);
+            update(a);
+            return a;
+        } else {
+            b.left = merge(a, b.left);
+            update(b);
+            return b;
+        }
+    }
+
+    static Node removeKey(Node t, int key) {
+        Node[] sp1 = split(t, key);
+        Node[] sp2 = split(sp1[0], key - 1);
+        return merge(sp2[0], sp1[1]);
+    }
+
+    static Node insertNode(Node t, Node nd) {
+        if (t == null) {
+            update(nd);
+            return nd;
+        }
+        if (nd.priority > t.priority) {
+            Node[] sp = split(t, nd.l);
+            nd.left = sp[0];
+            nd.right = sp[1];
+            update(nd);
+            return nd;
+        } else if (nd.l < t.l) {
+            t.left = insertNode(t.left, nd);
+            update(t);
+            return t;
+        } else {
+            t.right = insertNode(t.right, nd);
+            update(t);
+            return t;
+        }
+    }
+
+    static Node findFloor(Node t, int x) {
+        if (t == null) return null;
+        if (t.l > x) {
+            return findFloor(t.left, x);
+        } else {
+            Node cand = findFloor(t.right, x);
+            return (cand != null ? cand : t);
+        }
+    }
+
+    static int findLeftmostGeq(Node t, int k) {
+        Node cur = t;
+        while (true) {
+            if (cur.left != null && cur.left.maxlen >= k) {
+                cur = cur.left;
+                continue;
+            }
+            if (cur.len >= k) {
+                return cur.l;
+            }
+            cur = cur.right;
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder out = new StringBuilder();
+        int T = Integer.parseInt(br.readLine().trim());
+        Random rng = new Random(1234567);
+
+        for (int tc = 0; tc < T; tc++) {
+            int n = Integer.parseInt(br.readLine().trim());
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) a[i] = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(br.readLine().trim());
+            char[] op = new char[m];
+            int[] vx = new int[m];
+            int kmax = 0;
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                op[i] = st.nextToken().charAt(0);
+                vx[i] = Integer.parseInt(st.nextToken());
+                if (op[i] == '?') kmax = Math.max(kmax, vx[i]);
+            }
+
+            final int MAXP = 2_000_000;
+            int INF = MAXP + kmax + 5;
+            Node root = null;
+            if (n == 0 || a[0] > 1) {
+                root = insertNode(root, new Node(1, (n==0? INF : a[0]-1), rng));
+            }
+            for (int i = 0; i+1 < n; i++) {
+                if (a[i+1] - a[i] > 1) {
+                    root = insertNode(root, new Node(a[i]+1, a[i+1]-1, rng));
+                }
+            }
+            if (n > 0 && a[n-1] < INF) {
+                root = insertNode(root, new Node(a[n-1]+1, INF, rng));
+            }
+
+            for (int i = 0; i < m; i++) {
+                int x = vx[i];
+                if (op[i] == '+') {
+                    Node iv = findFloor(root, x);
+                    root = removeKey(root, iv.l);
+                    if (iv.l <= x-1) root = insertNode(root, new Node(iv.l, x-1, rng));
+                    if (x+1 <= iv.r) root = insertNode(root, new Node(x+1, iv.r, rng));
+                } else if (op[i] == '-') {
+                    Node leftIv = findFloor(root, x-1);
+                    boolean leftMerge = leftIv != null && leftIv.r == x-1;
+                    Node rightIv = findFloor(root, x+1);
+                    boolean rightMerge = rightIv != null && rightIv.l == x+1;
+                    if (leftMerge && rightMerge) {
+                        int L = leftIv.l, R = rightIv.r;
+                        root = removeKey(root, leftIv.l);
+                        root = removeKey(root, rightIv.l);
+                        root = insertNode(root, new Node(L, R, rng));
+                    } else if (leftMerge) {
+                        int L = leftIv.l, R = x;
+                        root = removeKey(root, leftIv.l);
+                        root = insertNode(root, new Node(L, R, rng));
+                    } else if (rightMerge) {
+                        int L = x, R = rightIv.r;
+                        root = removeKey(root, rightIv.l);
+                        root = insertNode(root, new Node(L, R, rng));
+                    } else {
+                        root = insertNode(root, new Node(x, x, rng));
+                    }
+                } else {
+                    int ans = findLeftmostGeq(root, x);
+                    out.append(ans).append(' ');
+                }
+            }
+            out.append('\n');
+        }
+        System.out.print(out.toString());
+    }
+}

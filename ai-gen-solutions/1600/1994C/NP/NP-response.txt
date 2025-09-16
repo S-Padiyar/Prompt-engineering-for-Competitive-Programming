@@ -1,0 +1,151 @@
+**Analysis**
+
+We have an array a₁,…,aₙ of positive integers and a threshold x.  For any subsegment [l…r] we simulate:
+
+- Start g:=0.
+- For i from l to r:
+  - g += aᵢ
+  - if g > x, then “reset” g:=0 and continue.
+
+We want the number of subsegments whose final g ≠ 0.  Equivalently, we can count the total number of subsegments minus the number of “bad” subsegments that end in a reset (so g becomes 0 right at the last element).
+
+It turns out that for a fixed starting index i, one can precompute the sequence of reset‐positions that occur if you keep extending the segment, and each of those reset‐positions corresponds to exactly one bad subsegment ending there.
+
+Concretely, define
+
+B[i] = the smallest index j ≥ i such that ∑_{k=i}^j aₖ > x,
+       or “∞” if no such j exists.
+
+If B[i] ≤ n then appending [i…B[i]] is a bad segment (because at B[i] you cross x and reset).  But when you continue past B[i], your next “start” is B[i]+1, and you look up B[B[i]+1], and so on.  Hence from each i you follow a chain
+
+ i → B[i]+1 → B[B[i]+1]+1 → ⋯
+
+and each jump corresponds to one reset (one bad segment).  Because B[i] ≥ i always, these pointers go strictly forward, and there are no cycles; we can DP from right to left to count how many steps each i can make before falling off the end.
+
+Overall:
+
+1. Use a two‐pointer (sliding‐window) technique to compute B[i] for all i in O(n).
+2. Build nxt[i] = B[i]+1 if B[i]≤n, or 0 otherwise.
+3. In decreasing i from n…1, let
+       depth[i] = (nxt[i]>0 ? 1 + depth[nxt[i]] : 0).
+   This is the number of bad‐subsegments starting at i.
+4. Sum up all depth[i] to get total_bad.
+5. The total number of subsegments is n(n+1)/2, so the answer is
+       n(n+1)/2 – total_bad.
+
+This all runs in O(n) time per test, which is fast enough for ∑n ≤ 2⋅10⁵.
+
+---
+
+```java
+import java.io.*;
+import java.util.StringTokenizer;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder out = new StringBuilder();
+        int t = Integer.parseInt(in.readLine().trim());
+        
+        // We will reuse arrays up to the maximum total N = 200000.
+        int MAXN = 200000;
+        long[] a = new long[MAXN + 5];
+        int[] B = new int[MAXN + 5];
+        int[] nxt = new int[MAXN + 5];
+        long[] depth = new long[MAXN + 5];
+        
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long x = Long.parseLong(st.nextToken());
+            
+            st = new StringTokenizer(in.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+            
+            // 1) Two‐pointer to compute B[i]:
+            //    B[i] = first j >= i with sum(a[i..j]) > x, or INF (we'll use n+1) otherwise.
+            long sum = 0;
+            int r = 1;  // window is [i .. r-1], sum = sum of that window
+            for (int i = 1; i <= n; i++) {
+                // Expand r while we can keep sum + a[r] <= x
+                while (r <= n && sum + a[r] <= x) {
+                    sum += a[r];
+                    r++;
+                }
+                // Now either r>n or sum + a[r] > x
+                if (r <= n) {
+                    B[i] = r;
+                } else {
+                    B[i] = n + 1;  // "no crossing"
+                }
+                // Slide the window: remove a[i] if it's inside
+                if (r > i) {
+                    sum -= a[i];
+                } else {
+                    // r == i means we never included a[i] (a[i] itself > x)
+                    // so move r forward
+                    r = i + 1;
+                }
+            }
+            
+            // 2) Build nxt[i]
+            for (int i = 1; i <= n; i++) {
+                if (B[i] <= n) nxt[i] = B[i] + 1;
+                else           nxt[i] = 0;
+            }
+            
+            // 3) DP depth from the right
+            depth[n+1] = 0;
+            for (int i = n; i >= 1; i--) {
+                if (nxt[i] == 0) {
+                    depth[i] = 0;
+                } else {
+                    depth[i] = 1 + depth[nxt[i]];
+                }
+            }
+            
+            // 4) sum total_bad
+            long totalBad = 0;
+            for (int i = 1; i <= n; i++) {
+                totalBad += depth[i];
+            }
+            
+            // 5) answer = total_subsegments - total_bad
+            long totalSub = (long) n * (n + 1) / 2;
+            long answer = totalSub - totalBad;
+            
+            out.append(answer).append('\n');
+        }
+        
+        System.out.print(out);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Two‐pointer for B[i]:**  
+   We want, for each i, the minimal j such that the subarray sum from i to j exceeds x.  By maintaining a “right” pointer r and the current window‐sum of a[i…r-1], we can in total O(n) time move r forward at most n times, and slide the window’s left side from i to i+1.
+
+2. **Building the jump‐array `nxt`:**  
+   If from position i the first reset happens at B[i], then immediately after that reset we start afresh at index B[i]+1.  Hence we set
+   ```
+     nxt[i] = (B[i] ≤ n ? B[i] + 1 : 0)
+   ```
+   A zero in `nxt` means “no more resets”.
+
+3. **DP to count resets (`depth[i]`):**  
+   Because each reset from i gives you one “bad” segment, plus you jump to `nxt[i]` and count its resets, we do
+   ```
+     depth[i] = (nxt[i] == 0 ? 0 : 1 + depth[nxt[i]] )
+   ```
+   Going from right to left ensures `depth[nxt[i]]` is already known.
+
+4. **Answer extraction:**  
+   The total number of subsegments is n(n+1)/2.  All “bad” subsegments are exactly those that end in a reset, and we have counted them in `totalBad`.  So the number of good subsegments is 
+   ```
+     totalSub – totalBad.
+   ```
+   This matches the required count of final g ≠ 0.

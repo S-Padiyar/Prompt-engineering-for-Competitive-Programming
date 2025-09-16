@@ -1,0 +1,283 @@
+**Analysis**
+
+We have an \(n\times m\) grid of `.` and `#`.  Connected components of `#`‐cells are 4‐connected (up/down/left/right).  We may perform _at most one_ operation: pick one entire row or one entire column and turn _all_ its cells into `#`.  We want the maximum size of the largest connected component of `#` that can result.
+
+Let us outline the steps:
+
+1. **Label the initial connected components.**
+
+   We run a BFS/DFS over the grid to label each `#`‐cell with a component ID and compute the size of each component.  We store:
+
+   - `id[k]` = the component ID of cell \(k\) (flattened index \(k=i\cdot m + j\)), or -1 if it is `.`.
+   - `compSize[c]` = the size (number of cells) of component \(c\).
+
+   We also record
+   - `origRowCount[r]` = how many `#` are in row \(r\) originally,
+   - `origColCount[c]` = how many `#` are in column \(c\) originally.
+
+   Let `baseMax` = the size of the largest component before any operation.
+
+2. **Try flipping each row.**
+
+   When we flip row \(r\), all its \(m\) cells become `#`.  This newly‐filled row will connect all original components that “touch” that row, either
+
+   - because they already had a `#` in row \(r\), or
+   - because they have a `#` just above or just below row \(r\).
+
+   Let \(S_r\) be the set of _distinct_ component IDs adjacent to row \(r\).  The size of the new merged component formed by that flip is
+   \[
+     \biggl(\sum_{c\in S_r}\text{compSize}[c]\biggr)
+     \;+\;\bigl(m - \text{origRowCount}[r]\bigr),
+   \]
+   because \(m - \text{origRowCount}[r]\) is exactly how many new `#`‐cells appear in that row (cells that were `.` turn into `#`).
+
+   We sweep all rows and keep track of the maximum over those.
+
+3. **Try flipping each column.**
+
+   Symmetrically, flipping column \(c\) sets all \(n\) cells of column \(c\) to `#`.  It merges all components that had a `#` in column \(c\) or immediately to the left/right of that column.  If \(T_c\) is the set of those component IDs, the resulting size is
+
+   \[
+     \biggl(\sum_{d\in T_c}\text{compSize}[d]\biggr)
+     \;+\;\bigl(n - \text{origColCount}[c]\bigr).
+   \]
+
+   We sweep all columns and keep track of the maximum.
+
+4. **Answer.**
+
+   The final answer is the maximum among
+   \[
+     \text{baseMax},\quad
+     \max_{r}(\text{row‐flip result for }r),\quad
+     \max_{c}(\text{col‐flip result for }c).
+   \]
+
+All of the steps run in \(O(nm)\) per test case (labelling the components, then scanning rows and columns, each scan is \(O(nm)\) overall).  Since the sum of \(n\cdot m\) over all test cases is up to \(10^6\), this is comfortably within the 2 s limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static BufferedReader in;
+    static PrintWriter out;
+    static StringTokenizer tok;
+
+    // Read next token
+    static String next() throws IOException {
+        while (tok == null || !tok.hasMoreTokens()) {
+            String line = in.readLine();
+            if (line == null) return null;
+            tok = new StringTokenizer(line);
+        }
+        return tok.nextToken();
+    }
+
+    // Read next integer
+    static int nextInt() throws IOException {
+        return Integer.parseInt(next());
+    }
+
+    public static void main(String[] args) throws IOException {
+        in  = new BufferedReader(new InputStreamReader(System.in));
+        out = new PrintWriter(System.out);
+        int t = nextInt();
+        while (t-- > 0) {
+            int n = nextInt();
+            int m = nextInt();
+            String[] grid = new String[n];
+            for (int i = 0; i < n; i++) {
+                grid[i] = in.readLine();
+            }
+
+            // Flattened id array: id[k] = component ID of cell k, or -1 if '.'
+            int N = n * m;
+            int[] id = new int[N];
+            Arrays.fill(id, -1);
+
+            // Count of '#' in each row/column initially
+            int[] rowCount = new int[n];
+            int[] colCount = new int[m];
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < m; j++) {
+                    if (grid[i].charAt(j) == '#') {
+                        rowCount[i]++;
+                        colCount[j]++;
+                    }
+                }
+            }
+
+            // Directions for BFS
+            int[] dr = {1, -1, 0, 0};
+            int[] dc = {0, 0, 1, -1};
+
+            // List of component sizes
+            ArrayList<Integer> compSize = new ArrayList<>();
+            int compCount = 0;
+
+            // BFS queue (flattened indices)
+            int[] queue = new int[N];
+
+            // Label components
+            for (int i = 0; i < n; i++) {
+                for (int j = 0; j < m; j++) {
+                    if (grid[i].charAt(j) == '#' && id[i*m + j] == -1) {
+                        // Start BFS
+                        int head = 0, tail = 0;
+                        queue[tail++] = i*m + j;
+                        id[i*m + j] = compCount;
+                        int size = 0;
+                        while (head < tail) {
+                            int cur = queue[head++];
+                            size++;
+                            int r = cur / m;
+                            int c = cur % m;
+                            // Explore 4 neighbors
+                            for (int d = 0; d < 4; d++) {
+                                int nr = r + dr[d];
+                                int nc = c + dc[d];
+                                if (nr >= 0 && nr < n && nc >= 0 && nc < m) {
+                                    int nxt = nr*m + nc;
+                                    if (grid[nr].charAt(nc) == '#' && id[nxt] == -1) {
+                                        id[nxt] = compCount;
+                                        queue[tail++] = nxt;
+                                    }
+                                }
+                            }
+                        }
+                        compSize.add(size);
+                        compCount++;
+                    }
+                }
+            }
+
+            // baseMax = largest existing component
+            int baseMax = 0;
+            for (int sz : compSize) {
+                if (sz > baseMax) baseMax = sz;
+            }
+
+            // We'll now try flipping each row and each column.
+            // To avoid recounting the same component twice in one flip,
+            // we keep a "lastSeen" array indexed by component ID,
+            // plus a global iteration counter.
+            int[] lastSeen = new int[compCount];
+            int iter = 1;
+            int answer = baseMax;
+
+            // Try flipping each row r
+            for (int r = 0; r < n; r++, iter++) {
+                int mergedSum = 0;
+                // 1) components already in row r
+                for (int j = 0; j < m; j++) {
+                    if (grid[r].charAt(j) == '#') {
+                        int cid = id[r*m + j];
+                        if (lastSeen[cid] != iter) {
+                            mergedSum += compSize.get(cid);
+                            lastSeen[cid] = iter;
+                        }
+                    }
+                }
+                // 2) components just above row r
+                if (r > 0) {
+                    for (int j = 0; j < m; j++) {
+                        if (grid[r-1].charAt(j) == '#') {
+                            int cid = id[(r-1)*m + j];
+                            if (lastSeen[cid] != iter) {
+                                mergedSum += compSize.get(cid);
+                                lastSeen[cid] = iter;
+                            }
+                        }
+                    }
+                }
+                // 3) components just below row r
+                if (r+1 < n) {
+                    for (int j = 0; j < m; j++) {
+                        if (grid[r+1].charAt(j) == '#') {
+                            int cid = id[(r+1)*m + j];
+                            if (lastSeen[cid] != iter) {
+                                mergedSum += compSize.get(cid);
+                                lastSeen[cid] = iter;
+                            }
+                        }
+                    }
+                }
+                // + newly flipped cells in row r
+                int newCells = m - rowCount[r];
+                answer = Math.max(answer, mergedSum + newCells);
+            }
+
+            // Try flipping each column c
+            for (int c = 0; c < m; c++, iter++) {
+                int mergedSum = 0;
+                // 1) components already in column c
+                for (int i = 0; i < n; i++) {
+                    if (grid[i].charAt(c) == '#') {
+                        int cid = id[i*m + c];
+                        if (lastSeen[cid] != iter) {
+                            mergedSum += compSize.get(cid);
+                            lastSeen[cid] = iter;
+                        }
+                    }
+                }
+                // 2) components to the left of column c
+                if (c > 0) {
+                    for (int i = 0; i < n; i++) {
+                        if (grid[i].charAt(c-1) == '#') {
+                            int cid = id[i*m + (c-1)];
+                            if (lastSeen[cid] != iter) {
+                                mergedSum += compSize.get(cid);
+                                lastSeen[cid] = iter;
+                            }
+                        }
+                    }
+                }
+                // 3) components to the right of column c
+                if (c+1 < m) {
+                    for (int i = 0; i < n; i++) {
+                        if (grid[i].charAt(c+1) == '#') {
+                            int cid = id[i*m + (c+1)];
+                            if (lastSeen[cid] != iter) {
+                                mergedSum += compSize.get(cid);
+                                lastSeen[cid] = iter;
+                            }
+                        }
+                    }
+                }
+                // + newly flipped cells in column c
+                int newCells = n - colCount[c];
+                answer = Math.max(answer, mergedSum + newCells);
+            }
+
+            out.println(answer);
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Component Labelling**  
+   We flatten the grid into a 1D array of length \(n\cdot m\).  We run BFS from every unvisited `#` cell, mark all reachable `#` cells with the same component ID, and record that component’s size.
+
+2. **Row‐flip / Column‐flip Computation**  
+   When we flip a row \(r\),
+
+   - It will contain \(m\) `#` cells after the flip.
+   - Some of those cells were originally `#` and already belonged to some components.
+   - Some are brand‐new `#` (originally `.` in that row).
+
+   All original components that touch that row either from within the row itself, or from the row just above, or the row just below, will become one big merged component.  We sum the sizes of those _distinct_ components, then add the number of _new_ `#` cells in the row, which is
+   \[
+     m - (\text{how many `#` were originally in row }r).
+   \]
+   We do the same idea for each column.
+
+3. **Complexities**  
+   - Labelling components via BFS is \(O(nm)\).  
+   - Scanning all rows takes \(O(n\,m)\), scanning all columns another \(O(n\,m)\).  
+   Total per test case is \(O(nm)\).  Since \(\sum n\,m \le 10^6\) over all tests, this runs comfortably in time.

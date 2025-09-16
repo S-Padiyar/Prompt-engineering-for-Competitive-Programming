@@ -1,0 +1,269 @@
+**Analysis**
+
+We have \(n\) sequences \(A_i\).  We start from an integer \(x=k\).  We may perform any number of operations (up to \(n\)), each time choosing an unused sequence \(A_i\) and replacing
+\[
+  x \;\longleftarrow\; \mex(\{x\}\cup A_i).
+\]
+We want to maximize the final value of \(x\), and we call that maximum reachable value \(f(k)\).  Finally the problem gives us an integer \(m\) and asks for
+
+\[
+   \sum_{k=0}^m f(k).
+\]
+
+Key observations:
+
+1.  **Only “up‐jumps” matter.**  The operation
+   \[
+     x\;\to\;\mex(\{x\}\cup A_i)
+   \]
+   can either leave \(x\) the same, decrease it, or increase it.  Obviously, to maximize the final \(x\) we never choose an operation that would decrease \(x\).  Nor do we ever choose an operation that leaves \(x\) unchanged.  So from each “current” \(x\) we only care about those sequences that strictly increase \(x\).
+
+2.  **Characterizing the jumps**  
+   Let
+   \[
+     A_i \subseteq \{a_{i,1},a_{i,2},\dots\}, 
+     \quad
+     \text{and let }
+     \{t_0 < t_1 < t_2 < \dots\}
+     \;=\;
+     \bigl\{\,y\ge0 : y\notin A_i\bigr\}
+   \]
+   be the (infinite) list of missing nonnegative integers for \(A_i\).  In particular
+   \(\;t_0=\mex(A_i)\) and \(t_1\) is the *next* missing integer.
+
+   One may check that the *only* ways to strictly increase \(x\) by applying \(A_i\) are:
+
+   - If \(x\in A_i\) and \(x<t_0\), then \(\mex(\{x\}\cup A_i)=t_0>x\).
+   - If \(x=t_0\), then \(\mex(\{x\}\cup A_i)=t_1>t_0\).
+
+   No other choice of \(x\) in \(\{0,1,2,\dots\}\) can raise it strictly.  
+
+3.  **Building a directed acyclic “jump‐graph.”**  
+   We create a directed graph on nonnegative integers (potential “states” of \(x\)).  For each sequence \(A_i\) let
+   \[
+     \begin{aligned}
+       &t_0 \;=\;\mex(A_i),\\
+       &t_1 \;=\;\text{the next missing integer after }t_0.
+     \end{aligned}
+   \]
+   Then we add edges
+   \[
+     v \;\longrightarrow\; t_0
+     \quad\text{for every }v\in A_i\text{ with }v<t_0,
+     \quad\text{and also}
+     \quad
+     t_0\;\longrightarrow\; t_1.
+   \]
+   Each such edge represents a single operation on \(x\) that *strictly increases* \(x\).  Since \(t_0<t_1\), these are all upwards edges, so the graph is acyclic.
+
+4.  **Computing \(f(k)\).**  
+   Once the graph is formed, to find the maximum reachable value from a node \(k\) we want
+   \[
+     f(k)\;=\;\max\{\,k\}\cup\{\,\text{all nodes reachable from \(k\)}\}.
+   \]
+   Because every edge goes from a smaller integer to a strictly larger integer, the graph is a DAG with topological order \(0,1,2,\dots\).  We can compute in descending order a DP array
+   \[
+     \mathrm{dp}[v]\;=\;\max\bigl(v,\;\max_{v\to u}\mathrm{dp}[u]\bigr).
+   \]
+   Then \(\mathrm{dp}[k]=f(k)\).
+
+5.  **Large \(m\).**  
+   Observe that every “important” node \(v\) from which we might jump is either
+   - some \(v\in A_i\) with \(v<\mex(A_i)\), or
+   - some \(\mex(A_i)\).
+   
+   In particular, if \(k\) exceeds the maximum of all those \(\mex(A_i)\), then \(k\) has *no* outgoing increasing edges.  Hence \(f(k)=k\) once \(k\) is larger than every \(\mex(A_i)\).  Let
+   \(\displaystyle M=\max_{i=1..n}\mex(A_i)\).  Then for \(k>M\), \(f(k)=k\).
+
+   Thus
+   \[
+     \sum_{k=0}^m f(k)
+     = \sum_{k=0}^{\min(m,M)} \mathrm{dp}[k]
+       \;+\;
+       \sum_{k=M+1}^m k,
+   \]
+   and the last sum is \(\displaystyle \frac{m(m+1)}2-\frac{M(M+1)}2\) if \(m>M\).
+
+**Implementation Details**
+
+- We read all \(n\) sequences.  
+- For each sequence \(A_i\):
+  1.  Sort it and remove duplicates.
+  2.  Find \(t_0=\mex(A_i)\) by scanning from 0 upward.
+  3.  Find \(t_1\) by scanning from \(t_0+1\) upward until a number is not in \(A_i\).
+  4.  For every \(v\in A_i\) with \(v<t_0\) add a directed edge \(v\to t_0\).
+  5.  Add the edge \(t_0\to t_1\).
+  6.  Track the maximum \(t_0\) seen (call it `maxBaseMex`).
+
+- We build an adjacency‐list only for `v` up to `maxBaseMex`.  Any target `t1` may exceed `maxBaseMex`; in that case, when we do the DP, we simply treat \(\mathrm{dp}[t1]\) as `t1` itself (since from `t1` there are no further “upward” edges in the small‐index graph).
+
+- We then do
+  for `v = maxBaseMex` down to `0`:
+     ```
+       dp[v] = v
+       for each target u in edges[v]:
+         if u ≤ maxBaseMex:
+           dp[v] = max(dp[v], dp[u])
+         else
+           dp[v] = max(dp[v], u)
+     ```
+- Finally we accumulate 
+  - \(\sum_{k=0}^{\min(m,\,\maxBaseMex)}dp[k]\), and
+  - if \(m>\maxBaseMex\), add \(\frac{m(m+1)}2-\frac{\maxBaseMex(\maxBaseMex+1)}2\).
+
+The overall complexity per test is \(O(\sum l_i\log l_i + \maxBaseMex + \text{total edges})\), which is \(O((\sum l_i)\log(\sum l_i) + \maxBaseMex)\).  Since \(\sum l_i\le 2\times10^5\) over all tests and \(\sum n\le2\times10^5\), this runs in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXV = 200005;  // upper bound for all base-mex values
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer stk;
+
+        int t = Integer.parseInt(br.readLine());
+        // Adjacency lists for edges v -> [u1, u2, ...]
+        ArrayList<Integer>[] edges = new ArrayList[MAXV];
+        for (int i = 0; i < MAXV; i++) {
+            edges[i] = new ArrayList<>();
+        }
+
+        // To know which lists we need to clear after each test
+        ArrayList<Integer> usedV = new ArrayList<>();
+
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            stk = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(stk.nextToken());
+            long m = Long.parseLong(stk.nextToken());
+
+            // Track the maximum base-mex (t0) seen
+            int maxBaseMex = 0;
+
+            // Build the graph edges
+            for (int i = 0; i < n; i++) {
+                stk = new StringTokenizer(br.readLine());
+                int len = Integer.parseInt(stk.nextToken());
+                int[] arr = new int[len];
+                for (int j = 0; j < len; j++) {
+                    arr[j] = Integer.parseInt(stk.nextToken());
+                }
+
+                // Sort & dedupe
+                Arrays.sort(arr);
+                int write = 0;
+                for (int j = 1; j < len; j++) {
+                    if (arr[j] != arr[write]) {
+                        arr[++write] = arr[j];
+                    }
+                }
+                len = write + 1;
+
+                // 1) find t0 = mex(A_i)
+                int t0 = 0, idx = 0;
+                while (idx < len && arr[idx] == t0) {
+                    idx++;
+                    t0++;
+                }
+
+                // 2) find t1 = next missing > t0
+                int t1 = t0 + 1;
+                int p = 0;
+                while (p < len && arr[p] < t1) {
+                    if (arr[p] == t1) {
+                        t1++;
+                    }
+                    p++;
+                }
+
+                // update global maximum base-mex
+                maxBaseMex = Math.max(maxBaseMex, t0);
+
+                // 3) edges v->t0 for v in A_i with v<t0
+                idx = 0;
+                while (idx < len && arr[idx] < t0) {
+                    int v = arr[idx++];
+                    // add edge v->t0
+                    if (edges[v].isEmpty()) {
+                        usedV.add(v);
+                    }
+                    edges[v].add(t0);
+                }
+                // 4) edge t0->t1
+                if (t0 < MAXV) {
+                    if (edges[t0].isEmpty()) {
+                        usedV.add(t0);
+                    }
+                    edges[t0].add(t1);
+                }
+            }
+
+            // Prepare DP array
+            long[] dp = new long[maxBaseMex + 1];
+
+            // 5) Compute dp[v] in descending order
+            for (int v = maxBaseMex; v >= 0; v--) {
+                long best = v;
+                for (int u : edges[v]) {
+                    long candidate = (u <= maxBaseMex ? dp[u] : u);
+                    if (candidate > best) {
+                        best = candidate;
+                    }
+                }
+                dp[v] = best;
+            }
+
+            // 6) Sum up f(0)+...+f(m)
+            long up = Math.min(m, maxBaseMex);
+            long ans = 0;
+            for (int x = 0; x <= up; x++) {
+                ans += dp[x];
+            }
+            if (m > maxBaseMex) {
+                // sum of k = maxBaseMex+1 .. m
+                long M = maxBaseMex;
+                long total = (m * (m + 1) / 2) - (M * (M + 1) / 2);
+                ans += total;
+            }
+
+            sb.append(ans).append('\n');
+
+            // Clear adjacency for next test
+            for (int v : usedV) {
+                edges[v].clear();
+            }
+            usedV.clear();
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Finding the first two missing integers**  
+   We sort and dedupe each sequence \(A_i\).  We scan from \(0\) upward to find the first missing integer \(t_0\).  Then we scan from \(t_0+1\) upward to find \(t_1\).  These two indices fully capture the only two ways that applying the mex operation can strictly increase \(x\).
+
+2. **Building the directed acyclic graph (DAG)**  
+   - For each \(v\in A_i\) with \(v<t_0\), we add an edge \(v\to t_0\).  
+   - We also add a “missing‐to‐next” edge \(t_0\to t_1\).  
+   All these edges go strictly upward in integer value.
+
+3. **Dynamic‐programming on a DAG**  
+   Since every edge goes from a smaller node to a larger node, we can compute  
+   \[
+     \mathrm{dp}[v] \;=\;\max\Bigl(v,\;\max_{v\to u}\mathrm{dp}[u]\Bigr)
+   \]
+   in descending order of \(v\).  Then \(\mathrm{dp}[k]\) is exactly the maximum value reachable from \(k\).
+
+4. **Handling large \(m\)**  
+   Let \(M=\max_i t_0\).  If \(k>M\), there is no outgoing “strictly upward” edge from \(k\), so \(f(k)=k\).  Thus we only really need to sum \(\mathrm{dp}[k]\) for \(k\le M\), and for \(k>M\) we just add \(k\).  Summing \(k\) from \(M+1\) to \(m\) is done by the formula for an arithmetic series.
+
+The total time over all test cases is \(O\bigl((\sum l_i)\log(\sum l_i)\bigr)\) for sorting plus \(O(\sum l_i)\) for building edges plus \(O(\sum M)\) for the DP and the sum.  Since \(\sum l_i\le2\cdot10^5\), this passes easily.

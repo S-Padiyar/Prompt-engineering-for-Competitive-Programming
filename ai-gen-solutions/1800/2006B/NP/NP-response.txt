@@ -1,0 +1,206 @@
+**Analysis**
+
+We have a rooted tree on \(n\) vertices (rooted at 1), with parent array \(p_2,\dots,p_n\).  Each edge \((p_i,i)\) carries a non‐negative integer weight \(t_i\), and we know
+
+\[
+\sum_{i=2}^n t_i \;=\; W,
+\]
+
+but we only learn the individual \(t_i\) one by one in \(n-1\) “events.”  After each event (where we learn the exact value of one more \(t_x\)), we must output
+
+\[
+\sum_{i=1}^n \max_{\text{extending unknown }t} \bigl(\mathrm{dist}(i,i\mathop{\mathrm{mod}}n+1)\bigr),
+\]
+
+where “extending unknown \(t\)” means we are free (for *each* \(i\) independently) to choose the remaining unknown weights in any way that keeps them nonnegative and sums to the still‐unassigned total.
+
+---
+
+**Key observations**
+
+1)  Number the vertices by a DFS order, so the vertex labels are \(1,2,\dots,n\).  The pair \((i,i+1)\) (and wraparound \((n,1)\)) is exactly the consecutive‐labels pair whose distance we look at after each event.
+
+2)  For a fixed pair \((i,i+1)\), its path in the tree goes over some set of edges, some of which may already be “revealed” (we know their exact \(t\)) and some still “unknown.”  Let
+\[
+c_i = \sum_{\substack{\text{edges on path}\\\text{that are known}}} t_e,
+\quad
+u_i = \#\{\text{unknown edges on that path}\}.
+\]
+   Since when maximizing the distance for that pair we can dump *all* of the remaining total weight onto *one* unknown edge on that path (if there is any), the maximized distance is
+\[
+\max\bigl(c_i,\;c_i + (\text{sum of all remaining unknown weights})\bigr)
+\;=\;
+c_i \;+\; \bigl(u_i>0\bigr)\cdot U,
+\]
+   where \(U = W - (\text{sum of already revealed }t)\).
+
+3)  Hence
+\[
+\sum_{i=1}^n \max\bigl(\mathrm{dist}(i,i+1)\bigr)
+\;=\;
+\sum_{i=1}^n c_i
+\;+\;
+\bigl|\{\,i: u_i>0\}\bigr|\;\times U.
+\]
+   But each known edge \(e\) contributes its weight \(t_e\) to *exactly two* of the consecutive‐label paths (this is a standard “DFS‐numbering‐subtree is an interval” argument).  Therefore
+\[
+\sum_{i=1}^n c_i \;=\; 2 \times\sum_{\substack{e\text{ known}}}t_e
+\;=\;2S,
+\]
+   where \(S\) is the sum of all revealed \(t\) so far.  Finally let
+\[
+C = \bigl|\{\,i: u_i=0\}\bigr|
+\quad\Longrightarrow\quad
+\bigl|\{\,i: u_i>0\}\bigr|=n-C.
+\]
+   Then the answer after each event is
+\[
+2S \;+\;(n-C)\,U,
+\quad
+U = W - S.
+\]
+
+4)  We just need to maintain \(S\) (easy) and \(C\), the number of pairs \((i,i+1)\) that are *already fully connected* by known edges.  Equivalently a pair \((i,i+1)\) is “fully known” exactly when in the forest of revealed edges the vertices \(i\) and \(i+1\) lie in the *same* connected component.
+
+5)  We process the edge‐reveals in the given order; each reveal adds one edge to what was previously a forest.  We keep a DSU (union‐find) on the \(n\) vertices, and we also want to know, when merging two components \(A\) and \(B\), how many new consecutive‐label pairs \((i,i+1)\) become connected “across” that merge.  But a pair \((i,i+1)\) only becomes connected *exactly* if \(i\) is in \(A\) and \(i+1\) is in \(B\) (or vice-versa).  
+
+   To count those fast, we store *for each component* the *list of its vertex‐labels*.  On a merge we iterate the *smaller* of the two lists, and for each label \(x\) we test
+   ```
+     if 1<x    and find(x-1)==other_root   then C++
+     if    x<n and find(x+1)==other_root   then C++
+   ```
+   (and also handle the wraparound \((n,1)\) via `x+1 % n`).  Since we always iterate the smaller side, each vertex‐label moves \(O(\log n)\) times, so the total work is \(O(n\log n)\) per test.  With all sums of \(n\) over all tests \(\le2\cdot10^5\), this fits comfortably in 3 s in Java.
+
+Putting it all together gives an \(O(n\log n)\)-style solution per test, which suffices for \(\sum n\le2\cdot10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static int[] parent, sz, nxt, head, tail;
+    static int n;
+    static long W;        // total sum of weights
+    static long S;        // sum of revealed weights
+    static long fully;    // C = count of pairs that are already fully known
+
+    // DSU find with path compression
+    static int find(int x) {
+        return parent[x]==x ? x : (parent[x]=find(parent[x]));
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter    pw = new PrintWriter(new BufferedWriter(new OutputStreamWriter(System.out)));
+        int t = Integer.parseInt(br.readLine().trim());
+        while(t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            n = Integer.parseInt(st.nextToken());
+            W = Long.parseLong(st.nextToken());
+
+            // read the parent array
+            int[] p = new int[n+1];  
+            st = new StringTokenizer(br.readLine());
+            for(int i=2; i<=n; i++){
+                p[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // initialize DSU
+            parent = new int[n+1];
+            sz     = new int[n+1];
+            nxt    = new int[n+1];
+            head   = new int[n+1];
+            tail   = new int[n+1];
+            for(int i=1; i<=n; i++){
+                parent[i] = i;
+                sz[i] = 1;
+                head[i] = i;    // each comp's list is just the single label i
+                tail[i] = i;
+                nxt[i]  = 0;    // end of list
+            }
+
+            S = 0;
+            fully = 0;  // how many adj‐pairs are already fully known
+            StringBuilder ans = new StringBuilder();
+
+            // process the n-1 events
+            for(int e=0; e<n-1; e++){
+                st = new StringTokenizer(br.readLine());
+                int x = Integer.parseInt(st.nextToken());
+                long w = Long.parseLong(st.nextToken());
+                // accumulate revealed weight
+                S += w;
+
+                // union the edge (p[x], x)
+                int rx = find(x), ry = find(p[x]);
+                if(rx != ry) {
+                    // always merge the smaller into the larger
+                    if(sz[rx] > sz[ry]){
+                        int tmp=rx; rx=ry; ry=tmp;
+                    }
+                    // rx is smaller root, ry is larger root
+                    // scan the labels in rx's component
+                    int cur = head[rx];
+                    while(cur!=0){
+                        // check neighbor cur-1 (if >=2)
+                        if(cur>1 && find(cur-1)==ry){
+                            fully++;
+                        }
+                        // check neighbor cur+1 (mod n)
+                        int nb = (cur==n ? 1 : cur+1);
+                        if(find(nb)==ry){
+                            fully++;
+                        }
+                        cur = nxt[cur];
+                    }
+                    // append rx's list to ry's list
+                    nxt[tail[ry]] = head[rx];
+                    tail[ry]      = tail[rx];
+                    head[rx]      = tail[rx] = 0;
+
+                    // standard DSU union
+                    parent[rx] = ry;
+                    sz[ry]     += sz[rx];
+                }
+
+                // number of adj‐pairs that still have at least one unknown edge:
+                long unknownPairs = n - fully;
+                long U = W - S;  // remaining total weight
+                // answer = 2*S + unknownPairs * U
+                long out = 2*S + unknownPairs * U;
+                ans.append(out).append(' ');
+            }
+
+            pw.println(ans.toString().trim());
+        }
+        pw.flush();
+    }
+}
+```
+
+**Explanation of the main parts**
+
+1.  We keep a DSU on the \(n\) vertices, but also for each component we store a singly‐linked list of its **labels** (the DFS numbers, which coincide with their vertex IDs).  
+
+2.  On revealing an edge \((p_x,x)\) with weight \(w\), we do
+   - `S += w;`
+   - Union the two DSU components of \(x\) and \(p_x\).  
+   - When merging, we always iterate the *smaller* component’s label‐list, and for each label `cur` we check its two neighbors in the cyclic label‐order (i.e. `cur-1` and `(cur % n)+1`).  If neighbor belongs to the *other* component, that adjacency \((\min,\max)\) just became fully known, so we `fully++`.  
+   - We then link the two lists in \(O(1)\) by appending the smaller onto the larger.
+
+3.  After each event we know
+\[
+\sum_{i=1}^n c_i = 2\,S,
+\quad
+\bigl|\{\,i:u_i>0\}\bigr| = n - \mathrm{fully},
+\quad
+\text{and } U= W-S.
+\]
+Hence the answer is
+\[
+2S \;+\;(n-\mathrm{fully})\,U.
+\]
+
+This runs in \(O(n\log n)\) per test (each vertex’s label moves through the smaller‐to‐larger merges at most \(O(\log n)\) times), and the sum of all \(n\) over all tests is at most \(2\cdot10^5\). That easily meets the 3 s/256 MB limits in Java.

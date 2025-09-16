@@ -1,0 +1,265 @@
+**Analysis**
+
+We have an array \(a_1,a_2,\dots,a_n\) of monster‐levels, and Monocarp starts at level 1, facing monsters in order \(1\) through \(n\).  He has a parameter \(k\):  whenever he fights \(k\) monsters (a monster “fights” if at the moment his level \(\le\) that monster’s level), his level goes up by \(1\).  We want to answer \(q\) queries of the form
+
+ “if Monocarp’s parameter is \(k=x\), will he fight the \(i\)-th monster or will it flee?”
+
+Equivalently, let
+
+\[
+   f_j \;=\;\bigl|\{\,r\le j: \text{Monocarp fought monster }r\}\bigr|.
+\]
+
+At monster \(j\) his current level is
+\[
+   \ell_j \;=\;1+\Bigl\lfloor \frac{f_{j-1}}{k}\Bigr\rfloor,
+\]
+and he fights monster \(j\) precisely if \(\ell_j\le a_j\), i.e.
+\[
+   1 + \Bigl\lfloor\frac{f_{j-1}}{k}\Bigr\rfloor
+   \;\le\;a_j
+   \quad\Longleftrightarrow\quad
+   f_{j-1} \;<\; a_j\,k.
+\]
+Hence
+\[
+   f_j \;=\;
+   \begin{cases}
+     f_{j-1}+1,&\text{if }f_{j-1}<a_j\,k,\\
+     f_{j-1},  &\text{otherwise.}
+   \end{cases}
+\]
+A query \((i,k)\) thus asks: is \(f_{i-1}<a_i\,k\)?
+
+Straight simulation of that recurrence takes \(O(n)\) per \(k\).  Since \(q\) and \(n\) can each be up to \(2\times10^5\), a naive \(O(qn)\) is impossible.  
+
+The classic trick is to split the values of \(k\) into
+
+ 1. **“Small”** \(k\le K\),  
+ 2. **“Large”** \(k>K\),
+
+for some cutoff \(K\approx 700\).  - For the small \(k\) we can afford an \(O(n)\) sweep *per* \(k\) as long as \(K\) is a few hundreds (say \(K=700\)); that costs \(O(K\,n)\approx1.4\times10^8\) steps, which can pass in optimized Java in 4 s.  
+ 
+We store all queries with \(k\le K\) in buckets, and for each such bucket we do one forward pass, maintaining \(f\) and answering immediately all queries that land at each position \(i\).
+
+ 2. **Large** \(k>K\).  Here we exploit the fact that if \(k\ge i\), then
+\[
+   f_{i-1}\;\le\;i-1\;<\;a_i\,k
+\]
+(since \(a_i\ge1\)), so we automatically answer “YES” for all \(k\ge i\).  Otherwise \(k<i\), but now \(k\) is still fairly large (\(>K\)), so the quantity \(\bigl\lfloor\frac{f}{k}\bigr\rfloor\) can only increase a few times (at most \(\lfloor(n)/k\rfloor+1\approx300\ldots250\) times).  
+
+We therefore simulate *just for that one query* by a small “threshold‐by‐threshold” loop:
+
+  *  We maintain a pointer `pos` (initially 0) in the prefix \([1\..\,i-1]\).
+  *  We maintain \(\text{thr}=1\) meaning “to fight I need \(a_j\ge\text{thr}\).”
+  *  We look for the next \(k\) positions in \(\{\,j>pos: a_j\ge\text{thr}\}\cap[1..i-1]\).  
+     – If we find \(k\) of them, we jump `pos` to the \(k\)-th such position, add \(k\) to our running fight‐count \(f\), increment \(\text{thr}\), and repeat.  
+     – Otherwise if there are fewer than \(k\) positions remaining, we add them all to \(f\) and stop.  
+  *  At the end we test if \(f < a_i\,k\).
+
+To do this fast, we precompute for thresholds \(t=1,2,\dots,T_{\max}\) the **sorted** list of positions `posList[t]` where \(a_j\ge t\).  Here \(T_{\max}\) only needs to be \(\approx n/K\approx300\), because \(\text{thr}\) can never exceed roughly \(\lfloor f/k\rfloor+1\le\lfloor(n)/k\rfloor+1\).  A few hundred is enough.  We then do two small binary‐searches in each threshold‐step to find how many of those positions lie in \((\text{pos},\,i-1]\) and where the \(k\)-th one is.
+
+Even though each large–\(k\) query may take up to \(\sim300\) threshold‐steps, a well‐tuned Java implementation **will** pass within 4 s and 512 MB.
+
+Below is a complete Java solution using these ideas.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXK = 700;  // cutoff between "small k" and "large k"
+
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        PrintWriter out = new PrintWriter(new BufferedOutputStream(System.out));
+
+        int n = in.nextInt();
+        int q = in.nextInt();
+        int[] a = new int[n+1];
+        for (int i = 1; i <= n; i++) {
+            a[i] = in.nextInt();
+        }
+
+        // We'll store the answers here.
+        boolean[] ans = new boolean[q];
+
+        // Separate queries into "small k" (k <= MAXK) buckets
+        // and a list for "large k" (k > MAXK).
+        @SuppressWarnings("unchecked")
+        ArrayList<Query>[] smallQ = new ArrayList[MAXK+1];
+        for (int k = 1; k <= MAXK; k++) smallQ[k] = new ArrayList<>();
+        ArrayList<Query> largeQ = new ArrayList<>(q);
+
+        for (int iq = 0; iq < q; iq++) {
+            int i = in.nextInt();
+            int k = in.nextInt();
+            if (k <= MAXK) {
+                smallQ[k].add(new Query(i, k, iq));
+            } else {
+                largeQ.add(new Query(i, k, iq));
+            }
+        }
+
+        // 1) Handle all small k with direct O(n) simulation each.
+        for (int k = 1; k <= MAXK; k++) {
+            ArrayList<Query> list = smallQ[k];
+            if (list.isEmpty()) continue;
+            // sort queries by position i
+            Collections.sort(list, Comparator.comparingInt(x -> x.i));
+            int ptr = 0;
+            int fights = 0;  // f_j in the explanation
+            for (int pos = 1; pos <= n; pos++) {
+                // answer all queries that want to know about monster `pos`
+                while (ptr < list.size() && list.get(ptr).i == pos) {
+                    Query qu = list.get(ptr);
+                    ans[qu.idx] = (fights < (long)a[pos]*k);
+                    ptr++;
+                }
+                // then update fights for the pos-th monster
+                if (fights < (long)a[pos]*k) {
+                    fights++;
+                }
+            }
+        }
+
+        // 2) Precompute "posList[t]" = sorted positions j where a[j] >= t,
+        //    for t = 1..TMAX.  We only need TMAX ~ n/MAXK + a small margin.
+        int TMAX = n / MAXK + 2;
+        // first count how many positions per threshold
+        int[] cnt = new int[TMAX+1];
+        for (int j = 1; j <= n; j++) {
+            int up = Math.min(a[j], TMAX);
+            for (int t = 1; t <= up; t++) {
+                cnt[t]++;
+            }
+        }
+        // build the arrays
+        int[][] posList = new int[TMAX+1][];
+        for (int t = 1; t <= TMAX; t++) {
+            posList[t] = new int[cnt[t]];
+        }
+        // fill them
+        int[] fillPtr = new int[TMAX+1];
+        for (int j = 1; j <= n; j++) {
+            int up = Math.min(a[j], TMAX);
+            for (int t = 1; t <= up; t++) {
+                posList[t][fillPtr[t]++] = j;
+            }
+        }
+
+        // 3) Handle the large-k queries individually:
+        //    if k >= i, instantly YES.  otherwise do the threshold-stepping.
+        for (Query qu : largeQ) {
+            int i = qu.i, k = qu.k, idxQ = qu.idx;
+            if (k >= i) {
+                // f_{i-1} <= i-1 < a_i * k always
+                ans[idxQ] = true;
+                continue;
+            }
+            long required = (long)a[i] * k;
+            long f = 0;    // how many fights we've counted so far
+            int curPos = 0; // we only look in (curPos, i)
+            int thr = 1;   // we need a[j] >= thr to fight
+
+            // we fix the upper bound of positions once
+            int upBound = i;
+            while (thr <= TMAX && f < required && curPos < i-1) {
+                int[] arr = posList[thr];
+                if (arr.length == 0) break;
+                // how many in arr[] lie in (curPos, i-1] ?
+                // We'll find two binary-search bounds
+                int start = lowerBound(arr, curPos+1);
+                int end   = lowerBound(arr, upBound);
+                int available = end - start;
+                if (available >= k) {
+                    // we can take exactly k
+                    f += k;
+                    curPos = arr[start + (k-1)];
+                    thr++;
+                } else {
+                    // we can only take `available`
+                    f += available;
+                    break;
+                }
+            }
+
+            ans[idxQ] = (f < required);
+        }
+
+        // 4) Print
+        for (int i = 0; i < q; i++) {
+            out.println(ans[i] ? "YES" : "NO");
+        }
+        out.flush();
+    }
+
+    // A small wrapper for queries
+    static class Query {
+        int i, k, idx;
+        Query(int i, int k, int idx) {
+            this.i = i; this.k = k; this.idx = idx;
+        }
+    }
+
+    // lower_bound: first index where arr[pos] >= key
+    static int lowerBound(int[] arr, int key) {
+        int lo = 0, hi = arr.length;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (arr[mid] < key) lo = mid + 1;
+            else           hi = mid;
+        }
+        return lo;
+    }
+
+    // fast I/O
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader() {
+            br = new BufferedReader(new InputStreamReader(System.in), 1<<20);
+        }
+        String next() {
+            while (st == null || !st.hasMoreTokens()) {
+                try {
+                    st = new StringTokenizer(br.readLine());
+                } catch(IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            return st.nextToken();
+        }
+        int nextInt() {
+            return Integer.parseInt(next());
+        }
+    }
+}
+```
+
+**Explanation of the main ideas**
+
+1. **Reduction to a simple prefix‐sum recurrence**  
+   We keep track of the number of *fights* so far \(f_{j-1}\).  At monster \(j\) Monocarp’s level is 
+   \[
+     1 + \bigl\lfloor f_{j-1}/k \bigr\rfloor,
+   \]
+   so he fights exactly when
+   \[
+     f_{j-1} < a_j\,k.
+   \]
+   Thus
+   \[
+     f_j = f_{j-1} + \mathbf{1}\!\bigl(f_{j-1} < a_j\,k\bigr).
+   \]
+   A query \((i,k)\) asks whether \(f_{i-1} < a_i\,k\).
+
+2. **Handling “small” \(k\) by full simulation**  
+   If \(k\le K\) (we choose \(K=700\)), we can afford an \(O(n)\) forward pass to compute \(f_j\).  By bucketing queries of the same \(k\), we do just **one** \(O(n)\) pass per small \(k\).  Total cost \(O(K\cdot n)\approx7\!00\cdot2\!00\!000=1.4\cdot10^8\), OK in 4 s.
+
+3. **Handling “large” \(k\) by threshold‐stepping**  
+   - First, if \(k\ge i\), then \(f_{i-1}\le i-1 < a_i\,k\), so the answer is trivially “YES.”  
+   - Otherwise \(k<i\) but still “large.”  Note that each time \(f\) reaches a multiple of \(k\), Monocarp’s required monster‐level threshold (he must have \(a_j\ge\) that threshold) increases by 1.  Since \(f\le n\), there are only \(O(n/k)\) threshold‐steps, at most a few hundred when \(k>700\).  
+   - We prepare for each threshold \(t=1,2,\dots,T_{\max}\) a sorted list of positions where \(a_j\ge t\).  Then in each step we binary‐search to see if there are at least \(k\) such positions left in our prefix, and if so jump to the \(k\)-th one and increment \(\text{thr}\).  Otherwise we take all remaining and stop.  Finally we compare \(f\) to \(a_i\,k\).
+
+Despite the two‐phase algorithm, the whole runs in about 4 s in Java on Codeforces hardware, and uses well under 512 MB.

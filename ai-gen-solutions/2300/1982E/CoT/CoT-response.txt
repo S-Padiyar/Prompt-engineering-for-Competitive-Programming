@@ -1,0 +1,210 @@
+**Analysis**
+
+We have an array 
+```
+a[i] = i   for   i = 0,1,2,…,n−1
+```
+and a parameter \(k\).  We call a number \(i\) *good* if 
+\[
+\mathrm{popcount}(i)\;=\;\text{number of 1s in the binary of }i\;\le k,
+\]
+and *bad* otherwise.  A subarray \([L,R]\) is **\(k\)-good** if *all* its elements are good.
+
+A standard fact is that the total number of subarrays which contain *no* bad element can be computed by breaking the array into maximal consecutive “runs” of good elements.  If a run has length \(L\), then it contributes
+
+\[
+1 + 2 + \cdots + L \;=\;\frac{L\,(L+1)}2
+\]
+subarrays.  Thus the answer is simply
+\[
+\sum_{\text{runs }R} \frac{|R|\bigl(|R|+1\bigr)}2
+\pmod{10^9+7}.
+\]
+
+However, \(n\) can be up to \(10^{18}\), so we cannot afford to iterate from \(0\) to \(n-1\).  Instead we observe a *divide-and-conquer* over the binary length of \(n\).
+
+1.  Let \(B = \lfloor\log_2 n\rfloor\).  Then \(2^B \le n < 2^{B+1}\).
+2.  Split the index‐range \([0,n)\) into
+   - **Left block** \([0,2^B)\) of length \(2^B\),
+   - **Right block** \([2^B,n)\) of length \(r = n - 2^B\).
+3.  In the left block, checking "popcount\(\le k\)" is exactly the same threshold \(k\).  
+   In the right block, every index is of the form \(2^B + x\), whose popcount is \(\mathrm{popcount}(x)+1\).  
+   Thus the right block has “good” exactly when \(\mathrm{popcount}(x)\le k-1\).  
+4.  We recursively compute four quantities for each block \(S\):
+   - `len` = length of \(S\),
+   - `all` = boolean, is *every* element of \(S\) good?
+   - `pre` = length of the maximal prefix of good elements in \(S\),
+   - `suf` = length of the maximal suffix of good elements in \(S\),
+   - `F` = sum of \(\tfrac{L(L+1)}2\) over the runs of good elements in \(S\),
+            all taken \(\bmod 10^9+7\).
+
+   When we concatenate two blocks \(A\) and \(B\), the merged block has
+   ```
+   len = A.len + B.len
+   all = A.all && B.all
+   pre = A.all ? (A.len + B.pre) : A.pre
+   suf = B.all ? (B.len + A.suf) : B.suf
+   F   = ( A.F + B.F + (A.suf mod M)*(B.pre mod M) ) mod M
+   ```
+   since if the last run of \(A\) (of length `A.suf`) meets the first run of \(B\) (of length `B.pre`), 
+   those two runs merge giving an *extra* `A.suf*B.pre` new subarrays.
+
+5.  We do a special fast recursion for blocks of size \(2^L\) (i.e.\ exactly a power of two) and one for arbitrary \(n\).
+
+Overall each call reduces either the bit‐length or the threshold \(k\).  Since \(\log_2 n\le60\) and \(k\le60\), we make at most \(O(60\cdot60)\approx3600\) states for the “power‐of‐two” recursion, and at most \(O(60)\) states for each general \(n\).  With memoization, each test takes only \(O(60)\) time.
+
+Finally we return the `F`‐value for the entire range \([0,n)\).
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+
+    // A small struct to hold our 5 values:
+    // len    = block length (long)
+    // all    = are all elements in the block good?
+    // pre    = length of prefix of good elements
+    // suf    = length of suffix of good elements
+    // F      = sum of L*(L+1)/2 over runs (mod MOD)
+    static class Node {
+        long len, pre, suf;
+        boolean all;
+        int F;      // stored mod MOD
+        Node(long _len, boolean _all, long _pre, long _suf, int _F) {
+            len = _len; all = _all; pre = _pre; suf = _suf; F = _F;
+        }
+    }
+
+    // dpPow[L][k] = Node for block size 2^L, threshold k
+    // only valid for 0 <= L <= 60, 0 <= k <= 60
+    static Node[][] dpPow = new Node[61][61];
+
+    // Compute the Node for a perfect block of length 2^L with threshold k.
+    // popcount(i) <= k
+    static Node buildPow(int L, int k) {
+        if (k < 0) {
+            // threshold < 0 => nobody is good
+            long length = 1L << L;
+            return new Node(length, false, 0, 0, 0);
+        }
+        if (dpPow[L][k] != null) {
+            return dpPow[L][k];
+        }
+        if (L == 0) {
+            // block of length 1: only index 0 => popcount(0)=0
+            // it is good iff k >= 0
+            dpPow[L][k] = new Node(1, true, 1, 1, 1);
+            return dpPow[L][k];
+        }
+        // split into two halves, size 2^(L-1):
+        //   left  half uses threshold k
+        //   right half uses threshold k-1
+        Node left  = buildPow(L - 1, k);
+        Node right = buildPow(L - 1, k - 1);
+
+        long len    = left.len + right.len;
+        boolean all = left.all & right.all;
+        long pre    = left.all ? (left.len + right.pre) : left.pre;
+        long suf    = right.all ? (right.len + left.suf) : right.suf;
+
+        int sumF = left.F;
+        sumF = (sumF + right.F) % MOD;
+        long cross = ( (left.suf % MOD) * (right.pre % MOD) ) % MOD;
+        sumF = (int)((sumF + cross) % MOD);
+
+        dpPow[L][k] = new Node(len, all, pre, suf, sumF);
+        return dpPow[L][k];
+    }
+
+    // For an arbitrary n (not necessarily power of two) with threshold k,
+    // we memoize in a small per-test map.
+    static Map<Long, Map<Integer,Node>> dpSize;
+
+    static Node buildSize(long n, int k) {
+        if (n <= 0) {
+            // empty block
+            return new Node(0, false, 0, 0, 0);
+        }
+        if (k < 0) {
+            // no one is good
+            return new Node(n, false, 0, 0, 0);
+        }
+        // is it exactly a power of two?
+        int L = 63 - Long.numberOfLeadingZeros(n);
+        long pow = 1L << L;
+        if (pow == n) {
+            // delegate to buildPow
+            return buildPow(L, k);
+        }
+        // memo check
+        Map<Integer,Node> m = dpSize.get(n);
+        if (m != null && m.containsKey(k)) {
+            return m.get(k);
+        }
+
+        // split [0..n) into [0..2^L) and [2^L..n)
+        long r = n - pow;
+        Node left  = buildPow(L, k);
+        Node right = buildSize(r, k - 1);
+
+        long len    = left.len + right.len;
+        boolean all = left.all & right.all;
+        long pre    = left.all ? (left.len + right.pre) : left.pre;
+        long suf    = right.all ? (right.len + left.suf) : right.suf;
+
+        int sumF = left.F;
+        sumF = (sumF + right.F) % MOD;
+        long cross = ((left.suf % MOD) * (right.pre % MOD)) % MOD;
+        sumF = (int)((sumF + cross) % MOD);
+
+        Node res = new Node(len, all, pre, suf, sumF);
+        if (m == null) {
+            m = new HashMap<>();
+            dpSize.put(n, m);
+        }
+        m.put(k, res);
+        return res;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(in.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            long n = Long.parseLong(st.nextToken());
+            int k  = Integer.parseInt(st.nextToken());
+
+            // Per test we clear the dpSize
+            dpSize = new HashMap<>();
+
+            // Build the final Node for [0..n) with threshold k.
+            Node ans = buildSize(n, k);
+
+            // The answer is ans.F (modulo 1e9+7)
+            sb.append(ans.F).append('\n');
+        }
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Points**
+
+1. We never iterate over all \(n\) indices.  We split at the highest power of two \(\le n\).
+2. We keep, for each block \(S\):
+   - `len` = number of elements in \(S\),
+   - `all` = is every element of \(S\) good?,
+   - `pre` = length of the initial run of goods,
+   - `suf` = length of the final run of goods,
+   - `F`   = the sum of \(\frac{L(L+1)}2\) over *all* maximal runs of good elements in \(S\), modulo \(10^9+7\).
+3. When concatenating blocks \(A\) and \(B\), if the suffix of \(A\) and the prefix of \(B\) are both good, they merge into a single run, adding `A.suf * B.pre` new sub‐subarrays.
+4. We memoize two recurrences:
+   - **Power‐of‐two blocks**: of size \(2^L\), with DP table `dpPow[L][k]`.
+   - **Arbitrary size**: split off the largest \(2^L\) and recurse, memoizing `(n,k)` in a small map.
+5. Overall time per test is \(O((\log n)\times k)\); with \(n\le10^{18},k\le60\) this is very fast.

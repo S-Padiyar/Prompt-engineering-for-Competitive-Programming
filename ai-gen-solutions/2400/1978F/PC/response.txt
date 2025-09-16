@@ -1,0 +1,193 @@
+**Analysis**
+
+We have an \(n\times n\) matrix \(B\) built by taking the input array 
+\[
+A = [\,a_1,a_2,\dots,a_n\,]
+\]
+and cyclically shifting it by one position in each row.  One then builds a graph on the \(n^2\) entries \((i,j)\) of \(B\), with an edge between \((i_1,j_1)\) and \((i_2,j_2)\) if
+
+1. \(\lvert i_1 - i_2\rvert + \lvert j_1 - j_2\rvert \le k\),  
+2. \(\gcd\bigl(B_{i_1,j_1},\,B_{i_2,j_2}\bigr) > 1\).
+
+We want the number of connected components of this graph.
+
+A key insight is that each diagonal (modulo \(n\)) of \(B\) has the *same* value from the original array \(A\).  Indeed, one checks that
+\[
+B_{i,j} \;=\; a_{\,\bigl((j - i)\bmod n\bigr) + 1},
+\]
+so all entries with the same \((j-i)\bmod n\) come from the same single \(a_t\).  Call those *diagonal indices* \(d=0,1,\dots,n-1\).  
+
+Moreover, within a single diagonal the vertices \((i,j)\) form a one‐dimensional chain with “Manhattan‐distance” edges (since \(k\ge2\), each diagonal alone is a connected path).  The only way to connect *different* diagonals \(d\) and \(d'\) is via pairs of entries whose diagonal‐indices differ by at most \(k\) and whose values share a nontrivial common prime.
+
+One can show that *all* edges in the big \(n^2\)-vertex graph reduce to edges between entire diagonals \(d\) and \(d'\) whenever
+
+- \(\lvert d - d'\rvert \le k\), and
+- \(\gcd(a_{d+1},\,a_{d'+1})>1\).
+
+Thus the problem collapses to a 1D union–find on the array indices \(1,2,\dots,n\).  We create a disjoint–set (union–find) of size \(n\), and for every prime \(p\) we look at the positions \(i\) where \(p\mid a_i\).  Suppose those positions are
+\[
+i_1 < i_2 < \cdots < i_m.
+\]
+Then whenever \(i_{t+1}-i_t\le k\) (which is exactly the condition \(\lvert d-d'\rvert\le k\) for those two indices), we union them.  Finally the number of connected components is simply the number of distinct union–find roots.
+
+Because \(n\) can be up to \(10^6\) (summed over all test cases) and \(a_i\le10^6\), we
+
+1. Precompute the smallest‐prime‐factor array `spf[]` up to \(10^6\) by a linear sieve.
+2. For each test case, we initialize a union–find of size \(n\).
+3. We keep an integer array `lastPos[p]` (size up to \(10^6\)) that remembers the *last* index \(i\) at which the prime \(p\) appeared.  We also keep a list `usedPrimes` of the primes that actually occur in this test, so we can reset only those entries of `lastPos` afterwards.
+4. We walk through \(i=1\ldots n\), factor \(a_i\) into its distinct prime‐factors via `spf[]`, and for each prime \(p\) we see if `lastPos[p]>0` and \((i - \text{lastPos}[p])\le k\).  If so, we union(\(i\), `lastPos[p]`).  Then we set `lastPos[p]=i`.
+5. At the end we count how many \(i\) are their own root in the union–find — that is the number of connected components.
+6. Finally we clear the used entries of `lastPos` and reuse the data structures for the next test.
+
+This runs in roughly \(O\bigl(\sum n\log a_i\bigr)\) for the factorizations plus \(\sum n\alpha(n)\) for the union–find, which is perfectly fine for \(\sum n\le10^6\).  The memory is \(O(\max a)\) for the sieve plus \(O(\max n)\) for union–find.
+
+----
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXA = 1_000_000;
+    // spf[x] = smallest prime factor of x
+    static int[] spf = new int[MAXA + 1];
+
+    // Build smallest-prime-factor sieve in O(MAXA)
+    static void buildSieve() {
+        for (int i = 2; i <= MAXA; i++) {
+            if (spf[i] == 0) {
+                // i is prime
+                for (long j = i; j <= MAXA; j += i) {
+                    if (spf[(int) j] == 0) {
+                        spf[(int) j] = i;
+                    }
+                }
+            }
+        }
+    }
+
+    // Union-Find / Disjoint Set
+    static int[] parent, rank;
+    static int find(int x) {
+        if (parent[x] != x) {
+            parent[x] = find(parent[x]);
+        }
+        return parent[x];
+    }
+    static void union(int a, int b) {
+        a = find(a);
+        b = find(b);
+        if (a == b) return;
+        // union by rank
+        if (rank[a] < rank[b]) {
+            parent[a] = b;
+        } else if (rank[b] < rank[a]) {
+            parent[b] = a;
+        } else {
+            parent[b] = a;
+            rank[a]++;
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        buildSieve();
+
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter pw = new PrintWriter(new BufferedWriter(new OutputStreamWriter(System.out)));
+
+        int t = Integer.parseInt(br.readLine().trim());
+
+        // lastPos[p] = last index i where prime p was seen in current test
+        // 0 means "not seen yet"
+        int[] lastPos = new int[MAXA + 1];
+        // We'll keep track of which primes we actually used,
+        // so we can reset only those entries in lastPos.
+        ArrayList<Integer> usedPrimes = new ArrayList<>();
+
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+            st = new StringTokenizer(br.readLine());
+            int[] a = new int[n+1];
+            for (int i = 1; i <= n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // Initialize union-find
+            parent = new int[n+1];
+            rank   = new int[n+1];
+            for (int i = 1; i <= n; i++) {
+                parent[i] = i;
+                rank[i]   = 0;
+            }
+
+            usedPrimes.clear();
+
+            // Sweep over the array indices
+            for (int i = 1; i <= n; i++) {
+                int x = a[i];
+                // Factor x via spf[], collecting distinct primes
+                int lastP = -1;
+                while (x > 1) {
+                    int p = spf[x];
+                    if (p != lastP) {
+                        if (lastPos[p] == 0) {
+                            // first time seeing prime p in this test
+                            usedPrimes.add(p);
+                        } else {
+                            int prevI = lastPos[p];
+                            // if within distance k in the diagonal-sense we union
+                            if (i - prevI <= k) {
+                                union(i, prevI);
+                            }
+                        }
+                        lastPos[p] = i;
+                        lastP = p;
+                    }
+                    x /= p;
+                }
+            }
+
+            // Count distinct roots => number of connected components
+            int comps = 0;
+            for (int i = 1; i <= n; i++) {
+                if (find(i) == i) comps++;
+            }
+            pw.println(comps);
+
+            // Reset lastPos for the primes we used
+            for (int p : usedPrimes) {
+                lastPos[p] = 0;
+            }
+        }
+
+        pw.flush();
+        pw.close();
+        br.close();
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1. **Smallest‐Prime‐Factor sieve**  
+   We build an array `spf[]` so that `spf[x]` gives the smallest prime that divides \(x\).  This is done in \(O(\max A)\) time by a modified sieve.
+
+2. **Union–Find setup**  
+   We create a union–find (disjoint–set) of size \(n\) (one element per diagonal).  Initially each index is its own parent.
+
+3. **“Last‐seen” array for primes**  
+   We keep `lastPos[p]` = the last index \(i\) where prime \(p\) divided \(a_i\).  If at some later index \(j\) prime \(p\) again divides \(a_j\) and \(j - i \le k\), we union \(i\) and \(j\).  
+
+4. **Why only “consecutive” by prime is enough**  
+   Suppose a prime \(p\) divides at indices
+   \[
+     i_1 < i_2 < \cdots < i_m.
+   \]
+   We only need to consider edges \((i_t,i_{t+1})\) whenever \(i_{t+1}-i_t\le k\).  Any two farther‐apart by \(\le k\) will be connected by a chain of such consecutive unions.
+
+5. **Answer**  
+   After processing all primes, we count how many distinct union–find roots remain; that is the number of connected components.
+
+This runs in \(O\bigl((\sum n)\log A + (\sum n)\,\alpha(n)\bigr)\), which easily fits under the time limits for \(\sum n\le 10^6\).

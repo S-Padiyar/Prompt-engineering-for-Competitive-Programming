@@ -1,0 +1,94 @@
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class Edge {
+        int to;
+        long bus, walk;
+        Edge(int t, long b, long w) { to = t; bus = b; walk = w; }
+    }
+    static class State {
+        int node;
+        long time;
+        State(int n, long t) { node = n; time = t; }
+    }
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        int T = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        
+        while (T-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            st = new StringTokenizer(br.readLine());
+            long t0 = Long.parseLong(st.nextToken());
+            long t1 = Long.parseLong(st.nextToken());
+            long t2 = Long.parseLong(st.nextToken());
+            
+            List<Edge>[] adj = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) adj[i] = new ArrayList<>();
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                long w1 = Long.parseLong(st.nextToken());
+                long w2 = Long.parseLong(st.nextToken());
+                adj[u].add(new Edge(v, w1, w2));
+                adj[v].add(new Edge(u, w1, w2));
+            }
+            
+            // L[u] = latest departure time from u to still reach n by t0
+            long[] L = new long[n+1];
+            Arrays.fill(L, -1L);
+            L[n] = t0;
+            
+            // Max‐heap on departure time
+            PriorityQueue<State> pq = new PriorityQueue<>(
+                (a, b) -> Long.compare(b.time, a.time)
+            );
+            pq.offer(new State(n, t0));
+            
+            while (!pq.isEmpty()) {
+                State stt = pq.poll();
+                int v = stt.node;
+                long cur = stt.time;
+                // skip stale
+                if (cur != L[v]) continue;
+                // if cur<0, no further positive updates possible
+                if (cur < 0) break;
+                
+                for (Edge e : adj[v]) {
+                    int u = e.to;
+                    // 1) walk
+                    long candWalk = cur - e.walk;
+                    if (candWalk >= 0 && candWalk > L[u]) {
+                        L[u] = candWalk;
+                        pq.offer(new State(u, candWalk));
+                    }
+                    // 2) bus
+                    long w1 = e.bus;
+                    // pre‐call
+                    long tPre = Math.min(t1 - w1, cur - w1);
+                    if (tPre < 0) tPre = -1;
+                    // post‐call
+                    long tPost = -1;
+                    long dep = cur - w1;
+                    if (dep >= t2) tPost = dep;
+                    long tNew = Math.max(tPre, tPost);
+                    if (tNew >= 0 && tNew > L[u]) {
+                        L[u] = tNew;
+                        pq.offer(new State(u, tNew));
+                    }
+                }
+            }
+            
+            long ans = L[1];
+            sb.append(ans < 0 ? -1 : ans).append('\n');
+        }
+        System.out.print(sb.toString());
+    }
+}
+```

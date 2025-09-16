@@ -1,0 +1,204 @@
+**Analysis**
+
+We have an array a of length n, which (as the problem guarantees) is a permutation of 1,2,…,n.  We want to compute
+
+  MEOW(a) = ∑_{b ⊆ a} MEX(b, |b|+1)
+
+where the sum is over all \(2^n\) subsets \(b\) of the array \(a\).  Here
+\[
+   MEX(S,k)
+\]
+is defined as the \(k\)-th positive integer \emph{not} in the set \(S\).
+
+---
+
+**Key combinatorial observation**
+
+Fix a subset \(b\) of size \(k\).  We must find its contribution
+\(\mathrm{MEX}(b,k+1)\), then sum over all subsets of size \(k\), and finally
+sum \(k=0,1,\dots,n\).  We can even swap the order of summation:
+
+\[
+  \mathrm{MEOW}(a)\;=\;
+    \sum_{k=0}^n
+    \sum_{\substack{|b|=k\\b\subseteq a}} \! MEX(b,k+1).
+\]
+
+Let us call that inner sum \(F(k)\).  Now we show how to compute
+\(\displaystyle F(k)=\sum_{|b|=k}MEX(b,k+1)\) in \(O(n)\) or \(O(n\!+\!k)\) time,
+and then do that for all \(k=0\ldots n\) in \(O(n^2)\) total.
+
+---
+
+### When is \(\mathrm{MEX}(b,k+1)=m\)?
+
+By definition \(MEX(b,k+1)\) is the \((k+1)\)-th missing positive integer in \(b\).
+Call \(m\) the value of that \((k+1)\)-th miss.  Two conditions must hold:
+
+1.  **\(m\) itself is missing from \(b\).**
+
+2.  Among \(\{1,2,\dots,m-1\}\), exactly \(k\) of them are missing from \(b\).
+    (Because the \((k+1)\)-th missing must be \(m\).)
+
+   If exactly \(k\) integers in \(\{1,\dots,m-1\}\) are missing from \(b\),
+   then exactly \((m-1)-k\) of them \emph{are} in \(b\).  And since \(b\) has
+   \(k\) total elements, the other \(k - [(m-1)-k]=2k-m+1\) must come from
+   the set \(\{m+1,m+2,\dots,n\}\).  Finally, \(b\) must not contain \(m\)
+   itself.  Permutation property means there are exactly
+   \((m-1)\) elements \(\le m-1\), and \((n-m)\) elements \(>m\).
+
+Putting it all together, for a fixed \(k\) and a candidate \(m\), the number
+of subsets \(b\) of size \(k\) with \(\mathrm{MEX}(b,k+1)=m\) is
+
+\[
+   \binom{m-1}{\,(m-1)-k}
+   \;\times\;
+   \binom{n-m}{\,2k - m + 1}
+\;=\;
+   \binom{m-1}{\,k}\;\binom{n-m}{\,2k-m+1},
+\]
+provided all binomial arguments are non‐negative and valid.  In addition,
+each such subset contributes a value \(m\) to the sum.  
+
+Hence for fixed \(k\),
+\[
+   F(k)
+   =
+   \sum_{m=k+1}^{\min(n,\;2k+1)}
+     m\;\binom{m-1}{k}\;\binom{n-m}{2k-m+1}
+   \;+\;
+   \begin{cases}
+     (2k+1)\,\binom{n}{k}, & 2k+1>n,\\
+     0, & 2k+1\le n,
+   \end{cases}
+\]
+where the extra term \((2k+1)\binom{n}{k}\) handles the case \(m>n\),
+which only works if \(m=2k+1\) and \(2k+1>n\).  
+
+Finally
+\[
+   \mathrm{MEOW}(a)=
+   \sum_{k=0}^n F(k).
+\]
+
+---
+
+### Implementation details
+
+- Precompute factorials \(\mathrm{fact}[i]\) and inverse‐factorials
+  \(\mathrm{invf}[i]\) for \(0\le i\le N_{\max}\) modulo \(10^9+7\),
+  so that
+  \(\binom{x}{y} = \mathrm{fact}[x]\times \mathrm{invf}[y]\times \mathrm{invf}[x-y]\)
+  in \(O(1)\) time.
+
+- For each test case (with its own \(n\)), loop \(k=0\ldots n\).  For each
+  \(k\) compute the partial sum
+  \(\displaystyle\sum_{m=k+1}^{\min(n,2k+1)} m\,C(m-1,k)\,C(n-m,\,2k-m+1)\)
+  in \(O(n)\) time, add the “overflow” term \((2k+1)\,C(n,k)\) if \(2k+1>n\),
+  and accumulate into the global answer.
+
+- Total work per test is \(O(n^2)\), and the problem guarantees
+  \(\sum n^2 \le 2.5\times10^7\), which fits in time.
+
+Below is a complete Java solution.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+    static int MAXN = 5000;    // problem constraint on n
+    static int[] fact, invf;
+
+    // fast exponentiation mod
+    static int modPow(long a, long e) {
+        long res = 1 % MOD;
+        a %= MOD;
+        while (e > 0) {
+            if ((e & 1) != 0) res = (res * a) % MOD;
+            a = (a * a) % MOD;
+            e >>= 1;
+        }
+        return (int)res;
+    }
+
+    // binomial coefficient nCk mod
+    static int comb(int n, int k) {
+        if (k < 0 || k > n || n < 0) return 0;
+        return (int) ((long)fact[n] * invf[k] % MOD * invf[n-k] % MOD);
+    }
+
+    public static void main(String[] args) throws IOException {
+        // Precompute factorials and inverse factorials up to MAXN
+        fact = new int[MAXN+1];
+        invf = new int[MAXN+1];
+        fact[0] = 1;
+        for (int i = 1; i <= MAXN; i++) {
+            fact[i] = (int)((long)fact[i-1] * i % MOD);
+        }
+        // inverse factorial via Fermat's little theorem
+        invf[MAXN] = modPow(fact[MAXN], MOD-2);
+        for (int i = MAXN; i >= 1; i--) {
+            invf[i-1] = (int)((long)invf[i] * i % MOD);
+        }
+
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+
+            long answer = 0;
+            // loop over subset sizes k
+            for (int k = 0; k <= n; k++) {
+                // sum over m = k+1 .. min(n, 2k+1)
+                int mMax = Math.min(n, 2*k + 1);
+                for (int m = k+1; m <= mMax; m++) {
+                    int c1 = comb(m-1, k);
+                    int x = 2*k - m + 1;
+                    int c2 = comb(n-m, x);
+                    long term = (long)m * c1 % MOD * c2 % MOD;
+                    answer = (answer + term) % MOD;
+                }
+                // if 2k+1 > n, then we have the extra "overflow" term
+                int mOver = 2*k + 1;
+                if (mOver > n) {
+                    long term = (long)mOver * comb(n, k) % MOD;
+                    answer = (answer + term) % MOD;
+                }
+            }
+            sb.append(answer).append('\n');
+        }
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of the core steps**
+
+1. **Combinatorial counting.**  
+   We showed that for a subset \(b\) of size \(k\) to have
+   \(\mathrm{MEX}(b,k+1)=m\), \(b\) must pick exactly
+   \((m-1)-k\) elements from \(\{1,\dots,m-1\}\), zero copies of \(m\), and
+   the remaining \(2k-m+1\) elements from \(\{m+1,\dots,n\}\).  Since \(a\)
+   is a permutation, there are \(\binom{m-1}{(m-1)-k}\binom{n-m}{2k-m+1}\)
+   ways to choose these.  Each such subset contributes \(m\) to the sum.
+
+2. **Handling \(m>n\).**  
+   If \(m>n\), the only way to get the \((k+1)\)-th missing equal \(m\) is
+   to have \(m=2k+1\), pick all \(k\) elements from \(\{1,\dots,n\}\), and
+   so there are \(\binom{n}{k}\) such subsets, each contributing \(m=2k+1\).
+
+3. **Implementation.**  
+   We sum over \(k=0\ldots n\), then \(m\) from \(k+1\) to \(\min(n,2k+1)\),
+   plus the overflow if \(2k+1>n\).  Each term is just
+   \(m\cdot\binom{m-1}{k}\cdot\binom{n-m}{2k-m+1}\) or
+   \((2k+1)\binom{n}{k}\), all taken modulo \(10^9+7\).
+
+4. **Complexity.**  
+   We do an \(O(n)\) loop for each \(k\), hence \(O(n^2)\) time per test.
+   The problem statement guarantees \(\sum n^2 \le 25\times 10^6\),
+   suitable for a \(2.5\) s time limit in optimized Java.
+
+This completes the solution.

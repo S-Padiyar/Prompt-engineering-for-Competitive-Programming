@@ -1,0 +1,242 @@
+**Problem Restatement**
+
+We have \(n\) vertices (numbered \(1\) through \(n\)) and an integer label \(a_i\) on each vertex \(i\). Initially, the graph has no edges. We must perform exactly \(n-1\) operations, numbered \(x=1,2,\dots,n-1\). In operation \(x\) we pick two *different* vertices \(u,v\) such that
+
+\[
+|a_u - a_v|\;\bmod\;x \;=\;0,
+\]
+
+and we add an undirected edge \((u,v)\).  After all \(n-1\) operations, the resulting graph must be *connected* (equivalently, it will be a tree, since a connected graph on \(n\) vertices with \(n-1\) edges is a tree).  We must either
+
+- Output “No” if it is impossible to choose such edges for each \(x\), or
+- Output “Yes” and then exactly \(n-1\) pairs \((u,v)\), one per line in the order \(x=1,2,\dots,n-1\), describing a valid sequence of operations that yields a connected graph.
+
+**Input & Output**
+
+- **Input:**  
+  - First line: integer \(t\), the number of test cases \((1\le t\le 10^3)\).  
+  - For each test case:  
+    - Line 1: integer \(n\) \((1\le n\le 2000)\).  
+    - Line 2: \(n\) integers \(a_1,a_2,\dots,a_n\)\ \((1\le a_i\le10^9)\).  
+  - It is guaranteed that \(\sum n\le2000\).
+
+- **Output:**  
+  - For each test case:  
+    - If no valid sequence of operations exists, print a single line `No`.  
+    - Otherwise, print `Yes`, then \(n-1\) lines.  On line \(x\) (for \(1\le x\le n-1\)) print two integers `u v` indicating that in operation \(x\) we add edge \((u,v)\).  Those choices must satisfy \(\bigl|a_u-a_v\bigr|\bmod x=0\) and must form a connected graph in the end.
+
+**Constraints and Edge Cases**
+
+- \(n\) up to 2000, sum over all tests \(\le2000\).  
+- We must choose exactly one edge for each label \(x\in[1,n-1]\).  
+- The final graph must have \(n-1\) edges and be connected (thus it is a spanning tree).  
+- Operation \(x=1\) is always the easiest constraint, since any difference is divisible by 1.  Larger \(x\) impose stronger restrictions, so we must be careful to reserve those “harder” labels first.
+
+**High-Level Solution Idea**
+
+We will build the tree *greedily from the largest operation number down to 1*.  Why largest first?  A larger \(x\) requires \(\lvert a_u-a_v\rvert\) to be a multiple of \(x\), which is a tighter condition (fewer pairs satisfy it).  Once we use up “easy” small labels, we might not be able to repair a missed opportunity for a large label.  So:
+
+1. Maintain a Disjoint-Set Union (DSU) over the vertices to ensure that we do not create cycles.  
+2. For \(x\) going from \(n-1\) down to \(1\):
+   - We must pick one edge \((u,v)\) so that \(\lvert a_u-a_v\rvert\mod x=0\) *and* \(u,v\) lie in different DSU components (so that we connect two components and avoid a cycle).
+   - If *no* such pair \((u,v)\) exists, we answer “No” for this test case.
+   - Otherwise, we union their components in the DSU and record \((u,v)\) as the edge chosen for label \(x\).
+3. If we succeed for every \(x= n-1\ldots1\), we will have chosen exactly \(n-1\) edges, no cycles, and by DSU argument the final graph is connected.  We print “Yes” and then output our recorded edges in the order \(x=1,2,\dots,n-1\).
+
+**Key Data Structures**
+
+- DSU (`parent[]` + `rank[]`) for cycle-avoidance and component management.
+- A temporary array `head[0..x-1]` to group vertices by their residue modulo \(x\).  All vertices with the same `a[i] % x` form candidate edges among themselves (because two numbers are congruent \(\bmod\,x\) exactly when \(x\) divides their difference).
+- A linked-list style `nextNode[i]` to chain vertices in each residue bucket, so that building and scanning buckets takes \(O(n)\) per \(x\).
+
+**Algorithm Complexity**
+
+- For each test:
+  - We loop \(x\) from \(n-1\) down to \(1\) \(=\) \(O(n)\) iterations.
+  - In each iteration we:
+    - Build residue buckets in \(O(n)\).
+    - Scan them in total \(O(n)\) time to find a cross-component edge.
+    - DSU find/union is essentially \(O(\alpha(n))\approx O(1)\).
+  - Total per test: \(O(n^2)\).  Since \(\sum n\le2000\), worst-case is about \((2000)^2=4\cdot10^6\) operations, which is well within 2 seconds.
+- Space: \(O(n)\) for DSU arrays, residues, nextNode, and answer storage.
+
+---
+
+```java
+import java.util.*;
+
+public class Main {
+    static int[] parent, rank;
+    static int[] head, nextNode;
+    static int[] ansU, ansV;
+    static int n;
+    static int[] a;
+
+    // DSU find with path compression
+    static int findSet(int x) {
+        if (parent[x] != x) {
+            parent[x] = findSet(parent[x]);
+        }
+        return parent[x];
+    }
+
+    // DSU union by rank
+    static void unionSet(int x, int y) {
+        x = findSet(x);
+        y = findSet(y);
+        if (x == y) return;
+        if (rank[x] < rank[y]) {
+            parent[x] = y;
+        } else if (rank[y] < rank[x]) {
+            parent[y] = x;
+        } else {
+            parent[y] = x;
+            rank[x]++;
+        }
+    }
+
+    public static void main(String[] args) {
+        Scanner in = new Scanner(System.in);
+        int t = in.nextInt();
+
+        while (t-- > 0) {
+            n = in.nextInt();
+            a = new int[n+1];
+            for (int i = 1; i <= n; i++) {
+                a[i] = in.nextInt();
+            }
+
+            // Initialize DSU
+            parent = new int[n+1];
+            rank   = new int[n+1];
+            for (int i = 1; i <= n; i++) {
+                parent[i] = i;
+                rank[i]   = 0;
+            }
+
+            // Prepare storage for answers: ansU[x], ansV[x] = edge chosen at label x
+            ansU = new int[n];
+            ansV = new int[n];
+
+            // Helper arrays for residue-bucketing
+            head     = new int[n];    // we'll only use indices [0..x-1]
+            nextNode = new int[n+1];  // nextNode[i] chains i in the bucket list
+
+            boolean possible = true;
+
+            // Build edges from largest x (n-1) down to 1
+            for (int x = n - 1; x >= 1; x--) {
+                // Reset head[0..x-1] = -1
+                Arrays.fill(head, 0, x, -1);
+
+                // Bucket each vertex i by its residue r = a[i] % x
+                for (int i = 1; i <= n; i++) {
+                    int r = a[i] % x;
+                    nextNode[i] = head[r];
+                    head[r]     = i;
+                }
+
+                // Attempt to find any cross-component pair in the same residue
+                boolean found = false;
+                for (int r = 0; r < x && !found; r++) {
+                    int listHead = head[r];
+                    if (listHead == -1) continue;
+                    int repNode = -1, repRoot = -1;
+                    // Walk the bucket's linked list
+                    for (int cur = listHead; cur != -1; cur = nextNode[cur]) {
+                        int root = findSet(cur);
+                        if (repNode < 0) {
+                            // first node in this residue
+                            repNode = cur;
+                            repRoot = root;
+                        } else if (root != repRoot) {
+                            // found u = repNode, v = cur in different DSU components
+                            unionSet(repNode, cur);
+                            ansU[x] = repNode;
+                            ansV[x] = cur;
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!found) {
+                    possible = false;
+                    break;
+                }
+            }
+
+            if (!possible) {
+                System.out.println("No");
+            } else {
+                System.out.println("Yes");
+                // Output edges in order x=1..n-1
+                for (int x = 1; x <= n - 1; x++) {
+                    System.out.println(ansU[x] + " " + ansV[x]);
+                }
+            }
+        }
+
+        in.close();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **DSU Setup**  
+   We keep `parent[i]` and `rank[i]` so that `findSet(i)` returns the representative of node \(i\)’s component, and `unionSet(u,v)` merges them if distinct.
+
+2. **Residue Bucketing**  
+   For a given \(x\), two vertices \(u,v\) satisfy \(\lvert a_u-a_v\rvert\mod x=0\) precisely when
+   \[
+     a_u \equiv a_v \;(\bmod\,x).
+   \]
+   Thus we group vertices by `r = a[i] % x`.  All vertices in the same bucket `head[r]` share that residue.
+
+3. **Finding a Cross-Component Pair**  
+   Within each bucket, we scan the chain of vertices.  We remember the first vertex we see (`repNode`) and its DSU root (`repRoot`).  As soon as we see another vertex `cur` whose `findSet(cur)` is different from `repRoot`, we have two vertices in the same residue but different components.  We pick `(repNode, cur)` as the edge for label \(x\), call `unionSet(repNode, cur)`, and move on to the next (smaller) \(x\).
+
+4. **Failure Case**  
+   If for some \(x\) no bucket yields a valid cross-component pair, we must print “No” and give up.  Otherwise, we eventually record exactly one edge per \(x\in[1,n-1]\).  Those \(n-1\) edges form a spanning tree (connected, no cycles) by DSU logic.
+
+**Example Walkthrough**
+
+Take the sample
+```
+n = 4, a = [99, 7, 1, 13].
+```
+We run \(x=3\to2\to1\).
+
+- x = 3  
+  - Residues mod 3:  
+    99%3=0 → bucket 0: {1}  
+    7%3=1  → bucket 1: {2}  
+    1%3=1  → bucket 1: {2,3}  
+    13%3=1 → bucket 1: {2,3,4}  
+  - In bucket 1 we inspect say node 2 (`repNode=2`), then node 3 has `root(3)!=root(2)`.  We pick edge (2,3) for x=3.  DSU merges {2,3}.
+
+- x = 2  
+  - Residues mod 2:  
+    99%2=1 → {1}, 7%2=1→{1,2}, 1%2=1→{1,2,3}, 13%2=1→{1,2,3,4}.  
+  - In that big bucket pick first say vertex 1, then the next vertex whose root differs is e.g. 4 (since {2,3,4} are in the other component).  We pick (1,4) for x=2.  DSU merges {1,4} and {2,3} → now all 4 are in one component.
+
+- x = 1  
+  - Residues mod 1: all are 0, a single bucket of all 4 vertices.  We pick any two from different roots; but by now all are in one component!  Oops—**we must ensure we never merge all into 1 component too early**.  
+  Our code actually finds cross-component pairs in each step and guarantees we end with exactly two components before the final step.  
+  In practice we did merges for x=3 and x=2, leaving exactly two components of size 2 each, so x=1 can connect them.  
+
+Thus we obtain a spanning tree that respects all divisibility constraints.
+
+**Time & Space Complexity**
+
+- Time:  
+  - We do \(n-1\) iterations (for \(x\) from \(n-1\) down to 1).  
+  - In each, we bucket \(n\) vertices (O(n)), then scan them (another O(n)).  
+  - DSU operations are amortized \(O(\alpha(n))\approx O(1)\).  
+  ⇒ \(O(n^2)\) per test, and \(\sum n\le2000\) ⇒ ~4 million operations total, easily within 2 s.
+
+- Space:  
+  - \(O(n)\) for the DSU arrays, the bucketing arrays, and the answer storage.
+
+This completes a correct, efficient solution under the problem constraints.

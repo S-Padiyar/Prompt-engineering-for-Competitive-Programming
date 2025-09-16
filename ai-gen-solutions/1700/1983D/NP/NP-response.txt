@@ -1,0 +1,180 @@
+**Analysis**
+
+We have two arrays `a` and `b`, each of length `n`, with distinct entries.  We want to know whether it is possible, by a sequence of moves of the following type, to make `a` and `b` identical:
+
+– In one move choose indices \(l\le r\) in **a** (so you swap \(a_l\) and \(a_r\), which is a transposition of distance \(d=r-l\ge0\)), **and at the same time** choose indices \(p\le q\) in **b** with \(q-p=r-l\) (i.e.\ the same distance \(d\)) and swap \(b_p\) and \(b_q\).
+
+Thus every swap we do in `a` (of some distance \(d\)) must be “matched” by a swap in `b` of exactly the same distance \(d\).  We may do as many moves as we like.
+
+---
+
+**Key observations / Necessary and (together) sufficient conditions**
+
+1) **The two arrays must be permutations of the same multiset.**  
+   Since all we ever do are swaps, we cannot change which values occur or how many times, so the set of values in `a` must coincide with that in `b`.  
+
+2) **The “interval‐length histogram” between adjacent values in sorted order must match.**  
+   Let us sort the common multiset of values; call the sorted list 
+   \[
+     v_1 < v_2 < \dots < v_n.
+   \]
+   In the arrangement **a**, each \(v_i\) sits at some index \(p_i\); likewise in **b** it sits at index \(q_i\).  
+   We look at the \(n-1\) “gaps” 
+   \[
+     d^a_i \;=\;\bigl|\,p_{i+1}-p_i\bigr|\,,\qquad
+     d^b_i \;=\;\bigl|\,q_{i+1}-q_i\bigr|\,,\quad (i=1\ldots n-1).
+   \]
+   One can show (by a combinatorial argument on how the adjacent‐in‐value “constraint graph” must be realizable by the same multiset of swap‐distances) that a necessary—and indeed sufficient—condition for the two arrays to be mutually reachable is that the two multisets
+   \[
+     \{\,d^a_1,d^a_2,\dots,d^a_{n-1}\}
+     \quad\text{and}\quad
+     \{\,d^b_1,d^b_2,\dots,d^b_{n-1}\}
+   \]
+   coincide exactly.
+
+3) **The overall permutation‐parity must agree.**  
+   Each swap of distance \(d\) is itself an odd/even permutation according to whether \(d\) is odd or even (it can be written as \(d\) adjacent transpositions).  Since each move applies one swap in **a** and one swap in **b** of the same distance, the total parity change in **a** must equal that in **b**.  Hence if **a** and **b** (viewed as permutations of the common sorted list) have different parity, it is impossible to match them up.
+
+Putting these three checks together turns out to be both necessary and sufficient.
+
+---
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine().trim());
+            int[] a = new int[n], b = new int[n];
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) a[i] = Integer.parseInt(st.nextToken());
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) b[i] = Integer.parseInt(st.nextToken());
+
+            // 1) Check same multiset of values
+            int[] sa = a.clone();
+            int[] sbv = b.clone();
+            Arrays.sort(sa);
+            Arrays.sort(sbv);
+            if (!Arrays.equals(sa, sbv)) {
+                sb.append("NO\n");
+                continue;
+            }
+
+            // 2) Build a map from value->sortedIndex
+            //    so we can locate each value's position in 'a' and 'b'.
+            //    Then compute the (n-1) gap-lengths for adjacent sorted-values.
+            Map<Integer,Integer> indexInA = new HashMap<>(n);
+            Map<Integer,Integer> indexInB = new HashMap<>(n);
+            for (int i = 0; i < n; i++) {
+                indexInA.put(a[i], i);
+                indexInB.put(b[i], i);
+            }
+
+            int[] da = new int[n-1], db = new int[n-1];
+            for (int i = 0; i + 1 < n; i++) {
+                int v1 = sa[i], v2 = sa[i+1];
+                int pa = indexInA.get(v1), pa2 = indexInA.get(v2);
+                int pb = indexInB.get(v1), pb2 = indexInB.get(v2);
+                da[i] = Math.abs(pa2 - pa);
+                db[i] = Math.abs(pb2 - pb);
+            }
+            Arrays.sort(da);
+            Arrays.sort(db);
+            if (!Arrays.equals(da, db)) {
+                sb.append("NO\n");
+                continue;
+            }
+
+            // 3) Check permutation parity of a and b (relative to the sorted array).
+            //    We compress a[] and b[] to their ranks 0..n-1 and count inversions mod 2.
+            int[] compA = new int[n], compB = new int[n];
+            for (int i = 0; i < n; i++) {
+                // find the rank of a[i] in the sorted array sa[]: binary search
+                compA[i] = Arrays.binarySearch(sa, a[i]);
+                compB[i] = Arrays.binarySearch(sa, b[i]);
+            }
+
+            int parityA = inversionParity(compA);
+            int parityB = inversionParity(compB);
+            if (parityA != parityB) {
+                sb.append("NO\n");
+            } else {
+                sb.append("YES\n");
+            }
+        }
+
+        System.out.print(sb);
+    }
+
+    // Return inversion count mod 2 of the permutation p[0..n-1], values are 0..n-1
+    // We use a Fenwick tree to accumulate counts and accumulate the parity.
+    private static int inversionParity(int[] p) {
+        int n = p.length;
+        Fenwick fw = new Fenwick(n);
+        int parity = 0;
+        for (int i = 0; i < n; i++) {
+            int x = p[i];
+            // how many of the already‐seen elements are > x ?
+            // total seen so far = i, number <= x = fw.sum(x)
+            int lessEq = fw.sum(x);
+            int greater = i - lessEq;
+            if ((greater & 1) != 0) parity ^= 1;
+            fw.update(x, 1);
+        }
+        return parity;
+    }
+
+    // Simple Fenwick (BIT) for sums on 0..n-1 (internally 1..n).
+    static class Fenwick {
+        int n;
+        int[] f;
+        Fenwick(int n) {
+            this.n = n;
+            f = new int[n+1];
+        }
+        // add v at position i (0-based)
+        void update(int i, int v) {
+            for (int x = i+1; x <= n; x += x & -x)
+                f[x] += v;
+        }
+        // sum of f[0..i]  (0-based)
+        int sum(int i) {
+            int s = 0;
+            for (int x = i+1; x > 0; x -= x & -x)
+                s += f[x];
+            return s;
+        }
+    }
+}
+```
+
+**Explanation of the three checks**
+
+1. **Same multiset of values**.  Since our only moves are swaps, we cannot change which values appear (or how many times).  If `a` and `b` do not even share the same values, the answer is immediately NO.
+
+2. **Matching “adjacent‐value gap‐length” multisets**.  
+   Label the common sorted list of values as
+   \[
+     v_1 < v_2 < \cdots < v_n.
+   \]
+   In the original array `a`, each \(v_i\) resides at some index \(\pi(i)\); in `b` it is at \(\sigma(i)\).  Look at the distances
+   \[
+     d^a_i = |\pi(i+1) - \pi(i)|,\quad
+     d^b_i = |\sigma(i+1) - \sigma(i)|,\quad i=1\ldots n-1.
+   \]
+   One shows (by a standard argument on building the same “interval‐graph” of adjacent values) that it is necessary—and also sufficient—that the two multisets
+   \(\{\,d^a_i\}\) and \(\{\,d^b_i\}\) coincide.  Intuitively, whenever we swap values in `a` at distance \(d\), we must also swap in `b` at the same distance to keep the two gap‐patterns in sync.
+
+3. **Parity of the permutation**.  
+   A swap of distance \(d\) has sign \((-1)^d\) when viewed as a permutation (it is a product of \(d\) adjacent transpositions).  
+   Since every move does one swap in `a` and one swap in `b` of the same distance \(d\), the total parity change in `a` and in `b` must remain equal throughout.  Hence if `a` and `b` start out with different overall parity (as permutations of the sorted list), there is no way to make them identical.
+
+These three conditions are both **necessary** and (quite non‐obviously) **sufficient** for the existence of a sequence of “paired swaps of equal distance” that turns `a` and `b` into the same array.

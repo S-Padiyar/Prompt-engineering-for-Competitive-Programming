@@ -1,0 +1,225 @@
+**Analysis**
+
+We have a rooted tree on \(n\) vertices (rooted at 1).  For each vertex \(i\) (\(2\le i\le n\)), there is an edge \((i,p_i)\) of weight \(t_i\).  We know only that 
+
+\[
+t_i\ge0,\quad \sum_{i=2}^n t_i \;=\; w,
+\]
+
+but the individual \(t_i\) are unknown.  The vertices are labeled in *depth‐first‐search order*, so that each subtree is a contiguous interval of labels.
+
+We consider the \(n\) cyclic adjacent pairs
+\[
+(1,2),\,(2,3),\dots,(n-1,n),\,(n,1),
+\]
+and let 
+\[
+\mathrm{dist}(u,v)
+\]
+denote the sum of edge‐weights on the simple path from \(u\) to \(v\).  After each event (which reveals an edge‐weight \(t_x\)), Iris wants to maximize \(\mathrm{dist}(i,i+1)\) (indices mod \(n\)) **independently** for each pair, then report the sum of these \(n\) maxima.
+
+Key observation:
+
+1.  **Each path \((i,i+1)\) may use several edges, some of which are already fixed and some still “unknown.”**  
+2.  Because Iris can **re‐assign** the remaining unknown weights (subject only to nonnegativity and total sum \(w-\sum_{\text{fixed}}t\)) **differently** when maximizing each pair independently, she can shove *all* of the remaining total weight onto *one* unknown edge on that path, thereby adding the full “remaining” sum *if* the path has at least one unknown edge, or 0 otherwise.
+3.  Hence for a given pair \((i,i+1)\):
+   
+   \[
+     \max \mathrm{dist}(i,i+1)
+     \;=\;
+     (\text{sum of fixed }t\text{'s on that path})
+     \;+\;
+     \bigl[\text{path has any unknown edge}\bigr]\;\times\;(w-\text{sum of fixed }t).
+   \]
+
+Summing over all \(n\) pairs, let
+- \(S_f\) = sum of the weights of all **fixed** edges,
+- \(W_r=w-S_f\) = “remaining” total weight to distribute among unknown edges,
+- \(C\) = number of adjacent‐pairs \((i,i+1)\) whose path still contains at least one unknown edge.
+
+Then
+
+\[
+  \sum_{i=1}^n \max\mathrm{dist}(i,i+1)
+  \;=\;
+  \sum_{i=1}^n (\text{fixed‐sum on path}_i)
+  \;+\;
+  C\cdot W_r.
+\]
+
+But one can show merely by counting boundary‐crossings in a DFS‐numbered tree that **each edge** contributes **exactly two** adjacent‐pairs (one at the “enter” boundary of its subtree, one at the “exit” boundary).  Thus
+
+\[
+  \sum_{i=1}^n (\text{fixed‐sum on path}_i)
+  \;=\;
+  2 \times S_f.
+\]
+
+So the answer after each event is simply
+
+\[
+  \boxed{
+    2\,S_f \;+\; C\,(w - S_f)\;.
+  }
+\]
+
+Hence we need only maintain
+
+- \(S_f\), the sum of revealed weights so far.
+- \(C\), the number of adjacent‐pairs that still have at least one unknown edge on their path.
+
+Equivalently, imagine the \(n\) pairs as numbered \(1,2,\dots,n\) (pair \(i\) is \((i,i+1)\) mod \(n\)).  Each **unknown** edge covers exactly two of these pair‐indices (the DFS‐enter and DFS‐exit boundaries of its subtree).  We keep a counter `cnt[i]` = how many *unknown* edges cover pair‐index \(i\).  Initially every edge is unknown, so we add +1 to its two covered positions; the number of “active” pairs
+\[
+  C \;=\; \#\{\,i: \text{cnt}[i]\ge1\}\;=\;n
+\]
+initially.  When an edge becomes fixed, we subtract 1 from each of its two coverage‐slots, and if `cnt[...]` drops to zero we decrement \(C\).  That gives us \(C\) in \(O(1)\) per event.
+
+All that remains is an \(O(n)\) preprocessing to figure out, for each vertex \(j\ge2\), the DFS‐subtree interval \([L_j,R_j]\).  In *preorder* DFS‐labeling, \(L_j=j\) and \(R_j\) can be computed by a single pass from \(n\) down to \(2\):
+
+```
+R[i] = i  (init)
+for i = n..2:
+   p = parent[i]
+   R[p] = max(R[p], R[i])
+```
+
+Then vertex \(j\)’s two covered pair‐indices are
+```
+pos1 = j-1       (the pair (j-1,j))
+pos2 = R[j]      (if R[j]=n then that's pair n↔1)
+```
+
+Putting it all together we can process each test case in \(O(n)\) time, and each event in \(O(1)\) time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        int t = Integer.parseInt(in.readLine().trim());
+        
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long w = Long.parseLong(st.nextToken());
+            
+            // Read parents p[2..n]
+            int[] parent = new int[n+1];
+            st = new StringTokenizer(in.readLine());
+            for (int i = 2; i <= n; i++) {
+                parent[i] = Integer.parseInt(st.nextToken());
+            }
+            
+            // Compute R[i] = end of DFS-interval of subtree rooted at i
+            int[] R = new int[n+1];
+            for (int i = 1; i <= n; i++) {
+                R[i] = i;
+            }
+            for (int i = n; i >= 2; i--) {
+                int p = parent[i];
+                if (R[i] > R[p]) R[p] = R[i];
+            }
+            
+            // cnt[i] = how many *unknown* edges currently cover the pair-index i
+            // i runs 1..n, where i = "pair (i,i+1)" mod n
+            int[] cnt = new int[n+1];
+            for (int j = 2; j <= n; j++) {
+                // each edge j covers two boundaries
+                int pos1 = j - 1;      // covers pair (j-1, j)
+                int pos2 = R[j];       // covers pair (R[j], R[j]+1) mod n
+                cnt[pos1]++;
+                cnt[pos2]++;
+            }
+            
+            // Initial C = # of pairs still having unknown edges = all n
+            int C = n;  
+            // but actually we should count how many i in [1..n] have cnt[i]>=1
+            // with all edges unknown it's surely all n, but let's do it once
+            // in case some cnt[i] = 0 (rare if n small).
+            // (Every tree edge gives 2 covers, so sum cnt = 2(n-1), so no zero
+            // slots only if some slot never covered; bottom line: it is n.)
+            // We'll assume C=n to save O(n), but even O(n) pass is fine.
+            
+            long S_fixed = 0L;         // sum of fixed weights so far
+            
+            // Process the n-1 events
+            for (int e = 1; e < n; e++) {
+                st = new StringTokenizer(in.readLine());
+                int x = Integer.parseInt(st.nextToken());
+                long y = Long.parseLong(st.nextToken());
+                
+                // Reveal edge x's weight = y
+                S_fixed += y;
+                
+                // Remove that edge's coverage
+                int p1 = x - 1;
+                cnt[p1]--;
+                if (cnt[p1] == 0) C--;
+                
+                int p2 = R[x];
+                cnt[p2]--;
+                if (cnt[p2] == 0) C--;
+                
+                long W_remain = w - S_fixed;
+                // Answer = 2*S_fixed + C * W_remain
+                long ans = 2 * S_fixed + C * W_remain;
+                sb.append(ans).append(e+1 < n ? ' ' : '\n');
+            }
+        }
+        
+        // Output all at once
+        System.out.print(sb.toString());
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Subtree intervals**  
+   Because the vertices are numbered in DFS *preorder*, the labels in each subtree form a contiguous interval \([L_i,R_i]\).  Moreover \(L_i=i\).  We compute \(R_i\) (the maximum label in \(i\)’s subtree) by a single downward pass: initially \(R_i=i\), then for \(i=n\) down to \(2\) do  
+   ```
+   R[parent[i]] = max(R[parent[i]], R[i]);
+   ```
+   so that each parent’s \(R\) becomes the maximum of its children’s intervals.
+
+2. **Which pairs does an edge cover?**  
+   An edge \((i,\;p_i)\) lies “between” the DFS subtree of \(i\) and the rest of the tree.  It is crossed by exactly two adjacent‐pairs \((k,k+1)\) (mod \(n\)):  
+   (a) the “entering” boundary \((i-1,i)\),  
+   (b) the “exiting” boundary \((R_i,R_i+1)\).  
+   We label the pairs \(1,\dots,n\) by their lower endpoint: pair \(j\) is \((j,j+1)\) (and pair \(n\) means \((n,1)\) mod \(n\)).  Thus edge \(i\) contributes +1 to counters `cnt[i-1]` and `cnt[R[i]]`.
+
+3. **Maintaining the count \(C\)**  
+   Let `cnt[j]` = how many *unknown* edges currently cover pair‐index \(j\).  A pair \(j\) has at least one unknown edge on its path iff `cnt[j]>0`.  So 
+   \[
+     C = \#\{\,j : cnt[j]>0\}.
+   \]
+   Initially every edge is unknown, so each boundary has coverage \(\ge1\); hence \(C=n\).  
+   When an edge becomes **fixed**, we subtract 1 from its two boundaries; if `cnt[..]` drops to zero, we decrement \(C\).  
+
+4. **Computing the answer**  
+   As shown above,
+   \[
+     \sum_{i=1}^n \max\mathrm{dist}(i,i+1)
+     = 2\,(S_{\rm fixed}) \;+\; C\,(w - S_{\rm fixed}).
+   \]
+   We keep a running `S_fixed += y` as we learn each edge’s weight \(y\).  Then we output
+   ```
+   ans = 2*S_fixed + C*(w - S_fixed)
+   ```
+   after each event.
+
+**Complexity**
+
+- Preprocessing each test in \(O(n)\):
+  - Building `R[]`: one pass from \(n\) down to 2.
+  - Initializing `cnt[]`: loop over edges 2..n.
+- Each of the \(n-1\) events is handled in \(O(1)\).
+- Over all test cases the sum of \(n\) is \(\le2\times10^5\), so total time \(O(\sum n)\approx O(2\cdot10^5)\).  
+- Space \(O(n)\) for parent, \(R\), and `cnt` arrays.
+
+This runs comfortably under the given limits.

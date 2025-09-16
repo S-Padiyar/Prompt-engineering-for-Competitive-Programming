@@ -1,0 +1,162 @@
+**Analysis**
+
+We have \(n\) cities in a directed acyclic graph (DAG).  City \(i\) has an attractiveness \(a_i\).  There is a directed edge \(i \to j\) if and only if \(i<j\) and \(\gcd(a_i,a_j)>1\).  We want the number of distinct paths from city \(1\) to city \(n\), modulo \(998244353\).
+
+A straightforward DP would be
+
+\[
+\mathrm{dp}[j]
+  = \sum_{\substack{i<j\\\gcd(a_i,a_j)>1}} \mathrm{dp}[i],
+\]
+with \(\mathrm{dp}[1]=1\).  But a naive \(\mathcal O(n^2)\) check of all earlier \(i\) is too large for \(n\) up to \(2\times10^5\).
+
+Instead, observe that \(\gcd(a_i,a_j)>1\) exactly when \(a_i\) and \(a_j\) share at least one prime factor.  If we let for every integer \(d>1\)
+
+\[
+F[d] \;=\; \sum_{\substack{i<j \\ d\mid a_i}} \mathrm{dp}[i],
+\]
+
+then by the principle of inclusion–exclusion on the prime divisors of \(a_j\), one can compute
+
+\[
+\mathrm{dp}[j]
+ = \sum_{\emptyset\neq S\subseteq P_j}
+   (-1)^{|S|\!-\!1}\;F\Bigl(\prod_{p\in S}p\Bigr),
+\]
+where \(P_j\) is the (distinct) set of prime divisors of \(a_j\).  Equivalently, if we let bitmasks over the \(k\) primes of \(a_j\) enumerate all its nonempty square‐free divisors \(d\), the sign is \(+1\) if the subset‐size is odd and \(-1\) if it is even.
+
+Once \(\mathrm{dp}[j]\) is known, we have to update
+\[
+F\bigl(\prod_{p\in S}p\bigr)\;\mathrel{+}= \;\mathrm{dp}[j]
+\quad
+\forall\,\emptyset\neq S\subseteq P_j,
+\]
+so that future cities \(k>j\) can incorporate paths ending at \(j\) whenever \(\gcd(a_j,a_k)>1\).
+
+Since each \(a_i\le10^6\) has at most \(\sim7\) distinct prime factors, we do at most \(2^7-1=127\) inclusion‐exclusion steps per city.  Thus the overall complexity is
+\[
+O\!\bigl(n\log a_i \;+\; n\cdot 2^{\omega(a_i)}\bigr)
+\]
+which is acceptable for \(n\le2\cdot10^5\).
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 998244353;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        // Read n
+        int n = Integer.parseInt(in.readLine());
+        // Read a[1..n]
+        int[] a = new int[n+1];
+        int maxA = 0;
+        st = new StringTokenizer(in.readLine());
+        for (int i = 1; i <= n; i++) {
+            a[i] = Integer.parseInt(st.nextToken());
+            if (a[i] > maxA) maxA = a[i];
+        }
+
+        // Sieve for least prime factor up to maxA
+        int[] lpf = new int[maxA+1];
+        for (int i = 2; i <= maxA; i++) {
+            if (lpf[i] == 0) {
+                for (int j = i; j <= maxA; j += i) {
+                    if (lpf[j] == 0) lpf[j] = i;
+                }
+            }
+        }
+
+        // dp[i] = number of paths from 1 to i
+        int[] dp = new int[n+1];
+        // F[d] = sum of dp[i] for all i<current that are divisible by d
+        int[] F = new int[maxA+1];
+
+        // Temporary arrays for building the inclusion-exclusion subsets
+        // max number of distinct primes of any a[i] <= 7,
+        // so 1<<7 = 128 is enough.
+        int[] ds = new int[128];
+        int[] popc = new int[128];
+
+        // Reusable array to hold the distinct prime divisors
+        int[] primes = new int[8];
+
+        // Main DP loop
+        for (int i = 1; i <= n; i++) {
+            // Factor a[i] into distinct primes
+            int x = a[i];
+            int k = 0;
+            while (x > 1) {
+                int p = lpf[x];
+                primes[k++] = p;
+                while (x % p == 0) {
+                    x /= p;
+                }
+            }
+
+            // Build all subset‐products ds[mask] and popcount
+            int limit = 1 << k;
+            ds[0] = 1;
+            popc[0] = 0;
+            for (int mask = 1; mask < limit; mask++) {
+                int low = mask & -mask;               // least significant bit
+                int j = Integer.numberOfTrailingZeros(low);
+                int prev = mask ^ low;
+                ds[mask] = ds[prev] * primes[j];
+                popc[mask] = popc[prev] + 1;
+            }
+
+            // Compute dp[i] by inclusion‐exclusion, except for i=1
+            int dpi = 0;
+            if (i == 1) {
+                dpi = 1;
+            } else {
+                for (int mask = 1; mask < limit; mask++) {
+                    int d = ds[mask];
+                    if ((popc[mask] & 1) == 1) {
+                        // odd number of primes => add F[d]
+                        dpi += F[d];
+                        if (dpi >= MOD) dpi -= MOD;
+                    } else {
+                        // even => subtract F[d]
+                        dpi -= F[d];
+                        if (dpi < 0) dpi += MOD;
+                    }
+                }
+            }
+            dp[i] = dpi;
+
+            // Update F[d] += dp[i] for all nonempty subsets d
+            for (int mask = 1; mask < limit; mask++) {
+                int d = ds[mask];
+                F[d] += dpi;
+                if (F[d] >= MOD) F[d] -= MOD;
+            }
+        }
+
+        // Answer = dp[n]
+        System.out.println(dp[n]);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Sieve for least prime factor**  
+   We build an array `lpf[v]` which holds the smallest prime dividing `v`, for all \(v\le10^6\).  This lets us factor each \(a_i\) in \(O(\log a_i)\) time by repeatedly dividing out `lpf[x]`.
+
+2. **DP with inclusion–exclusion**  
+   - `dp[i]` = number of ways to reach city \(i\).  
+   - We keep `F[d]` = sum of `dp[i]` over all previously processed \(i\) with \(d\mid a_i\).  
+   - To compute `dp[j]`, we sum over all nonempty subsets \(S\) of prime divisors of \(a_j\), adding or subtracting `F[d]` where \(d=\prod_{p\in S}p\).  The sign alternates by the parity of \(|S|\).
+
+3. **Updating the data structure**  
+   After we know `dp[i]`, we again loop over all nonempty subsets of its primes and add `dp[i]` to `F[d]`.  This makes city \(i\) available for all future cities \(j>i\) that share a divisor \(d>1\).
+
+Because each \(a_i\) has at most 7 distinct primes (any product of 8 or more distinct primes already exceeds \(10^6\)), each city requires at most \(2^7-1=127\) subset operations for both the inclusion–exclusion sum and the update, i.e.\ \(O(127n)\).  This runs very comfortably for \(n\le2\times10^5\).

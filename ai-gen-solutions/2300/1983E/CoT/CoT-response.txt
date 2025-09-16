@@ -1,0 +1,149 @@
+**Analysis**
+
+We have \(n\) balls, of which the first \(k\) are "special" and the remaining \(M=n-k\) are "non‐special."  Each ball \(i\) carries a value \(v_i\).  Alice and Bob take turns drawing balls uniformly at random without replacement; whenever one draws a special ball, that same player draws again, and whenever one draws a non‐special ball, play passes to the other.  We wish to compute
+
+\[
+  E_A=\mathbb{E}[\text{Alice's final score}],\quad
+  E_B=\mathbb{E}[\text{Bob's final score}],
+\]
+
+all arithmetic done modulo \(10^9+7\).
+
+---
+
+**Key observations**
+
+1.  **Linearity of expectation**, plus symmetry among balls of the same type:
+
+   Let
+   \[
+     S_{\rm sp}=\sum_{i=1}^k v_i,\qquad
+     S_{\rm ns}=\sum_{i=k+1}^n v_i,\qquad
+     S=S_{\rm sp}+S_{\rm ns}.
+   \]
+   By symmetry, all special balls have the same probability \(P_{\rm sp}\) of ending up in Alice's pile, and all non‐special balls have the same probability \(P_{\rm ns}\) of ending up in Alice's pile.  Hence
+   \[
+     E_A
+     = P_{\rm sp}\,S_{\rm sp}\;+\;P_{\rm ns}\,S_{\rm ns},
+     \qquad
+     E_B = S - E_A.
+   \]
+
+2.  **Computing** \(P_{\rm sp}\) and \(P_{\rm ns}\):
+
+   -  Fix one special ball.  Consider the \(M\) non‐special balls alone plus that one special ball; in a random permutation of these \(M+1\) items, our special ball is equally likely to occupy any of the \(M+1\) positions among the non‐specials.  If it ends up with \(e\) non‐specials to its left, then by the game‐rules Alice will be the player to draw it precisely if \(e\) is even.  Hence
+   \[
+     P_{\rm sp}
+     = \Pr\bigl(e\text{ is even}\bigr)
+     = \frac{\#\{0\le e\le M: e\text{ even}\}}{M+1}
+     = \frac{\lfloor M/2\rfloor+1}{M+1}.
+   \]
+   -  Fix one non‐special ball.  Now look only at the other \(M-1\) non‐specials; in a random permutation among these \(M\) non‐specials, our chosen ball is equally likely at any of the \(M\) positions.  If it has \(e\) of the other non‐specials before it, then the number of switches that have occurred is exactly \(e\), so Alice draws it iff \(e\) is even.  Hence
+   \[
+     P_{\rm ns}
+     = \frac{\#\{0\le e\le M-1: e\text{ even}\}}{M}
+     = \frac{\lceil M/2\rceil}{M}
+     = \frac{\lfloor (M+1)/2\rfloor}{M}.
+   \]
+   (When \(M=0\) there are no non‐specials; in that degenerate case Alice draws all specials, so \(P_{\rm sp}=1\) and \(P_{\rm ns}\) never enters the formula.)
+
+3.  **Putting it all together.**  We compute
+   \[
+     E_A
+     = P_{\rm sp}\,S_{\rm sp} \;+\; P_{\rm ns}\,S_{\rm ns}
+     \pmod{10^9+7}, 
+     \quad
+     E_B = (S - E_A)\bmod 10^9+7.
+   \]
+   Each of \(P_{\rm sp}\) and \(P_{\rm ns}\) is a small rational number with denominator at most \(n\), so we precompute modular inverses up to \(n\) in \(O(n)\), and then do each test in \(O(n)\) to read the values plus \(O(1)\) for the formula.
+
+Overall complexity is \(O(N_{\max}+ \sum n)\), where \(N_{\max}\) is the maximum \(n\) across all tests (up to about \(5\cdot10^5\)), which easily fits under the time limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer tok;
+
+        int t = Integer.parseInt(in.readLine());
+        // We may have sum of all n up to ~5e5, so we precompute inverses up to that.
+        int MAXN = 500_000 + 5;
+        int[] inv = new int[MAXN];
+        inv[1] = 1;
+        for (int i = 2; i < MAXN; i++) {
+            // inv[i] = MOD - (MOD/i)*inv[MOD%i] mod MOD
+            inv[i] = (int) ( (long)(MOD - MOD/i) * inv[MOD % i] % MOD );
+        }
+
+        while (t-- > 0) {
+            tok = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(tok.nextToken());
+            int k = Integer.parseInt(tok.nextToken());
+            int M = n - k; // number of non-special
+
+            long sumSp = 0, sumNs = 0;
+            tok = new StringTokenizer(in.readLine());
+            for (int i = 0; i < k; i++) {
+                sumSp = (sumSp + Integer.parseInt(tok.nextToken())) % MOD;
+            }
+            for (int i = k; i < n; i++) {
+                sumNs = (sumNs + Integer.parseInt(tok.nextToken())) % MOD;
+            }
+
+            long ansA;
+            if (M == 0) {
+                // No non-specials: Alice gets all special balls
+                ansA = sumSp;
+            } else {
+                // P_sp = (floor(M/2)+1)/(M+1)
+                long cntEven = (M/2) + 1; 
+                long Psp = cntEven * inv[M+1] % MOD;
+
+                // P_ns = floor((M+1)/2)/M
+                long cntHalf = ((M + 1L) / 2L);
+                long Pns = cntHalf * inv[M] % MOD;
+
+                ansA = (Psp * sumSp + Pns * sumNs) % MOD;
+            }
+
+            long total = (sumSp + sumNs) % MOD;
+            long ansB = (total - ansA + MOD) % MOD;
+
+            System.out.println(ansA + " " + ansB);
+        }
+    }
+}
+```
+
+**Explanation of the core steps**
+
+1. **Reading Input & Precompute**  
+   We read \(t\) test cases, sum of all \(n\) up to \(5\cdot10^5\).  We precompute modular inverses \(\mathsf{inv}[i]\equiv i^{-1}\pmod{10^9+7}\) for \(1\le i<5\cdot10^5\) in \(O(N)\) time via the standard linear‐time recurrence
+   \[
+     \mathsf{inv}[i]
+       = \bigl(MOD - (MOD/i)\bigr)\times\mathsf{inv}[\,MOD \bmod i\,]\;\bmod\;MOD.
+   \]
+
+2. **Summing special vs non‐special**  
+   For each test we sum the first \(k\) values into `sumSp` and the remaining \(M=n-k\) values into `sumNs`.
+
+3. **Computing \(P_{\rm sp},P_{\rm ns}\)**  
+   -  \(P_{\rm sp} = \dfrac{\lfloor M/2\rfloor + 1}{M+1}\):  among the \(M+1\) relative positions of our special ball among the \(M\) non‐specials, exactly those with an *even* number of non‐specials to the left (from 0 up to \(\lfloor M/2\rfloor\)) go to Alice.
+   -  \(P_{\rm ns} = \dfrac{\lfloor (M+1)/2\rfloor}{M}\):  among the \(M\) non‐special balls, a given non‐special has \(\lfloor (M+1)/2\rfloor\) chances out of \(M\) to have an even count of earlier non‐specials.
+
+4. **Final expected values**  
+   By symmetry
+   \[
+     E_A = P_{\rm sp}\times S_{\rm sp}\;+\;P_{\rm ns}\times S_{\rm ns}, 
+     \quad
+     E_B = S - E_A,
+   \]
+   all mod \(10^9+7\).  In the edge case \(M=0\) there are no non‐specials, so Alice simply draws all the \(k\) specials, and Bob gets zero.
+
+This solves each test in \(O(n)\) time (just to read the values and do a few modular multiplications), well within the 2-second limit for up to \(5\times10^5\) total balls.

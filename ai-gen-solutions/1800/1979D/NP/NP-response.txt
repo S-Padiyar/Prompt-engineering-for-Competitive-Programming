@@ -1,0 +1,226 @@
+**Analysis**
+
+We are given a binary string \(s\) of length \(n\) and an integer \(k\) that divides \(n\).  We must perform _exactly one_ special operation on \(s\) (reverse a length-\(p\) prefix and then cyclically shift the entire string to the left by \(p\)) so that the result becomes _\(k\)-proper_.  
+
+A string \(t\) of length \(n\) is called **\(k\)-proper** if
+
+1. The first \(k\) characters of \(t\) are all the same.
+2. For every \(i\) with \(1 \le i \le n-k\), it holds that
+   \[
+     t_i \;\neq\; t_{i+k}.
+   \]
+
+Since \(k\mid n\), every \(k\)-proper string looks like
+\[
+   \underbrace{bbb\cdots b}_{k}
+   \;\;\underbrace{\bar b\bar b\cdots \bar b}_{k}
+   \;\;\underbrace{b b\cdots b}_{k}
+   \;\;\underbrace{\bar b\bar b\cdots \bar b}_{k}\;\cdots
+\]
+where \(b\in\{0,1\}\) and \(\bar b=1-b\).  There are exactly two candidate target patterns of length \(n\): one starting with \(0\) in the first block, the other starting with \(1\).
+
+Let us denote by
+\[
+   A = s[1..p],\quad B = s[p+1..n].
+\]
+The operation transforms \(s=A\,B\) into
+\[
+   t = B\;\bigl(\text{reverse}(A)\bigr).
+\]
+We want \(t\) to match one of the two \(k\)-proper target patterns.
+
+Hence the problem reduces to: for each of the two candidate \(k\)-proper strings \(T\), find a shift-length \(p\) (\(1\le p\le n\)) such that
+\[
+   B \;=\; T[1..(n-p)], 
+\quad
+   \text{reverse}(A)\;=\; T[(n-p+1)..n].
+\]
+Equivalently,
+
+- \(s[p..n-1]\) must equal \(T[0..n-p-1]\).
+- \(\mathrm{reverse}\bigl(s[0..p-1]\bigr)\) must equal \(T[n-p..n-1]\).
+
+We can test these two substring-equalities in \(O(1)\) time each by maintaining **rolling hashes** (double hashing for safety) for:
+
+1. The original string \(s\).
+2. The reversed string \(\mathit{s\_rev}\).
+3. Each of the two candidate targets \(T\).
+
+Then we loop \(p=1\) to \(n\).  Each step we do
+
+- A single hash query to check
+  \(\mathrm{reverse}(A)=T\) suffix, and
+- A single hash query to check
+  \(B=T\) prefix.
+
+As soon as we find some \(p\) that works for either the “start-with-0” pattern or the “start-with-1” pattern, we output it.  If none work, we output \(-1\).
+
+Because \(\sum n \le 2\times 10^5\) over all testcases, an \(O(n)\) rolling-hash check per testcase passes easily within time limits.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    // Maximum total length across all testcases
+    static final int MAXN = 200_000 + 5;
+
+    // Hash parameters
+    static final long MOD1 = 1_000_000_007;
+    static final long MOD2 = 1_000_000_009;
+    static final long BASE = 9113823;
+
+    // Precomputed powers of BASE mod MOD1 and MOD2
+    static long[] pow1 = new long[MAXN], pow2 = new long[MAXN];
+
+    public static void main(String[] args) throws IOException {
+        // Precompute BASE^i mod MOD1 and MOD2
+        pow1[0] = pow2[0] = 1;
+        for (int i = 1; i < MAXN; i++) {
+            pow1[i] = (pow1[i - 1] * BASE) % MOD1;
+            pow2[i] = (pow2[i - 1] * BASE) % MOD2;
+        }
+
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int t = Integer.parseInt(st.nextToken());
+
+        StringBuilder ansOut = new StringBuilder();
+
+        // Reusable arrays (no per-test allocations)
+        int[] s    = new int[MAXN];
+        int[] srev = new int[MAXN];
+        long[] hs1 = new long[MAXN], hs2 = new long[MAXN];
+        long[] hr1 = new long[MAXN], hr2 = new long[MAXN];
+        long[] ht1 = new long[MAXN], ht2 = new long[MAXN];
+        char[]  tempT = new char[MAXN];
+
+        for (int _case = 0; _case < t; _case++) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+            String str = br.readLine().trim();
+
+            // Map '0'->1, '1'->2 to avoid zero in polynomial hash
+            for (int i = 0; i < n; i++) {
+                s[i] = (str.charAt(i) == '0' ? 1 : 2);
+                srev[n - 1 - i] = s[i];
+            }
+
+            // Build prefix-hash of s and srev
+            buildHash(s,    hs1, hs2, n);
+            buildHash(srev, hr1, hr2, n);
+
+            int answer = -1;
+
+            // Try both possible k-proper “phases”: start bit 0 or start bit 1
+            for (int startBit = 0; startBit <= 1 && answer < 0; startBit++) {
+                // Build the target T of length n
+                // Blocks of k: even block idx => startBit, odd => 1-startBit
+                for (int i = 0; i < n; i++) {
+                    int block = i / k;
+                    int bit   = ((block & 1) == 0 ? startBit : 1 - startBit);
+                    tempT[i] = (bit == 0 ? '0' : '1');
+                }
+                // Map T into ints 1/2
+                for (int i = 0; i < n; i++) {
+                    int v = (tempT[i] == '0' ? 1 : 2);
+                    ht1[i] = (i == 0 ? v : (ht1[i - 1] * BASE + v) % MOD1);
+                    ht2[i] = (i == 0 ? v : (ht2[i - 1] * BASE + v) % MOD2);
+                }
+
+                // Now test all p = 1..n
+                for (int p = 1; p <= n; p++) {
+                    int lenA = p, lenB = n - p;
+
+                    // 1) reverse(A) ?= T[n-p .. n-1]
+                    int  l1 = n - p, r1 = n - 1;
+                    long h_srev_1 = substringHash(hr1, pow1,  l1, r1, MOD1);
+                    long h_srev_2 = substringHash(hr2, pow2,  l1, r1, MOD2);
+                    long h_t_1    = substringHash(ht1, pow1,  l1, r1, MOD1);
+                    long h_t_2    = substringHash(ht2, pow2,  l1, r1, MOD2);
+                    if (h_srev_1 != h_t_1 || h_srev_2 != h_t_2) {
+                        continue;
+                    }
+
+                    // 2) B = s[p..n-1] ?= T[0..n-p-1]
+                    if (lenB > 0) {
+                        long h_suf_s_1 = substringHash(hs1, pow1,  p, n - 1, MOD1);
+                        long h_suf_s_2 = substringHash(hs2, pow2,  p, n - 1, MOD2);
+                        long h_pre_t_1 = substringHash(ht1, pow1,  0, lenB - 1, MOD1);
+                        long h_pre_t_2 = substringHash(ht2, pow2,  0, lenB - 1, MOD2);
+                        if (h_suf_s_1 != h_pre_t_1 || h_suf_s_2 != h_pre_t_2) {
+                            continue;
+                        }
+                    }
+                    // both conditions passed
+                    answer = p;
+                    break;
+                }
+            }
+
+            ansOut.append(answer).append('\n');
+        }
+
+        System.out.print(ansOut);
+    }
+
+    /** Build rolling hash h1[], h2[] for integer array a[0..n-1]. */
+    static void buildHash(int[] a, long[] h1, long[] h2, int n) {
+        long cur1 = 0, cur2 = 0;
+        for (int i = 0; i < n; i++) {
+            cur1 = (cur1 * BASE + a[i]) % MOD1;
+            cur2 = (cur2 * BASE + a[i]) % MOD2;
+            h1[i] = cur1;
+            h2[i] = cur2;
+        }
+    }
+
+    /**
+     * Return the double‐hash of substring h[l..r] in O(1).
+     * Precondition: h[i] is prefix ‑ hash of length i+1.
+     */
+    static long substringHash(long[] h, long[] pw,
+                              int l, int r, long mod) {
+        if (l == 0) {
+            return h[r];
+        } else {
+            long res = (h[r] - (h[l - 1] * pw[r - l + 1]) % mod) % mod;
+            if (res < 0) res += mod;
+            return res;
+        }
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1. **\(k\)-proper strings.**  
+   A length-\(n\) string is \(k\)-proper exactly when it consists of \(\tfrac nk\) blocks of length \(k\), alternating between all-0 and all-1 blocks (two choices: start with 0 or start with 1).
+
+2. **The single operation.**  
+   Choosing \(p\in[1,n]\), we split \(s\) into  
+   \[
+     A = s[1..p],\quad B = s[p+1..n],
+   \]  
+   reverse \(A\), then produce  
+   \[
+     t = B\;+\;\mathrm{reverse}(A).
+   \]  
+   We must have \(t\) equal to one of the two \(k\)-proper templates.
+
+3. **Matching with rolling-hashes.**  
+   - We precompute one rolling hash for \(s\) and one for its reverse \(s_{\mathrm{rev}}\).  
+   - For each of the 2 templates \(T\), we also precompute its rolling hash.  
+   - To check if \(\mathrm{reverse}(A)\;=\;T[n-p..n-1]\), we compare the hash of \(s_{\mathrm{rev}}[n-p..n-1]\) with that of \(T[n-p..n-1]\).  
+   - To check if \(B\;=\;s[p..n-1]\;=\;T[0..n-p-1]\), we compare their hashes likewise.
+
+4. **Complexity.**  
+   - Precomputing powers up to \(\sum n\le2\times10^5\): \(O(\sum n)\).  
+   - Per testcase, building 4 hash‐arrays of length \(n\): \(O(n)\).  
+   - Trying all \(p\in[1,n]\) with \(O(1)\)-time hash checks: \(O(n)\).  
+   - Total \(O(\sum n)=O(2\times10^5)\), which easily fits in 2 seconds.
+
+This solves the problem in linear time per testcase, with a single pass over all possible \(p\).

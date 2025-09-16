@@ -1,0 +1,242 @@
+**Analysis**
+
+We have \(n\) cities numbered \(1\) through \(n\), each with an attractiveness \(a_i\).  There is a directed edge \(i\to j\) (with \(i<j\)) exactly when \(\gcd(a_i,a_j)>1\).  We want the number of distinct (vertex‐distinct) paths from city \(1\) to city \(n\) modulo \(998244353\).
+
+A straightforward DP would be
+
+```
+dp[i] = number of ways to reach city i
+dp[1] = 1
+for i = 1..n:
+  for j = i+1..n:
+    if gcd(a[i],a[j])>1:
+      dp[j] += dp[i]
+```
+
+but that is \(O(n^2)\) and far too large for \(n\) up to \(2\cdot 10^5\).
+
+---
+
+**Key idea**
+
+Observe that
+\[
+dp[i] \;=\; \sum_{\substack{1\le j<i\\\gcd(a_j,a_i)>1}} dp[j].
+\]
+Let
+\[
+\text{tot}(i)=\sum_{j<i}dp[j],
+\]
+the sum of all previous \(dp\)-values.  Then
+\[
+\sum_{\substack{j<i\\\gcd(a_j,a_i)>1}}dp[j]
+\;=\;
+\sum_{j<i}dp[j]
+\;-\;
+\sum_{\substack{j<i\\\gcd(a_j,a_i)=1}}dp[j]
+\;=\;
+\mathrm{tot}(i)\;-\;\bigl(\text{sum of }dp[j]\text{ with }\gcd(a_j,a_i)=1\bigr).
+\]
+Thus to compute \(dp[i]\) we need
+\[
+\text{coprimeSum}(i)\;=\;\sum_{\substack{j<i\\\gcd(a_j,a_i)=1}}dp[j].
+\]
+
+A classical number‐theory trick uses the Möbius‐inversion idea.  If for each integer \(d\) we maintain
+\[
+S[d] \;=\;\sum_{\substack{j<i\\d\mid a_j}} dp[j],
+\]
+(i.e.\ the sum of \(dp[j]\) for all previous \(j\) whose attractiveness is divisible by \(d\)), then by Möbius inversion
+
+\[
+\sum_{\substack{j<i\\\gcd(a_j,a_i)=1}}dp[j]
+\;=\;\sum_{d\mid a_i}\mu(d)\,S[d],
+\]
+
+where \(\mu(d)\) is the Möbius function.  Hence
+
+\[
+dp[i]
+\;=\;
+\mathrm{tot}(i)\;-\;\sum_{d\mid a_i}\mu(d)\,S[d].
+\]
+
+We maintain three data‐structures as we iterate \(i\) from \(1\) to \(n\):
+
+1.  `tot_dp = \sum_{j<i} dp[j]` (modulo \(998244353\)),
+2.  an array `S[d]` for \(1\le d\le 10^6\), initially all zero,
+3.  a precomputed Möbius function \(\mu(d)\) for \(1\le d\le 10^6\).
+
+When we reach city \(i\):
+
+- Factor \(a_i\) into its *distinct* prime factors \(p_1,p_2,\dots,p_k\).
+- Enumerate all square‐free divisors \(d\) of \(a_i\) by taking all subsets of these primes; for each subset we take the product of the chosen primes.  There are at most \(2^6=64\) such subsets because any \(a_i\le10^6\) can have at most 6 distinct prime factors.
+- Compute 
+  \[
+    \text{coprimeSum}=\sum_{d\mid a_i}\mu(d)\times S[d].
+  \]
+- Then 
+  \[
+    dp[i] = \bigl(\mathrm{tot\_dp} - \text{coprimeSum}\bigr)\bmod 998244353.
+  \]
+- Update 
+  \[
+    \mathrm{tot\_dp}\;+=\; dp[i]\quad(\bmod\;998244353),
+  \]
+  and for each square‐free \(d\mid a_i\) do
+  \[
+    S[d]\;+=\;dp[i]\quad(\bmod\;998244353).
+  \]
+
+Finally we output \(dp[n]\).  This runs in \(O(n\cdot 2^k)\) where \(k\le6\), times the cost of factorization (also \(O(\log a_i)\)).  With \(n\le2\cdot10^5\) and \(\max a_i\le10^6\), this easily fits the time and memory limits.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 998244353;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int n = Integer.parseInt(br.readLine().trim());
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int[] a = new int[n];
+        int maxA = 0;
+        for (int i = 0; i < n; i++) {
+            a[i] = Integer.parseInt(st.nextToken());
+            if (a[i] > maxA) maxA = a[i];
+        }
+
+        // 1) Precompute smallest-prime-factor and Mobius up to maxA
+        int[] spf = new int[maxA + 1];
+        int[] mu  = new int[maxA + 1];
+        List<Integer> primes = new ArrayList<>();
+        mu[1] = 1;
+        for (int i = 2; i <= maxA; i++) {
+            if (spf[i] == 0) {
+                spf[i] = i;
+                mu[i] = -1;
+                primes.add(i);
+            }
+            for (int p : primes) {
+                long prod = 1L * p * i;
+                if (prod > maxA) break;
+                spf[p * i] = p;
+                if (i % p == 0) {
+                    mu[p * i] = 0;  // square factor
+                    break;
+                } else {
+                    mu[p * i] = -mu[i];
+                }
+            }
+        }
+
+        // 2) DP
+        // S[d] = sum of dp[j] (mod) for all j<i with d | a[j]
+        int[] S = new int[maxA + 1];
+        int tot_dp = 0;   // sum of all previous dp[j]
+        int dp_n = 0;     // we'll extract dp[n-1] at the end
+
+        for (int i = 0; i < n; i++) {
+            // 2a) factor a[i] into distinct primes
+            int x = a[i];
+            ArrayList<Integer> fac = new ArrayList<>();
+            while (x > 1) {
+                int p = spf[x];
+                fac.add(p);
+                while (x % p == 0) {
+                    x /= p;
+                }
+            }
+            int k = fac.size();
+
+            int dpi;
+            if (i == 0) {
+                // city 1
+                dpi = 1;
+            } else {
+                // 2b) Enumerate square-free divisors d of a[i], sum mu[d] * S[d]
+                long coprimeSum = 0;
+                int subsets = 1 << k;
+                for (int mask = 0; mask < subsets; mask++) {
+                    long d = 1;
+                    for (int b = 0; b < k; b++) {
+                        if ((mask & (1 << b)) != 0) {
+                            d *= fac.get(b);
+                        }
+                    }
+                    int md = mu[(int)d];
+                    if (md == 0) continue;
+                    coprimeSum += md * (long)S[(int)d];
+                }
+                // mod it
+                coprimeSum %= MOD;
+                if (coprimeSum < 0) coprimeSum += MOD;
+
+                // dp[i] = tot_dp - coprimeSum (mod)
+                dpi = tot_dp - (int)coprimeSum;
+                dpi %= MOD;
+                if (dpi < 0) dpi += MOD;
+            }
+
+            // 2c) update tot_dp and S[d]
+            tot_dp += dpi;
+            if (tot_dp >= MOD) tot_dp -= MOD;
+
+            // add dpi to each square-free divisor d
+            int subsets = 1 << k;
+            for (int mask = 0; mask < subsets; mask++) {
+                long d = 1;
+                for (int b = 0; b < k; b++) {
+                    if ((mask & (1 << b)) != 0) {
+                        d *= fac.get(b);
+                    }
+                }
+                S[(int)d] = (S[(int)d] + dpi) % MOD;
+            }
+
+            if (i == n - 1) {
+                dp_n = dpi;
+            }
+        }
+
+        // 3) output dp[n]
+        System.out.println(dp_n);
+    }
+}
+```
+
+**Explanation of the main steps**
+
+1. **Sieve for \(\mu(d)\) and smallest prime factor (`spf`)**
+
+   We use a standard linear sieve up to \(\max a_i\).  This gives us for each \(1\le d\le\max a_i\) the Möbius function \(\mu(d)\) (which is \(\;+1\), \(-1\), or \(0\) according to whether \(d\) is a product of an even number of distinct primes, an odd number, or has a squared prime factor) and also the smallest prime factor of \(d\).
+
+2. **Dynamic programming**
+
+   - We maintain `tot_dp = ∑_{j<i} dp[j]` (modulo), the sum of all previously computed `dp`.
+   - We also maintain an array `S[d] = ∑_{j<i,\,d|a[j]} dp[j]` for all \(d\).  
+
+   When processing city \(i\):
+   - Factor \(a_i\) into its *distinct* primes \(p_1,\dots,p_k\).  Then every square‐free divisor \(d\) of \(a_i\) is obtained by picking a subset of those primes and multiplying them.
+   - By Möbius inversion,
+     \[
+       \sum_{\substack{j<i\\\gcd(a_j,a_i)=1}}dp[j]
+       \;=\;
+       \sum_{d\mid a_i}\mu(d)\,S[d].
+     \]
+   - Hence
+     \[
+       dp[i]
+       = \bigl(\mathrm{tot\_dp} \;-\; \sum_{d\mid a_i}\mu(d)\,S[d]\bigr)\bmod 998244353.
+     \]
+   - We then add `dp[i]` into `tot_dp` and for each square‐free `d|a[i]` we do `S[d] += dp[i]`.
+
+3. **Answer**
+
+   Finally `dp[n]` is the number of paths from city 1 to city \(n\).
+
+This runs in \(O(n\cdot 2^k)\) with \(k\le6\), plus the sieve up to \(10^6\).  It easily handles \(n\) up to \(2\cdot10^5\).

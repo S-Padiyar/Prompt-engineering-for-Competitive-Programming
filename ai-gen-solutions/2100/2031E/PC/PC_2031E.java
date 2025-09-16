@@ -1,0 +1,59 @@
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 1000000 + 5;
+    static int[] head = new int[MAXN], to = new int[MAXN], nxt = new int[MAXN];
+    static int[] deg = new int[MAXN], dp = new int[MAXN];
+    static int ecnt;
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder out = new StringBuilder();
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            for (int i = 1; i <= n; i++) {
+                head[i] = -1;
+                deg[i] = 0;
+            }
+            ecnt = 0;
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            for (int v = 2; v <= n; v++) {
+                int p = Integer.parseInt(st.nextToken());
+                to[ecnt] = v;
+                nxt[ecnt] = head[p];
+                head[p] = ecnt++;
+                deg[p]++;
+            }
+            for (int v = n; v >= 1; v--) {
+                int k = deg[v];
+                if (k == 0) {
+                    dp[v] = 0;
+                } else if (k == 1) {
+                    int c = to[head[v]];
+                    dp[v] = dp[c] + 1;
+                } else {
+                    int[] D = new int[k];
+                    int idx = 0;
+                    for (int e = head[v]; e != -1; e = nxt[e]) {
+                        D[idx++] = dp[to[e]];
+                    }
+                    Arrays.sort(D);
+                    int best = 0;
+                    for (int i = 1; i <= k; i++) {
+                        int childDp = D[k - i];
+                        int temp = childDp - 1 + ceilLog2(i + 2);
+                        if (temp > best) best = temp;
+                    }
+                    dp[v] = best;
+                }
+            }
+            out.append(dp[1]).append('\n');
+        }
+        System.out.print(out);
+    }
+    static int ceilLog2(int x) {
+        int f = 31 - Integer.numberOfLeadingZeros(x);
+        return ((x & (x - 1)) == 0) ? f : (f + 1);
+    }
+}

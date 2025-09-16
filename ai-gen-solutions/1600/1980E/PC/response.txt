@@ -1,0 +1,161 @@
+**Analysis**
+
+We have two \(n\times m\) matrices \(A\) and \(B\), each containing a permutation of the integers \(1\) through \(n\cdot m\).  We are allowed only to swap entire rows or entire columns of \(A\).  Swapping rows arbitrarily generates the full symmetric group \(S_n\) on the rows, and swapping columns arbitrarily generates \(S_m\) on the columns.  Thus the final matrix we can reach from \(A\) looks like
+
+\[
+    A' \;=\; \bigl(\, \text{row‐permute}_R\,\bigr)\; \bigl(\, \text{col‐permute}_C\,\bigr)(A)
+\]
+
+for some row‐permutation \(R\in S_n\) and column‐permutation \(C\in S_m\).  Concretely, each entry \(A[i][j]\) ends up in
+\[
+   A'\bigl(R(i),\,C(j)\bigr),
+\]
+and we want that to equal \(B\bigl(R(i),\,C(j)\bigr)\).  Since each integer from \(1\) to \(nm\) appears exactly once in both \(A\) and \(B\), we can track for each value \(v\) its position in \(A\) and in \(B\):
+
+- Let \(\mathrm{arow}[v]\) and \(\mathrm{acol}[v]\) be the row and column of value \(v\) in \(A\).
+- Let \(\mathrm{brow}[v]\) and \(\mathrm{bcol}[v]\) be the row and column of value \(v\) in \(B\).
+
+If there is a valid row‐permutation \(R\) and column‐permutation \(C\) taking \(A\) to \(B\), then for every \(v\)
+
+\[
+   \mathrm{brow}[v] = R\bigl(\mathrm{arow}[v]\bigr),\quad
+   \mathrm{bcol}[v] = C\bigl(\mathrm{acol}[v]\bigr).
+\]
+
+Thus for all values \(v\) that lie in the same row \(i\) of \(A\), the target rows \(\mathrm{brow}[v]\) must all be the _same_ (this will be \(R(i)\)).  Likewise, for all values in the same column \(j\) of \(A\), the target columns \(\mathrm{bcol}[v]\) must all coincide (this will be \(C(j)\)).  Finally \(R\) must be a bijection on \(\{1,\dots,n\}\) and \(C\) a bijection on \(\{1,\dots,m\}\).
+
+Concretely the algorithm is:
+
+1. Read \(n,m\) and the two matrices \(A\) and \(B\).
+2. Build arrays
+   \[
+     \mathrm{arow}[v],\;\mathrm{acol}[v],\;
+     \mathrm{brow}[v],\;\mathrm{bcol}[v]
+   \]
+   for \(v=1\ldots n\cdot m\).
+3. Try to build a row‐mapping array \(\mathrm{Rmap}[1..n]\).  Initialize it to zero.  
+   For each \(v\):
+   - Let \(i = \mathrm{arow}[v]\), \(t = \mathrm{brow}[v]\).
+   - If \(\mathrm{Rmap}[i]=0\), set \(\mathrm{Rmap}[i]=t\).  
+     Otherwise if \(\mathrm{Rmap}[i]\ne t\), fail immediately.
+4. Similarly build a column‐mapping \(\mathrm{Cmap}[1..m]\) from \(\mathrm{acol}[v]\mapsto \mathrm{bcol}[v]\).
+5. Finally check \(\mathrm{Rmap}\) is a bijection on \(\{1..n\}\) and \(\mathrm{Cmap}\) is a bijection on \(\{1..m\}\).  If all tests pass, answer YES, otherwise NO.
+
+This runs in \(O(n\,m)\) per test, and since \(\sum(nm)\le2\cdot10^5\), it is efficient.
+
+---
+
+```java
+import java.io.*;
+import java.util.StringTokenizer;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            int N = n * m;
+
+            // Positions of each value in A
+            int[] arow = new int[N+1];
+            int[] acol = new int[N+1];
+            // Read matrix A
+            for (int i = 1; i <= n; i++) {
+                st = new StringTokenizer(in.readLine());
+                for (int j = 1; j <= m; j++) {
+                    int v = Integer.parseInt(st.nextToken());
+                    arow[v] = i;
+                    acol[v] = j;
+                }
+            }
+
+            // Positions of each value in B
+            int[] brow = new int[N+1];
+            int[] bcol = new int[N+1];
+            // Read matrix B
+            for (int i = 1; i <= n; i++) {
+                st = new StringTokenizer(in.readLine());
+                for (int j = 1; j <= m; j++) {
+                    int v = Integer.parseInt(st.nextToken());
+                    brow[v] = i;
+                    bcol[v] = j;
+                }
+            }
+
+            // Attempt to build row‐mapping Rmap: A‐row -> B‐row
+            int[] Rmap = new int[n+1];
+            boolean ok = true;
+            for (int v = 1; v <= N && ok; v++) {
+                int ar = arow[v], br = brow[v];
+                if (Rmap[ar] == 0) {
+                    Rmap[ar] = br;
+                } else if (Rmap[ar] != br) {
+                    ok = false;
+                }
+            }
+            // Attempt to build column‐mapping Cmap: A‐col -> B‐col
+            int[] Cmap = new int[m+1];
+            for (int v = 1; v <= N && ok; v++) {
+                int ac = acol[v], bc = bcol[v];
+                if (Cmap[ac] == 0) {
+                    Cmap[ac] = bc;
+                } else if (Cmap[ac] != bc) {
+                    ok = false;
+                }
+            }
+
+            // Check both maps are bijections
+            if (ok) {
+                boolean[] usedRow = new boolean[n+1];
+                for (int i = 1; i <= n; i++) {
+                    int r = Rmap[i];
+                    if (r < 1 || r > n || usedRow[r]) {
+                        ok = false;
+                        break;
+                    }
+                    usedRow[r] = true;
+                }
+            }
+            if (ok) {
+                boolean[] usedCol = new boolean[m+1];
+                for (int j = 1; j <= m; j++) {
+                    int c = Cmap[j];
+                    if (c < 1 || c > m || usedCol[c]) {
+                        ok = false;
+                        break;
+                    }
+                    usedCol[c] = true;
+                }
+            }
+
+            out.println(ok ? "YES" : "NO");
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Invert the matrices.**  
+   We record for each integer \(v\) where it sits in \(A\) (\(\mathrm{arow}[v],\mathrm{acol}[v]\)) and in \(B\) (\(\mathrm{brow}[v],\mathrm{bcol}[v]\)).
+
+2. **Build the row‐mapping** \(Rmap\).  
+   All entries in the same row \(i\) of \(A\) must move to one and the same row of \(B\).  So as we scan each \(v\), if \(v\) is in row \(i=\mathrm{arow}[v]\) of \(A\) and row \(t=\mathrm{brow}[v]\) of \(B\), we demand
+   \[
+     Rmap[i] = t.
+   \]
+   If there is a conflict (two different target rows for the same \(i\)), we declare failure.
+
+3. **Build the column‐mapping** \(Cmap\) similarly.
+
+4. **Ensure bijectivity.**  
+   Finally, we must check that \(Rmap\) is a one‐to‐one correspondence between \(\{1,\dots,n\}\) and itself (no two \(i\) map to the same row in \(B\), and every row in \(B\) is used).  Likewise for \(Cmap\).  If all tests pass, we can indeed find a row‐permutation and column‐permutation taking \(A\) to \(B\).
+
+This solves each test in \(O(n\,m)\), and overall in \(O\bigl(\sum n\,m\bigr)\le O(2\times10^5)\), which is efficient for the given limits.

@@ -1,0 +1,220 @@
+**Analysis**
+
+We have a rooted tree (root = 1), each vertex initially labeled either 0, 1, or `?`.  A **leaf** is any non‐root vertex of degree 1 in the tree.  After all `?`‐labels are eventually replaced by 0 or 1, the **score** is
+
+  “the number of leaves whose root‐to‐leaf string has nonzero weight,”
+
+where one can show easily that the only thing that matters for the weight of a root–leaf path 
+is whether the leaf‐label equals the root‐label or not.  In fact
+
+  •  If the root‐bit is \(r\), and a leaf ends in bit \(b\),  
+     then the path’s “weight” is nonzero exactly when \(b\neq r\).  
+
+Hence the final score is simply
+
+  **(number of leaves whose final bit is \(\neq\) the root’s bit).**
+
+We have three types of vertices:
+
+  1.  The root itself (vertex 1), if it is `?` this is a special “root‐choice” variable.
+  2.  The leaves, some of which are pre‐fixed to 0 or 1, and some of which are `?`.
+  3.  All the other internal non‐leaf vertices that are `?`—we call these **irrelevant** because their bits do *not* affect the final score at all.
+
+Putting it all together, define
+
+  •  \(F_0\)= # of leaves pre‐fixed to 0  
+  •  \(F_1\)= # of leaves pre‐fixed to 1  
+  •  \(u\)= # of leaves whose bit is `\?`  
+  •  \(e\)= # of internal non‐leaf vertices (other than the root) whose bit is `\?`  
+
+Then there are three cases:
+
+**Case A.  Root is already fixed**  
+If \(s_1\in\{0,1\}\), let \(r=s_1\).  Every future assignment of a `?`‐leaf is a contest between Iris (who wants that leaf to *not* match \(r\)) and Dora (who wants it to match \(r\)).  They alternately pick a remaining `?`­leaf and assign it.  Since Iris moves first on the leaves, she ends up with
+\[
+  \bigl\lceil \tfrac u2\bigr\rceil
+\]
+of the \(u\) leaves mismatching \(r\).  Hence
+\[
+  \text{Score}
+  \;=\;
+  \begin{cases}
+     F_1\;+\;\lceil u/2\rceil,  &\text{if }r=0,\\
+     F_0\;+\;\lceil u/2\rceil,  &\text{if }r=1.
+  \end{cases}
+\]
+
+**Case B.  Root is `?`**  
+Now either Iris or Dora may eventually *choose* the root’s bit, and likewise they will assign the \(u\) `?`‐leaves in turns, but there are \(e\) “irrelevant” `?`s in the internal nodes that do not affect the score at all—they merely serve as “pass” moves to shift parity.  One checks by a small minimax‐DP or by the usual “pass‐move” parity argument that:
+
+1.  **If Iris herself takes the root** (which she can do immediately on her first move), she will choose whichever root–bit maximizes the final score, namely \(\max(F_0,F_1)\), *and* thereafter Dora will never waste a move on an internal irrelevant (he would rather assign a leaf and reduce Iris’s mismatches).  Thus Dora actually starts the \(u\)‐leaf game, so Iris only gets \(\lfloor u/2\rfloor\) leaves mismatching.  Altogether that plan yields
+   \[
+     \text{option}_1
+     \;=\;
+     \max(F_0,F_1)\;+\;\bigl\lfloor\tfrac u2\bigr\rfloor.
+   \]
+
+2.  **If Iris prefers to let Dora set the root** (by spending her first move on either an internal “pass” or on a leaf), then *eventually* Dora will be forced to pick the root (on one of his turns).  He will choose it so as to *minimize* the final score, i.e.\ \(\min(F_0,F_1)\).  After that, Iris will actually *start* the leaf‐assignment game, giving her \(\lceil u/2\rceil\) mismatches.  Hence that plan yields
+   \[
+     \text{option}_2
+     \;=\;
+     \min(F_0,F_1)\;+\;\bigl\lceil\tfrac u2\bigr\rceil.
+   \]
+
+Of course Iris will choose the better of those two options—but if there are *no* internal “pass” moves (\(e=0\)), one checks that letting Dora set the root first can never help Iris (because Dora can then time it so that Dora also starts the leaf‐game, cutting Iris’s mismatches back down to \(\lfloor u/2\rfloor\)).  Thus when \(e=0\) Iris is best off by simply grabbing the root immediately.
+
+Putting these subcases together:
+
+● If \(s_1\in\{0,1\}\) (root fixed):
+\[
+   \text{Score}
+   =
+   \begin{cases}
+     F_1+\lceil u/2\rceil,&
+       \text{if }s_1=0,\\
+     F_0+\lceil u/2\rceil,&
+       \text{if }s_1=1.
+   \end{cases}
+\]
+
+● If \(s_1=\?\) (root free):
+\[
+   \text{let }
+     \text{opt}_1=\max(F_0,F_1)+\lfloor u/2\rfloor,
+     \quad
+     \text{opt}_2=\min(F_0,F_1)+\lceil u/2\rceil.
+\]
+\[
+   \text{Score}
+   =
+   \begin{cases}
+     \text{opt}_1, 
+     & \text{if }e=0,\\
+     \max(\text{opt}_1,\;\text{opt}_2),
+     & \text{if }e>0.
+   \end{cases}
+\]
+
+All of that can be implemented in \(O(n)\) per test by a single DFS/BFS to find which vertices are leaves, count \((F_0,F_1,u)\), count the irrelevant `?`-nodes \(e\), and then apply the above formula.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static FastInput in = new FastInput();
+    static StringBuilder sb = new StringBuilder();
+
+    public static void main(String[] args) throws IOException {
+        int t = in.nextInt();
+        while(t-- > 0) {
+            int n = in.nextInt();
+            List<Integer>[] adj = new ArrayList[n+1];
+            for(int i = 1; i <= n; i++) adj[i] = new ArrayList<>();
+            for(int i = 0; i < n-1; i++) {
+                int u = in.nextInt(), v = in.nextInt();
+                adj[u].add(v);
+                adj[v].add(u);
+            }
+            char[] s = (" " + in.next()).toCharArray();
+
+            // We root at 1, do a BFS to identify parent & leaves
+            int[] parent = new int[n+1];
+            parent[1] = -1;
+            Deque<Integer> dq = new ArrayDeque<>();
+            dq.add(1);
+            // BFS
+            while(!dq.isEmpty()) {
+                int u = dq.poll();
+                for(int v: adj[u]) {
+                    if(v == parent[u]) continue;
+                    parent[v] = u;
+                    dq.add(v);
+                }
+            }
+
+            // Count leaves: a leaf is (v!=1 && adj[v].size()==1)
+            int F0 = 0, F1 = 0, uLeaves = 0, eIrrelevant = 0;
+            for(int v = 2; v <= n; v++) {
+                if(adj[v].size() == 1) {
+                    // it's a leaf
+                    if(s[v] == '0')      F0++;
+                    else if(s[v] == '1') F1++;
+                    else                 uLeaves++;
+                } else {
+                    // interior non-leaf
+                    if(v != 1 && s[v] == '?') {
+                        eIrrelevant++;
+                    }
+                }
+            }
+
+            // Case A: root is fixed
+            if(s[1] == '0' || s[1] == '1') {
+                int r = s[1] - '0';
+                // leaves mismatching r = if r==0, count of 1-leaves; else count of 0-leaves
+                int base = (r == 0 ? F1 : F0);
+                // in the leaf-game, Iris goes first on uLeaves leaves => she gets ceil(uLeaves/2).
+                int leafGain = (uLeaves + 1) / 2;
+                sb.append(base + leafGain).append('\n');
+            }
+            else {
+                // root = '?'
+                // option 1: Iris grabs root => gets max(F0,F1), then Dora starts leaves => Iris only floor(u/2)
+                int opt1 = Math.max(F0, F1) + (uLeaves / 2);
+
+                // option 2: Iris lets Dora set root => Dora picks min(F0,F1), then Iris starts leaves => Iris ceil(u/2)
+                int opt2 = Math.min(F0, F1) + ((uLeaves + 1) / 2);
+
+                // if no irrelevant passes are available, Iris must do opt1.
+                // otherwise she can choose the better of the two.
+                int ans = (eIrrelevant == 0 ? opt1 : Math.max(opt1, opt2));
+                sb.append(ans).append('\n');
+            }
+        }
+        System.out.print(sb);
+    }
+
+    // FastInput for speed
+    static class FastInput {
+        BufferedReader br;
+        StringTokenizer st;
+        FastInput() {
+            br = new BufferedReader(new InputStreamReader(System.in));
+        }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens()) {
+                st = new StringTokenizer(br.readLine());
+            }
+            return st.nextToken();
+        }
+        int nextInt() throws IOException {
+            return Integer.parseInt(next());
+        }
+    }
+}
+```
+
+**Explanation of key steps**
+
+1.  We do a simple BFS from the root (= 1) just to mark each node’s parent; this lets us identify “leaves” easily (any non‐root node of undirected degree 1 is a leaf in the rooted sense) and also which non‐leaves are “irrelevant” if they carry a `\?`.
+
+2.  We count  
+   - \(F_0\)= fixed‐0 leaves,  
+   - \(F_1\)= fixed‐1 leaves,  
+   - \(u\)= leaves that are `?`,  
+   - \(e\)= internal “irrelevant” `?`s (they do not affect score but serve as parity‐passes in the game).
+
+3.  If the root is already fixed to 0 or 1, the game on the \(u\) leaves is simple alternation starting with Iris, so she gets \(\lceil u/2\rceil\) mismatches, added to the appropriate \(F_0\) or \(F_1\).
+
+4.  If the root is itself `?`, one shows by a small minimax‐analysis that Iris has two competing ways to play:
+
+   -  **Iris sets the root** on her first move and thus claims `max(F_0,F_1)` of the fixed‐leaf mismatches; then Dora will *never* waste a move on an irrelevant node (he’d rather assign a leaf match), so Dora actually starts the \(u\)‐leaf alternation, leaving Iris only \(\lfloor u/2\rfloor\) more.
+   
+   -  **Iris passes root‐assignment** (by using an irrelevant or assigning one leaf) so that *eventually* Dora must be the one to set the root (on one of his turns), giving Dora `min(F_0,F_1)` mismatches; after that Iris *does* start the \(u\)‐leaf alternation, netting \(\lceil u/2\rceil\).
+
+   If there are no irrelevant passes, Dora can always arrange to move second on the leaves in the second plan, so it never helps Iris—she simply does the first plan.  If there *are* irrelevant passes, she may do whichever of the two plans yields the larger total.
+
+This runs in \(O(n)\) per test case, well within the \(2\)\,sec / \(2\cdot10^5\)-sum ‑of-\(n\) limit.

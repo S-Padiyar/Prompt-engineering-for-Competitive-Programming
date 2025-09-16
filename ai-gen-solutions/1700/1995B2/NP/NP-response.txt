@@ -1,0 +1,180 @@
+**Analysis**
+
+We have \(n\) different kinds of flowers.  The \(i\)-th kind has
+- \(a_i\) petals per flower (all \(a_i\) are distinct),  
+- \(c_i\) flowers available,  
+- each flower of that kind costs exactly \(a_i\) coins.
+
+We have \(m\) coins total.  We want to pick a multiset of flowers whose total cost does not exceed \(m\), and which maximizes the total number of petals, under the **additional constraint** that among all chosen flowers the maximum petal‐count differs from the minimum petal‐count by at most 1.  In other words, if we pick any petals \(x\) and \(y\), then \(|x-y|\le1\).
+
+Since all \(a_i\) are distinct integers, any valid bouquet can only use flowers of
+- a single petal‐count \(v\), or  
+- two adjacent petal‐counts \(v\) and \(v+1\).  
+
+We simply try every such “window” in the sorted list of \((a_i,c_i)\).
+
+1.  Sort \((a_i,c_i)\) by \(a_i\).  
+2.  For each index \(i\), let \((v,c_0)=(a_i,c_i)\).  
+   -  First consider using only petal‐count \(v\).  We can afford at most \(\lfloor m/v\rfloor\) flowers of cost \(v\), but at most \(c_0\) are in stock, so we take 
+      \[
+        x \;=\;\min\bigl(c_0,\;\lfloor m/v\rfloor\bigr),\quad
+        \text{petals} \;=\; x\,v.
+      \]
+   -  Then, if the next type is exactly \(v+1\), say it has \((v+1,c_1)\), we solve the 2‐type knapsack with  
+     \[
+       \text{weight}(v)=v,\quad 
+       \text{weight}(v+1)=v+1,
+     \]
+     each with their stock limits \(c_0,c_1\), budget \(m\), and profit=weight.  
+     
+     Although a full knapsack might suggest complexity, with only two types one can do an \(O(1)\) split into “take as many \((v+1)\)-flowers as makes sense up to some boundary, then fill with \(v\)-flowers, or vice versa,” plus a tiny residue‐adjustment (at most one modulo‐class scan of size \(\le v\)).  This stays \(O(1)\) per adjacent pair.
+
+The total cost of all tests is \(n\log n\) (for the sorts) plus \(O(n)\) for the two‐type scans overall, which is fine up to \(n=2\cdot10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(in.readLine());
+        int t = Integer.parseInt(st.nextToken());
+
+        // We'll accumulate all n across tests up to 2e5,
+        // and do each test in O(n log n + n).
+        while (t-- > 0) {
+            st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long m = Long.parseLong(st.nextToken());
+
+            long[] a = new long[n], c = new long[n];
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) {
+                c[i] = Long.parseLong(st.nextToken());
+            }
+
+            // Sort by petal‐count a[i]
+            Integer[] idx = new Integer[n];
+            for (int i = 0; i < n; i++) idx[i] = i;
+            Arrays.sort(idx, Comparator.comparingLong(i -> a[i]));
+
+            long best = 0;
+
+            // Sweep through sorted flowers
+            for (int _i = 0; _i < n; _i++) {
+                int i = idx[_i];
+                long v = a[i], cnt0 = c[i];
+
+                // 1) Use only petal‐count = v
+                long maxTakeV = Math.min(cnt0, m / v);
+                best = Math.max(best, maxTakeV * v);
+
+                // 2) If there's an adjacent v+1 type, do a 2‐type knapsack in O(1)
+                if (_i + 1 < n) {
+                    int j = idx[_i + 1];
+                    if (a[j] == v + 1) {
+                        long cnt1 = c[j];
+                        // Y_hi = max # of (v+1) flowers we can even afford by cost
+                        long Y_hi = Math.min(cnt1, m / (v + 1));
+
+                        // Region 1: "we fill all cheap v‐flowers, then add as many expensive (v+1) as budget allows"
+                        // That boundary y1 solves: (m - y*(v+1)) >= v*cnt0  =>  y <= (m - v*cnt0)/(v+1).
+                        long y1 = -1;
+                        if (m >= cnt0 * v) {
+                            y1 = (m - cnt0 * v) / (v + 1);
+                            if (y1 > cnt1) y1 = cnt1;
+                        }
+                        long f1 = 0;
+                        if (y1 >= 0) {
+                            f1 = cnt0 * v + y1 * (v + 1);
+                        }
+
+                        // Region 2: "we don't have enough cheap flowers to fill the remainder,
+                        // we pick y of the expensive, then floor((m - y*(v+1))/v) of the cheap"
+                        long Y_lo = (y1 >= 0 ? y1 + 1 : 0);
+                        long f2 = 0;
+                        if (Y_lo <= Y_hi) {
+                            // If Y_hi - Y_lo + 1 >= v, we cover all residues mod v => we can hit total=m exactly
+                            long length = Y_hi - Y_lo + 1;
+                            if (length >= v) {
+                                f2 = m;  // we can saturate the budget
+                            } else {
+                                // We want to minimize r = (m - y*(v+1)) mod v = (m - y) mod v
+                                long t0 = m % v;
+                                long z_lo = Y_lo % v;
+                                long hiEnd = z_lo + length - 1;
+
+                                long rMin;
+                                if (hiEnd < v) {
+                                    // no wrap
+                                    long z_hi = hiEnd;
+                                    if (t0 >= z_lo && t0 <= z_hi) {
+                                        rMin = 0;
+                                    } else if (t0 < z_lo) {
+                                        rMin = t0 + v - z_lo;
+                                    } else {
+                                        rMin = t0 - z_hi;
+                                    }
+                                } else {
+                                    // wrap around
+                                    long z_hiWrap = (hiEnd) % v;
+                                    if ((t0 >= z_lo && t0 < v) || (t0 >= 0 && t0 <= z_hiWrap)) {
+                                        rMin = 0;
+                                    } else {
+                                        // t0 is between z_hiWrap and z_lo on the circle
+                                        long r1 = t0 - z_hiWrap;          // from the lower segment
+                                        long r2 = (t0 + v) - z_lo;        // from the upper segment
+                                        rMin = Math.min(r1, r2);
+                                    }
+                                }
+                                f2 = m - rMin;
+                            }
+                        }
+
+                        // Also check the pure "all expensive first" corner
+                        long yAllExp = Y_hi;
+                        long rem = m - yAllExp * (v + 1);
+                        long takeCheap = Math.min(cnt0, rem / v);
+                        long f3 = yAllExp * (v + 1) + takeCheap * v;
+
+                        best = Math.max(best, Math.max(f1, Math.max(f2, f3)));
+                    }
+                }
+            }
+
+            System.out.println(best);
+        }
+    }
+}
+```
+
+**Explanation of key steps**
+
+1.  **Sorting.**  We sort all flower‐types by their petal‐count `a[i]`.  
+2.  **Single‐type take.**  For each kind \(v\) we can afford up to \(\lfloor m/v\rfloor\) flowers by budget, but there are only `c[i]` in stock, so we take
+    \[
+      x = \min\bigl(\,c[i],\,\lfloor m/v\rfloor\bigr),
+      \quad\text{petals} = x\cdot v.
+    \]
+3.  **Two adjacent petal‐counts \((v,v+1)\).**  
+    -  Let `cnt0` = stock of \(v\), `cnt1` = stock of \(v+1\).  
+    -  We cannot take more than \(\lfloor m/(v+1)\rfloor\) of \((v+1)\)-flowers, denote that upper bound `Y_hi`.  
+    -  We split the \((y\)-range) into two regions:
+       1.  **Region 1:**  We first “fill” all cheap \(v\)-flowers if possible, then add \((v+1)\)-flowers up to budget.  One solves \((m-y\,(v+1))\ge v\cdot \text{cnt0}\) for \(y\), getting a boundary \(y_1\).  For \(0\le y\le y_1\) we have enough cheap ones to spend the rest of the money → exact formula.  
+       2.  **Region 2:**  For \(y>y_1\), we run out of cheaps and do an “expensive first, then cheap” with a small residue fit.  One wants to maximize
+          \[
+            f(y) \;=\; y\,\bigl(v+1\bigr)\;+\;v \cdot
+               \min\Bigl(\text{cnt0},\,\lfloor\bigl(m - y\,(v+1)\bigr)/v\rfloor\Bigr).
+          \]
+          A modular‐arithmetic trick shows it suffices to scan at most \(\min(v,\text{length of }y)\) residue‐classes in \(O(1)\).  In practice we detect either we cover a full residue class (so we can hit total \(=m\) exactly) or we only cover an interval of residues, from which the minimal leftover \((m-y\,(v+1))\bmod v\) can be found by a constant‐time “two‐endpoints on a circle” check.
+    -  We also explicitly check the pure “take as many expensive \((v+1)\) as you can, then fill cheaply” corner.
+4.  We take the maximum among all those candidates.
+
+This runs in \(O(n\log n + n)\) time and easily handles up to \(2\times10^5\) total flower‐types.

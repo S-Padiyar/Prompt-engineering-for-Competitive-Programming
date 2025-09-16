@@ -1,0 +1,172 @@
+**Analysis**
+
+We have an \(n\times m\) grid (with \(2\le n,m\le10^9\)) and \(k\) “fountains” in distinct cells (none at \((n,1)\)).  Alice must draw a monotone path (only steps “right” or “down” in the usual matrix‐coordinates sense) from the top or left edge to the bottom or right edge; the path and everything “south–west” of it (including the path itself) belongs to Alice, and the rest belongs to Bob.  Bob initially wants all fountains in his region.  We want:
+
+1.  \(\alpha\) = the maximum number of cells Alice can claim if **no** fountain goes to Alice.
+2.  For each fountain \(i\), whether giving that one fountain to Alice (so it no longer constrains Bob’s region) would strictly increase Alice’s max—i.e. does \(\alpha_i>\alpha\)?  We output `1` if it does, `0` otherwise.
+
+---
+
+**Key observations**
+
+1.  A “fountain” at column \(x\), row \(r\) (we will reindex so that row increases **upwards**) forces the path to stay below it in that column.  Equivalently, in each column \(x\), let
+   \[
+     y_{\min}(x)=\min\{\,y_i\mid\text{fountain at column }x\},
+   \]
+   (where \(y_i\) is the “upwards”‐reindexed row).  Then the path at column \(x\) can be at height at most \(y_{\min}(x)-1\).  
+
+2.  Moreover, as we sweep columns \(x=1,2,\dots,m\) from left to right, we keep a running “global” minimum
+   \[
+     \mathsf{curY}
+     = \min\bigl(n+1,\;y_{\min}(1),\;y_{\min}(2),\dots,y_{\min}(x)\bigr).
+   \]
+   Before seeing any fountain, \(\mathsf{curY}=n+1\), so the path can sit at height \(n\) (i.e.\ the very top row).  As soon as we see a fountain in some column whose \(y_{\min}\) is lower than all before, \(\mathsf{curY}\) drops, and the path from that column onwards is forced lower.
+
+3.  The **area** under the path (the number of cells Alice claims) is
+   \[
+     \sum_{x=1}^m \bigl(\mathsf{curY}(x)-1\bigr),
+   \]
+   where \(\mathsf{curY}(x)\) is the value of \(\mathsf{curY}\) *after* processing column \(x\)'s fountain‐constraint (or unchanged if there is no fountain in column \(x\)).
+
+4.  Only those fountains whose column‐minimum actually *updates* the running minimum (i.e.\ strictly decreases \(\mathsf{curY}\)) are ever “active” in constraining the path.  Removing (giving to Alice) any other fountain does not change \(\mathsf{curY}\) at all, hence does not change the maximum area \(\alpha\).  But if you remove one that *did* strictly lower \(\mathsf{curY}\), then \(\mathsf{curY}\) stays higher for all columns up to the next drop, and the total area strictly *increases*.
+
+Thus the solution is:
+
+1.  For each column \(x\) that has at least one fountain, pick the fountain with the *smallest* reindexed‐row \(y\).  Call its pair \((x,y)\).
+2.  Sort these “column‐minima” by \(x\).  Sweep left→right, maintaining \(\mathsf{curY}\).  Whenever \(y<\mathsf{curY}\), that column‐fountain is a “record” and *strictly* lowers \(\mathsf{curY}\); we mark its fountain‐ID with a `1`.  Otherwise we mark `0`.
+3.  In the same sweep we accumulate the area
+   \[
+     \alpha \;=\;\sum_{x=1}^m\bigl(\mathsf{curY}(x)-1\bigr),
+   \]
+   by noting that between two columns where \(\mathsf{curY}\) is constant one can multiply height by width, and at the exact column of a fountain one uses the *new* \(\mathsf{curY}\).
+
+Complexity:  We group fountains by column in \(O(k)\), pick the column‐min in \(O(k)\), sort these at \(O(k\log k)\), then do one \(O(k)\) sweep.  Since \(\sum k\le2\cdot10^5\), this is fast.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader(InputStream in) { br = new BufferedReader(new InputStreamReader(in)); }
+        String next() {
+            while (st == null || !st.hasMoreTokens()) {
+                try { st = new StringTokenizer(br.readLine()); }
+                catch (IOException e) { throw new RuntimeException(e); }
+            }
+            return st.nextToken();
+        }
+        int nextInt() { return Integer.parseInt(next()); }
+        long nextLong() { return Long.parseLong(next()); }
+    }
+
+    public static void main(String[] args) {
+        FastReader in = new FastReader(System.in);
+        int t = in.nextInt();
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            long n = in.nextLong();
+            long m = in.nextLong();
+            int k = in.nextInt();
+
+            // Read fountains: we store (column x, reindexed row y, original index)
+            // reindex row so that bottom row is y=1, top row is y=n:
+            //    if original row is r (1=top, n=bottom), then y = n - r + 1.
+            int[] X = new int[k];
+            long[] Y = new long[k];
+            for (int i = 0; i < k; i++) {
+                long r = in.nextLong();
+                long c = in.nextLong();
+                X[i] = (int) c;
+                Y[i] = n - r + 1;
+            }
+
+            // For each column, pick the fountain with minimal Y.
+            // We'll sort (x, y, i) by x then by y, and scan.
+            Integer[] idx = new Integer[k];
+            for (int i = 0; i < k; i++) idx[i] = i;
+            Arrays.sort(idx, (a, b) -> {
+                if (X[a] != X[b]) return Integer.compare(X[a], X[b]);
+                return Long.compare(Y[a], Y[b]);
+            });
+
+            // Build list of (x, yMin, id) for each column's minimal-y fountain:
+            List<int[]> events = new ArrayList<>();
+            int lastX = -1;
+            for (int ii = 0; ii < k; ii++) {
+                int i = idx[ii];
+                if (X[i] != lastX) {
+                    lastX = X[i];
+                    // store (column x, yMin (fits in int?), originalIndex)
+                    events.add(new int[]{X[i], (int)Y[i], i});
+                }
+            }
+
+            // Now sweep these events in ascending x, keeping curY and accumulating area.
+            long alpha = 0;
+            long curY = n + 1;       // the running global minimum + 1
+            long prevX = 1;          // next column to fill in from
+            int[] ans = new int[k];  // default 0;  will set 1 for 'record' fountains
+
+            for (int[] ev : events) {
+                long x = ev[0];
+                long yMin = ev[1];
+                int id = ev[2];
+
+                // First, columns [prevX .. x-1] have no new constraint:
+                long w = x - prevX;
+                if (w > 0) {
+                    alpha += w * (curY - 1);
+                }
+
+                // Now at column x itself we see a fountain constraint yMin.
+                // Update curY = min(curY, yMin).  If strictly smaller, mark this fountain.
+                if (yMin < curY) {
+                    curY = yMin;
+                    ans[id] = 1;  // removing this fountain strictly increases alpha
+                }
+                // Alice can take (curY - 1) cells in column x:
+                alpha += (curY - 1);
+
+                prevX = x + 1;
+            }
+            // Finally, columns [prevX .. m]:
+            if (prevX <= m) {
+                alpha += (m - prevX + 1) * (curY - 1);
+            }
+
+            // Output
+            sb.append(alpha).append('\n');
+            for (int i = 0; i < k; i++) {
+                sb.append(ans[i]).append(i + 1 < k ? ' ' : '\n');
+            }
+        }
+
+        System.out.print(sb.toString());
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1. We convert each fountain’s \((r,c)\) to \((x,y)\) where  
+   \[
+     x = c,\quad y = n - r + 1
+   \]
+   so that \(y\) increases upward (row =n is bottom → y=1, row =1 is top → y=n).
+
+2. In each column \(x\) we only need the *smallest* \(y\)-value (i.e.\ the fountain that forces the path lowest in that column).  We sort all fountains by \((x,y)\), then scan to pick out one “column‐minimum” per \(x\).
+
+3. Sort those column‐minima by \(x\).  We sweep \(x=1\) to \(m\).  We keep a variable \(\mathsf{curY}\), initially \(n+1\).  Before any fountain, Alice’s path can be at height \(n\).  Whenever we hit a column‐min with \(y_{\min}<\mathsf{curY}\), that fountain *strictly* lowers the ceiling to \(y_{\min}\), and we mark it `1` because removing that fountain would restore a higher ceiling (and thus increase Alice’s area).  All other fountains are `0`.
+
+4. We accumulate
+   \[
+     \sum_{x=1}^m \bigl(\mathsf{curY}(x)-1\bigr)
+   \]
+   by noticing that between two successive “event” columns where \(\mathsf{curY}\) jumps, the height is constant, so we do a rectangle‐area width–times–height; and at the exact column of an event we also add \((\mathsf{curY}-1)\) *after* updating \(\mathsf{curY}\).
+
+This runs in \(O(k\log k)\) per test (to sort) and easily handles \(\sum k\le2\cdot10^5\).

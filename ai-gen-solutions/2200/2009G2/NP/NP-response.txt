@@ -1,0 +1,367 @@
+**Analysis**
+
+We have an array  
+  a₁,a₂,…,aₙ,  
+and two parameters k and q.  We must answer q queries; each query gives a segment [l…r] (with r≥l+k−1), and asks us to compute
+
+ \[
+   \sum_{j=l+k-1}^r f\bigl(a_l,a_{l+1},\dots,a_j\bigr)\,,
+ \]
+
+where \(f(b)\) is the minimum number of arbitrary‐value assignments needed so that \(b\) contains a consecutive increasing run of length ≥k.  One shows (easy exercise) that
+
+1.  If we write \(b_1,b_2,\dots,b_m\), define
+   \[
+     f(b)
+     \;=\;\min_{1\le i\le m-k+1}
+         \Bigl(\;k\;-\;\max_{\text{value }x}
+                       \bigl|\{j\in[i,i+k-1]:\,b_j=b_i+(j-i)\}\bigr|\Bigr).
+   \]
+2.  Equivalently, on the **original** array \(a\) define 
+   \[
+     d_i = a_i - i.
+   \]
+   Then any length‐k subarray of \(a\) from \(s\) to \(s+k-1\) has a “best” arithmetic‐run match of size
+   \(\displaystyle c_s=\max_{\text{value }v}\#\{\,i\in[s,s+k-1]:d_i=v\}\).  
+   Hence the cost to make positions \(s\) through \(s+k–1\) a perfect run is 
+   \(\;k - c_s\), 
+   and overall
+   \[
+     f\bigl(a_l,\dots,a_j\bigr)
+     = \min_{\,l\le s\le j-k+1}\bigl(k - c_s\bigr)
+     = k - \max_{s\in[l\,..\,j-k+1]} c_s.
+   \]
+3.  Therefore if we set
+   \[
+     M(l,j)\;=\;\max_{s\in [l,\,j-k+1]}c_s,
+     \quad j\ge l+k-1,
+   \]
+   then
+   \[
+     \sum_{j=l+k-1}^r f(a_l,\dots,a_j)
+     \;=\;\sum_{j=l+k-1}^r \bigl[k - M(l,j)\bigr]
+     \;=\;\bigl(r - (l+k-1)+1\bigr)\,k \;-\;\sum_{j=l+k-1}^r M(l,j).
+   \]
+   Here \(\;(\,r-(l+k-1)+1)\) is the number of terms in that sum.
+
+Thus the main task is:
+
+  A)  Compute the array \(c_s\) for \(s=1,\dots,n-k+1\), where
+        \(
+         c_s
+         = \max_{v}\#\{\,i\in[s,s+k-1]:\,d_i=v\},
+         \quad d_i=a_i-i.
+        \)
+
+  B)  Preprocess \(c_s\) so that we can answer many queries of the form
+        \[
+          \text{given }l,u,\quad
+          \sum_{t=l}^u \max_{s\in[l..t]}c_s.
+        \]
+       Here \(u=r-k+1\).  Denote
+        \(\;M(l,t)=\max_{s\in[l..t]}c_s\),
+       and we want \(\sum_{t=l}^u M(l,t)\).
+
+To do (A) one slides a window of length k over the array \(d_i\).  Maintain a frequency table
+of the current k values of \(d\), and also maintain for each frequency \(f\ge1\) how many
+values occur exactly \(f\) times, and keep track of the current maximum frequency.  In
+\(O(n)\) total time we fill an array
+\(\;c_1,c_2,\dots,c_{n-k+1}.\)
+
+Step (B) is the trickiest.  We must sum over
+\[
+   \sum_{t=l}^u \max(c_l,c_{l+1},\dots,c_t).
+\]
+A well‐known “offline rectangle‐add + point‐query” trick does the job:
+
+  1.  Compute for each \(s\) its next‐greater index
+        \(\;r[s]=\min\{t>s: c_t>c_s\}\)
+      (or \(n-k+2\) if none), and its previous‐greater
+        \(\;L[s]=\max\{t<s:c_t>c_s\}\)
+      (or \(0\) if none).  
+
+  2.  One shows that \(c_s\) contributes to \(\max_{i\in[l..t]}c_i\) exactly
+      when \(l\in(L[s],\,s]\) and \(t\ge s\), and the actual value is
+      \[
+         \min\bigl(c_s\,(t+1-s),\;c_s\,(r[s]-s)\bigr).
+      \]
+      Splitting on whether \(t+1<r[s]\) or \(t+1\ge r[s]\) gives two
+      rectangular regions in the \((l,t)\) plane, one where the weight is
+      linear in \(t\) and one where it is constant.
+
+  3.  We transform “for all \((l,t)\) in a rectangle add a linear function”
+      into “sweep \(l\) from 1 to \(n-k+1\),
+      do two BIT range‐adds (one at entry, one at exit), and whenever a query
+      asks at \((l,u)\) we do a point‐query in \(O(\log n)\).”
+
+Overall each test is \(O(n + q)\) plus \(O((n+q)\log n)\) for the BIT, which
+is perfectly fine for \(n,q\le2\times10^5\).
+
+----
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class FastInput {
+        BufferedReader br;
+        StringTokenizer st;
+        FastInput(InputStream in) { br = new BufferedReader(new InputStreamReader(in)); }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens()) {
+                String line = br.readLine();
+                if (line == null) return null;
+                st = new StringTokenizer(line);
+            }
+            return st.nextToken();
+        }
+        int nextInt() throws IOException { return Integer.parseInt(next()); }
+    }
+
+    // BIT for range‐add, point‐query
+    static class BIT {
+        int n;
+        long[] bit;
+        BIT(int n) { this.n = n; bit = new long[n+1]; }
+        // add v to position p
+        void add(int p, long v) {
+            for (; p <= n; p += p & -p) bit[p] += v;
+        }
+        // range add +v to [l..r]
+        void rangeAdd(int l, int r, long v) {
+            if (l > r) return;
+            add(l, v);
+            if (r+1 <= n) add(r+1, -v);
+        }
+        // point query at p
+        long query(int p) {
+            long s = 0;
+            for (; p > 0; p -= p & -p) s += bit[p];
+            return s;
+        }
+    }
+
+    static class Event {
+        int ql, qr;     // range in t‐axis
+        long a, b;      // we add a*t + b
+        Event(int ql, int qr, long a, long b) {
+            this.ql = ql;  this.qr = qr;  this.a = a;  this.b = b;
+        }
+    }
+
+    static class Query {
+        int u, idx;
+        Query(int u, int idx) { this.u = u; this.idx = idx; }
+    }
+
+    public static void main(String[] args) throws IOException {
+        FastInput in = new FastInput(System.in);
+        PrintWriter out = new PrintWriter(System.out);
+
+        int T = in.nextInt();
+        while (T-- > 0) {
+            int n = in.nextInt();
+            int k = in.nextInt();
+            int Q = in.nextInt();
+            int[] a = new int[n+1];
+            for (int i = 1; i <= n; i++) a[i] = in.nextInt();
+
+            // 1) build d[i] = a[i] - i, then slide an O(1)-amortized window
+            //    of size k to compute c[1..n-k+1].
+            int Np = n - k + 1;  // number of windows
+            int[] d = new int[n+1];
+            for (int i = 1; i <= n; i++) {
+                d[i] = a[i] - i;
+            }
+            // we map d-values in [-n..n] to [1..2n+1]
+            int SHIFT = n + 1;
+            int M = 2*n + 5;
+            int[] freq = new int[M];
+            int[] cntF = new int[k+2];
+            int maxf = 0;
+
+            // helper to add one element x
+            Runnable resetFreq = () -> {
+                // we'll manually zero freq and cnt arrays
+                Arrays.fill(freq, 0);
+                Arrays.fill(cntF, 0);
+                maxf = 0;
+            };
+            resetFreq.run();
+
+            // add x into window
+            class Add {
+                void addVal(int x) {
+                    int oldf = freq[x];
+                    int newf = oldf + 1;
+                    freq[x] = newf;
+                    if (oldf > 0) cntF[oldf]--;
+                    cntF[newf]++;
+                    if (newf > maxf) maxf = newf;
+                }
+                void remVal(int x) {
+                    int oldf = freq[x];
+                    int newf = oldf - 1;
+                    freq[x] = newf;
+                    cntF[oldf]--;
+                    if (newf > 0) cntF[newf]++;
+                    if (oldf == maxf && cntF[oldf] == 0) {
+                        maxf--;
+                    }
+                }
+            }
+            var ad = new Add();
+
+            // build c[1]
+            for (int i = 1; i <= k; i++) {
+                ad.addVal(d[i] + SHIFT);
+            }
+            int[] c = new int[Np+1];
+            c[1] = maxf;
+            for (int s = 2; s <= Np; s++) {
+                ad.remVal(d[s-1] + SHIFT);
+                ad.addVal(d[s + k - 1] + SHIFT);
+                c[s] = maxf;
+            }
+
+            // 2) compute L[s] and r[s] (prev‐greater, next‐greater)
+            int[] L = new int[Np+1], R = new int[Np+1];
+            { // prev‐greater
+                Deque<Integer> st = new ArrayDeque<>();
+                for (int i = 1; i <= Np; i++) {
+                    while (!st.isEmpty() && c[st.peek()] <= c[i]) st.pop();
+                    L[i] = st.isEmpty() ? 0 : st.peek();
+                    st.push(i);
+                }
+            }
+            { // next‐greater
+                Deque<Integer> st = new ArrayDeque<>();
+                for (int i = Np; i >= 1; i--) {
+                    while (!st.isEmpty() && c[st.peek()] <= c[i]) st.pop();
+                    R[i] = st.isEmpty() ? (Np+1) : st.peek();
+                    st.push(i);
+                }
+            }
+
+            // We'll build events over "l" from 1..Np.  Each s spawns TWO
+            // rectangles in the (l, t)-plane: one where contribution is
+            // linear in t, one constant.
+            ArrayList<Event>[] events = new ArrayList[Np+2];
+            for (int i = 1; i <= Np+1; i++) events[i] = new ArrayList<>();
+
+            // precompute A[s]
+            long[] A = new long[Np+1];
+            for (int s = 1; s <= Np; s++) {
+                A[s] = (long)c[s] * (R[s] - s);
+            }
+
+            for (int s = 1; s <= Np; s++) {
+                int pStart = L[s] + 1;
+                int pEnd = s + 1;    // we will "remove" at l = s+1
+                // region1: t in [s .. R[s]-2], weight = c[s]*(t+1-s)
+                //           = c[s]*t + c[s]*(1-s)
+                int q1 = s;
+                int q2 = R[s] - 2;
+                if (q1 <= q2) {
+                    long a1 = c[s];
+                    long b1 = (long)c[s] * (1 - s);
+                    events[pStart].add(new Event(q1, q2, +a1, +b1));
+                    if (pEnd <= Np+1)
+                        events[pEnd].add(new Event(q1, q2, -a1, -b1));
+                }
+                // region2: t in [R[s]-1 .. Np], weight = A[s]
+                int r1 = R[s] - 1;
+                int r2 = Np;
+                if (r1 <= r2) {
+                    long b2 = A[s];
+                    events[pStart].add(new Event(r1, r2, 0, +b2));
+                    if (pEnd <= Np+1)
+                        events[pEnd].add(new Event(r1, r2, 0, -b2));
+                }
+            }
+
+            // read queries
+            @SuppressWarnings("unchecked")
+            ArrayList<Query>[] queriesAt = new ArrayList[Np+1];
+            for (int i = 1; i <= Np; i++) queriesAt[i] = new ArrayList<>();
+            long[] finalAns = new long[Q];
+            int[] ql = new int[Q], qr = new int[Q];
+            for (int i = 0; i < Q; i++) {
+                int l = in.nextInt();
+                int r = in.nextInt();
+                ql[i] = l;  qr[i] = r;
+                // u = r-k+1
+                int u = r - k + 1;
+                // we only sweep l from 1..Np, so u>=l always valid
+                queriesAt[l].add(new Query(u,i));
+            }
+
+            // Two BITs for the “a*t + b” trick:
+            // we store in bitA the coefficient of t, in bitB the constant
+            BIT bitA = new BIT(Np), bitB = new BIT(Np);
+
+            // sweep l = 1..Np
+            for (int l = 1; l <= Np; l++) {
+                // apply all rectangle‐add events at this l
+                for (Event e : events[l]) {
+                    bitA.rangeAdd(e.ql, e.qr, e.a);
+                    bitB.rangeAdd(e.ql, e.qr, e.b);
+                }
+                // answer all queries with this l
+                for (Query qq : queriesAt[l]) {
+                    int u = qq.u;
+                    long acoef = bitA.query(u);
+                    long bconst = bitB.query(u);
+                    long sumMt = acoef * u + bconst;
+                    finalAns[qq.idx] = sumMt;
+                }
+            }
+
+            // Finally print answers: each query is
+            //    sum_j f(...) = (#terms)*k  -  sum_{t=l..u} M(l,t)
+            // #terms = (r-(l+k-1)+1) = (r-l-k+2)
+            for (int i = 0; i < Q; i++) {
+                int l = ql[i], r = qr[i];
+                long terms = (long)(r - l - k + 2);
+                long ans = terms * k - finalAns[i];
+                out.println(ans);
+            }
+        }
+
+        out.flush();
+    }
+}
+```
+
+Explanation of the main steps:
+
+1. **Compute** \(d_i=a_i-i\).  
+2. **Slide** a window of length \(k\) over \(d\), maintaining a small frequency‐of‐frequency structure so that we can in \(O(1)\) per move update the window and record  
+   \[
+     c_s \;=\;\max_{\text{value }v}\#\{\,i\in[s,s+k-1]:\,d_i=v\}.
+   \]
+3. **Compute** for each \(s\) its previous‐greater index \(L[s]\) and next‐greater index \(R[s]\) in the array \(c\).  
+4. **Observe** that \(c_s\) contributes to \(\max_{i\in[l..t]}c_i\) exactly when  
+   \[
+     l\in(L[s],\,s],\quad t\ge s,
+   \]
+   and its numerical contribution is
+   \(\displaystyle \min\bigl(c_s\,(t+1-s),\,c_s\,(R[s]-s)\bigr)\).  This splits into two rectangles in \((l,t)\)–space—one where it is a linear function of \(t\), and one where it is constant.
+5. **Do** those two rectangle‐adds off‐line by sweeping \(l\) from \(1\) to \(n-k+1\).  At each \(l\) we process “add events” and “remove events” that affect a range of \(t\).  We maintain two Fenwick trees (`bitA`, `bitB`) so that a range‐add of \(\bigl(a\,t + b\bigr)\) is turned into
+   ```
+     bitA.rangeAdd(t₁,t₂, a);
+     bitB.rangeAdd(t₁,t₂, b);
+   ```
+   and a point‐query at \(t\) is
+   ```
+     a_sum = bitA.pointQuery(t);
+     b_sum = bitB.pointQuery(t);
+     total = a_sum*t + b_sum;
+   ```
+6. **Answer** each query \((l,r)\) by converting \(r\) into \(u=r-k+1\), querying at \((l,u)\) to get \(\sum M(l,t)\), then output
+   \[
+     (r - (l+k-1)+1)\times k \;-\;\sum_{t=l}^u M(l,t).
+   \]
+
+This runs in \(O(n + q)\) for the sliding‐window + \(O((n+q)\log n)\) for the BIT sweep, which easily fits under typical Codeforces limits.

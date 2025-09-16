@@ -1,0 +1,62 @@
+E. Distance to Different
+time limit per test2 seconds
+memory limit per test512 megabytes
+Consider an array a
+ of n
+ integers, where every element is from 1
+ to k
+, and every integer from 1
+ to k
+ appears at least once.
+
+Let the array b
+ be constructed as follows: for the i
+-th element of a
+, bi
+ is the distance to the closest element in a
+ which is not equal to ai
+. In other words, bi=minj∈[1,n],aj≠ai|i−j|
+.
+
+For example, if a=[1,1,2,3,3,3,3,1]
+, then b=[2,1,1,1,2,2,1,1]
+.
+
+Calculate the number of different arrays b
+ you can obtain if you consider all possible arrays a
+, and print it modulo 998244353
+.
+
+Input
+The only line of the input contains two integers n
+ and k
+ (2≤n≤2⋅105
+; 2≤k≤min(n,10)
+).
+
+Output
+Print one integer — the number of different arrays b
+ you can obtain, taken modulo 998244353
+.
+
+Examples
+InputCopy
+2 2
+OutputCopy
+1
+InputCopy
+4 3
+OutputCopy
+3
+InputCopy
+6 2
+OutputCopy
+20
+InputCopy
+6 5
+OutputCopy
+3
+InputCopy
+133 7
+OutputCopy
+336975971

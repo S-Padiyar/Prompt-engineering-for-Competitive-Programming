@@ -1,0 +1,187 @@
+**Analysis**
+
+We are given an array $a$ of length $n$ (with $a_i\ge1$) and an integer $k$.  We may repeatedly pick two distinct indices $i\neq j$ with $a_i\ge a_j$ and either replace
+$$
+a_i\leftarrow a_i-a_j
+\quad\text{or}\quad
+a_i\leftarrow a_i+a_j.
+$$
+We want to maximize 
+$$
+\mathrm{mex}_k(A),
+$$
+the $k$-th missing nonnegative integer of the final multiset $A$.
+
+There are two cases:
+
+1. **$n=1$.**  
+   No operation is possible (you need two distinct indices), so the array remains $\{a_1\}$.  
+   - The missing nonnegatives are
+     $$
+       0,1,2,\dots,a_1-1,\;a_1+1,a_1+2,\dots
+     $$
+     i.e. the first $a_1$ missing numbers are $0,1,2,\dots,a_1-1$.  Thus
+     $$
+       \mathrm{mex}_k = 
+       \begin{cases}
+         k-1,&k\le a_1,\\
+         k,  &k>a_1.
+       \end{cases}
+     $$
+
+2. **$n\ge2$.**  
+   One shows easily by using subtraction until one slot becomes $\gcd(a_1,\dots,a_n)=d$, and then using the “add”‐operation to create arbitrarily large multiples of $d$, that the final array can be made to consist of any $n$ (not necessarily distinct) multiples of $d= \gcd(a_1,\dots,a_n)$, and no other values.  
+
+   Hence effectively we choose a *set* 
+   $$
+     S\subseteq\{\,0,d,2d,3d,\dots\},\quad |S|\le n,
+   $$
+   in order to maximize the $k$-th missing nonnegative integer.  (Duplicates only hurt, so one never wants duplicates; one picks $|S|\le n$ distinct multiples.)
+
+   Write all nonnegative integers in *blocks* of length $d$:
+   $$
+     [0..d-1],\;[d..2d-1],\;[2d..3d-1],\;\dots
+   $$
+   In block $i$ the only multiple of $d$ is exactly $id$ at the very start.  If we choose $id\in S$ then that block contributes exactly $(d-1)$ missing numbers (all the non-multiples in that block).  If we do *not* choose $id\in S$, that block contributes $d$ missing numbers (including the multiple itself).  
+
+   To **delay** the appearance of the $k$-th missing number as far to the right as possible, we should choose *all* of the first $n$ multiples 
+   $$
+     \{0\cdot d,\;1\cdot d,\;2\cdot d,\;\dots,\;(n-1)d\}
+   $$
+   (that uses up our $n$ picks on the earliest blocks).  Then:
+
+   - For the first $n$ blocks (block $0$ through block $n-1$) each block contributes exactly $d-1$ missing numbers.
+   - From block $n$ onward, we have used up all our picks, so every block contributes $d$ missing numbers.
+
+   Let
+   $$
+     N_1 \;=\; n\,(d-1)
+   $$
+   be the total missing count in the first $n$ blocks.  There are now two regimes:
+
+   a)  If $k\le N_1$, the $k$-th missing lies in one of the *picked* (first $n$) blocks, each of which has $(d-1)$ missing and *omits* the multiple $id$ itself.  A simple division‐with‐remainder locates the exact block and offset.
+
+   b)  If $k>N_1$, the $k$-th missing lies in one of the *unpicked* blocks (block $n,n+1,\dots$), each of which contributes $d$ missing including its multiple.  Again division‐with‐remainder gives its position.
+
+Putting all this together yields an $O(n)$–scan to compute $d$, then $O(1)$ arithmetic to get the answer per test case.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer tok = new StringTokenizer(in.readLine());
+        int t = Integer.parseInt(tok.nextToken());
+        
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            tok = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(tok.nextToken());
+            long k = Long.parseLong(tok.nextToken());
+            
+            tok = new StringTokenizer(in.readLine());
+            long[] a = new long[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(tok.nextToken());
+            }
+            
+            // Case 1: n == 1, cannot change the single element
+            if (n == 1) {
+                long x = a[0];
+                if (k <= x) {
+                    sb.append(k - 1).append('\n');
+                } else {
+                    sb.append(k).append('\n');
+                }
+                continue;
+            }
+            
+            // Case 2: n >= 2
+            // Compute d = gcd(a[0], a[1], ..., a[n-1])
+            long d = a[0];
+            for (int i = 1; i < n; i++) {
+                d = gcd(d, a[i]);
+            }
+            
+            // Let N1 = n*(d-1) be the number of missing in the first n blocks
+            long N1 = (long)n * (d - 1);
+            
+            long answer;
+            if (k <= N1) {
+                // The k-th missing is in one of the first n "picked" blocks
+                // Each such block contributes (d-1) missing,
+                // and the missing in block b are exactly
+                // b*d+1, b*d+2, ..., b*d+(d-1).
+                long zeroBased = k - 1;                   // zero-based missing index
+                long block = zeroBased / (d - 1);        // which block
+                long offset = zeroBased % (d - 1);       // offset in that block
+                answer = block * d + 1 + offset;
+            } else {
+                // The k-th missing is in one of the unpicked blocks,
+                // each contributes d missing including its multiple.
+                long rem = k - N1 - 1;  // zero-based among the "unpicked" blocks
+                long block = n + (rem / d);
+                long offset = rem % d;
+                answer = block * d + offset;
+            }
+            
+            sb.append(answer).append('\n');
+        }
+        
+        System.out.print(sb);
+    }
+    
+    // gcd helper
+    private static long gcd(long x, long y) {
+        while (y != 0) {
+            long r = x % y;
+            x = y;
+            y = r;
+        }
+        return x;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **When $n=1$**  
+   No operation is possible.  The single element $a_1$ remains.  
+   - The missing nonnegative integers are
+     $$
+       0,1,2,\dots,a_1-1,\quad a_1+1,a_1+2,\dots
+     $$
+     so the first $a_1$ missing numbers are $0,1,\dots,a_1-1$.  
+   - Hence $\mathrm{mex}_k=a_1$’s contribution is
+     $$
+       \mathrm{mex}_k = 
+       \begin{cases}
+         k-1, & k\le a_1,\\
+         k,   & k>a_1.
+       \end{cases}
+     $$
+
+2. **When $n\ge2$**  
+   By repeated subtraction we can bring one slot down to the global gcd  
+   $d=\gcd(a_1,\dots,a_n)$, and then by additions we can generate *arbitrarily large* multiples of $d$.  Moreover one can produce the value 0 as well.  Consequently the array can be made into *any* $n$ (not necessarily distinct) multiples of $d$.  Duplicates never help our mex, so we might as well choose at most $n$ *distinct* multiples of $d$.
+
+   We divide the nonnegative integers into consecutive “blocks” of length $d$:
+   \[
+     [0..d-1],\;[d..2d-1],\;[2d..3d-1],\;\dots
+   \]
+   In the $i$-th block, the only multiple of $d$ is $i\cdot d$ at the start.
+   - If we *choose* $i\cdot d$ in our final set, that block contributes exactly $d-1$ missing numbers (all the non-multiples).
+   - If we *skip* $i\cdot d$, the block contributes all $d$ missing numbers (including $i\cdot d$ itself).
+
+   To *postpone* the $k$-th missing as far as possible, we select the first $n$ multiples
+   $$
+     0\cdot d,\;1\cdot d,\;2\cdot d,\;\dots,\;(n-1)\,d,
+   $$
+   thus “picking” blocks $0,1,\dots,n-1$.  Those first $n$ blocks each yield $d-1$ missing numbers; beyond that, every block yields $d$ missing numbers.  A little division‐with‐remainder tells you exactly in which block and at which offset the $k$-th missing falls.
+
+
+This runs in $O(n)$ per test for the gcd plus $O(1)$ for the final arithmetic, easily handling $\sum n\le2\cdot10^5\,$ and $t\le10^4\,$.

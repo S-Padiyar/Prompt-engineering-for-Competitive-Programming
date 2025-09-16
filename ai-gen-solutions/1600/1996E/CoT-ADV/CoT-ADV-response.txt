@@ -1,0 +1,154 @@
+**Problem Restatement**
+
+We have a binary string `s` of length `n`. For every pair of indices `(l, r)` with `1 ≤ l ≤ r ≤ n`, consider all substrings `s[x..y]` with `l ≤ x ≤ y ≤ r`. We want to count how many of these substrings have an equal number of 0’s and 1’s, and then sum that count over all choices of `(l, r)`. Finally, output this grand total modulo 10^9+7.
+
+---
+
+**Input**
+
+- `t`: number of test cases (1 ≤ `t` ≤ 1000).  
+- Then for each test case, one line with a binary string `s` (1 ≤ |s| ≤ 2·10^5).  
+- It is guaranteed that the sum of |s| over all test cases does not exceed 2·10^5.
+
+**Output**
+
+For each test case, output one integer: the total count of all balanced‐substrings (equal 0’s and 1’s) across all `(l, r)` intervals, modulo 10^9+7.
+
+---
+
+**Constraints and Edge Cases**
+
+- Maximum total length of all test strings is 2·10^5, so we need an O(n) or O(n log n) solution per test.
+- A single character string (|s| = 1) has no balanced substrings—answer is 0.
+- A string of all 0’s or all 1’s also yields 0.
+
+---
+
+**Key Observation**
+
+Instead of directly iterating over all quadruples `(l, r, x, y)`, we can invert the counting:
+
+1. A substring `s[x..y]` has equal 0’s and 1’s if and only if, when we map 1→+1 and 0→–1, the prefix‐sum up to `y` equals the prefix‐sum just before `x`.  
+
+2. Let `P[i]` = the sum of +1/–1 from `s[1]` through `s[i]`.  We also set `P[0] = 0`.
+
+3. A balanced substring from `x` to `y` corresponds to a pair of indices `(i, j)` with `0 ≤ i < j ≤ n`, `i = x−1`, `j = y`, and `P[i] == P[j]`.
+
+4. For each such balanced substring `(i, j)`, how many `(l, r)` super‐intervals contain it?  
+   - `l` can be any integer from `1` to `x = i+1` → `i+1` choices.
+   - `r` can be any integer from `y = j` to `n` → `(n − j + 1)` choices.
+   - Total ways to choose `(l, r)` for this substring = `(i+1) * (n - j + 1)`.
+
+Therefore the final answer is
+
+   ∑_{all pairs 0 ≤ i < j ≤ n with P[i] = P[j]} (i+1) * (n - j + 1)
+   (taken modulo 10^9+7).
+
+---
+
+**Efficient Summation by Grouping**
+
+- We group positions by their prefix‐sum value. Suppose for a particular sum `v`, the indices where `P[i] = v` are
+  `p0 < p1 < … < p_{m-1}`.
+
+- We want 
+    ∑_{0 ≤ a < b < m} (pa + 1) * (n - p_b + 1).
+
+- Let `arr[b] = (n - p_b + 1)`.  
+  Compute a suffix‐sum array `suffix[b] = arr[b] + arr[b+1] + … + arr[m-1]`.  
+  Then the contribution of all pairs with first index `a` is
+    (p_a + 1) * suffix[a+1].
+
+- Summing that for `a = 0..m-2` in O(m) per group gives us an O(n) solution overall.
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader reader = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(reader.readLine().trim());
+        StringBuilder output = new StringBuilder();
+
+        while (t-- > 0) {
+            String s = reader.readLine().trim();
+            int n = s.length();
+
+            // Compute prefix sums: +1 for '1', -1 for '0'
+            int[] P = new int[n + 1];
+            for (int i = 1; i <= n; i++) {
+                P[i] = P[i - 1] + (s.charAt(i - 1) == '1' ? 1 : -1);
+            }
+
+            // Group indices by prefix sum value
+            // Map: sumValue -> list of positions i where P[i] == sumValue
+            Map<Integer, ArrayList<Integer>> map = new HashMap<>();
+            for (int i = 0; i <= n; i++) {
+                map.computeIfAbsent(P[i], k -> new ArrayList<>()).add(i);
+            }
+
+            long answer = 0L;
+
+            // Process each group
+            for (ArrayList<Integer> positions : map.values()) {
+                int m = positions.size();
+                if (m < 2) continue;  // need at least 2 to form a pair
+
+                // Build suffix sums of (n - pos + 1)
+                long[] suffix = new long[m + 1];
+                suffix[m] = 0;
+                for (int j = m - 1; j >= 0; j--) {
+                    long val = (n - positions.get(j) + 1L) % MOD;
+                    suffix[j] = (suffix[j + 1] + val) % MOD;
+                }
+
+                // Sum contributions
+                for (int i = 0; i < m - 1; i++) {
+                    long leftChoices = (positions.get(i) + 1L) % MOD;
+                    long waysRight = suffix[i + 1];  // all suffix sums from i+1
+                    answer = (answer + leftChoices * waysRight) % MOD;
+                }
+            }
+
+            output.append(answer).append("\n");
+        }
+
+        // Print all answers
+        System.out.print(output);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Prefix‐Sum Array (`P`)**  
+   We convert the binary string to +1 / –1 and build a running prefix sum.  
+   Balanced substrings `[x..y]` satisfy `P[y] = P[x−1]`.
+
+2. **Grouping Indices**  
+   Indices in `P` with the same value form groups. Each pair `(i, j)` inside a group yields a balanced substring.
+
+3. **Counting Super‐intervals**  
+   A balanced substring `(i, j)` can be extended to any `l ≤ i+1` and `r ≥ j`. That’s `(i+1)*(n−j+1)` choices.
+
+4. **Summation Optimization**  
+   For each group of size `m`, a direct double‐loop would be O(m^2). Instead, we compute a suffix sum of the “right‐side” factor `(n − pos + 1)`. Then for each `i`, we multiply its “left‐side” factor `(pos_i + 1)` by the suffix sum over all `j>i`.
+
+---
+
+**Complexity Analysis**
+
+- Building the prefix array: O(n)  
+- Grouping positions by prefix‐sum: O(n) amortized (hashing)  
+- For each group of total size m, we do O(m) work. Summed over all groups that’s O(n).  
+
+Overall, time complexity is O(n) per test, and since the total length across all test cases is at most 2·10^5, our solution runs efficiently within the limits.
+
+Space complexity is O(n) for storing the prefix sums and grouping indices.

@@ -1,0 +1,273 @@
+**Analysis**
+
+We have $n$ weapon‐classes, each class $i$ costing 
+\[
+   a_i\text{ ingots to forge, returning }b_i\text{ if melted},
+\]
+so each _full_ “craft+melt” cycle of class $i$ consumes net 
+\[
+   d_i\;=\;a_i - b_i
+\]
+ingots and gives exactly 2 experience points (1 for the craft, 1 for the melt).
+
+We also have $m$ _independent_ piles of ingots: pile $j$ has $c_j$ ingots of metal type $j$.  You can use any class on any pile, and piles do _not_ mix; you must maximize the sum of experience over each pile separately.
+
+---
+
+**Key observations**
+
+1.  Since every cycle (forge+ melt) yields exactly 2 XP at net ingot‐cost $d_i$, to maximize XP we want to spend our ingots doing as many of these 2-XP cycles as possible.
+
+2.  If we knew that for a particular pile of size $C$ the _best_ class (smallest $d_i$) were available all the way, we would simply do as many full cycles of that single class as we can:
+   \[
+     K\;=\;\begin{cases}
+       0,&C<a_{\min},\\
+       \displaystyle
+       \Bigl\lfloor\frac{C-a_{\min}}{d_{\min}}\Bigr\rfloor+1,
+       &C\ge a_{\min},
+     \end{cases}
+   \]
+   where 
+   \[
+     d_{\min}=\min_i d_i,\quad
+     a_{\min}=\min\{a_i\mid a_i - b_i=d_{\min}\}
+   \]
+   is the forging‐cost (i.e.\ the $a$) among all classes that tie for minimal net‐cost $d_{\min}$.  After $K$ such cycles, your remaining ingots 
+   \[
+     C_{\rm rem}=C-K\,d_{\min}
+   \]
+   is strictly smaller than $a_{\min}+d_{\min}$.
+
+3.  Once the pile has shrunk below $a_{\min}$, you can no longer do any more cycles of the class that had $d_{\min}$.  But you might still do some _other_ classes whose forge‐cost $a_i$ is small enough to fit in your tiny leftover $C_{\rm rem}$.  Notice that
+   \[
+     C_{\rm rem}\;<\;a_{\min}+d_{\min}
+     \;\le\;2\times 10^6
+   \]
+   since $a_i\le10^6,\ d_i\le10^6$.  Thus the “tail” problem
+   \[
+     \max\;\{\hbox{# of additional cycles}\}
+     \quad\hbox{starting from at most }2\times10^6
+   \]
+   can be precomputed by a small DP.
+
+4.  In that leftover‐DP we do exactly the same greedy‐coin idea: at any remainder $R$, pick the class with _smallest_ net‐cost $d_i$ among those whose initial forge‐cost $a_i\le R$, pay that cost $d_i$ and recurse.  One can show that is optimal (since every cycle gives exactly “1 coin” of value and costs $d_i$ coins of weight, and you must meet the one‐time startup constraint $a_i\le R$ to be allowed to use that class).
+
+Hence the final plan:
+
+**Preprocessing**
+
+1.  Read all $(a_i,b_i)$, form $d_i=a_i-b_i$.  
+2.  Build an array `startCost[d] = min\,\{a_i : d_i=d\}`, or =∞ if no class has that $d$.
+3.  Find the global minimal net cost
+    ```
+      Dmin = min{ d : startCost[d] < ∞ }
+      Amin = startCost[Dmin]
+    ```
+4.  Set 
+    ```
+      A = Amin + Dmin - 1
+    ```
+   (this is an upper bound on any leftover $<A$).
+
+5.  Gather all pairs `(startCost[d], d)` with `startCost[d] ≤ A`.  
+   Sort them by `startCost[d]` ascending.  
+   Now we build an auxiliary array `min_d_for_R[0..A]`:
+   ```
+     let p = 0,  best_d = ∞
+     for R = 0..A:
+       while p < pairs.size and pairs[p].startCost == R:
+         best_d = min(best_d, pairs[p].d)
+         p++
+       min_d_for_R[R] = best_d   // the cheapest d whose startCost ≤ R
+   ```
+
+6.  Build the DP `dpRem[0..A]`, where
+   ```
+     dpRem[0] = 0
+     for R = 1..A:
+       if min_d_for_R[R] == ∞:
+         dpRem[R] = 0
+       else
+         dpRem[R] = 1 + dpRem[ R - min_d_for_R[R] ]
+   ```
+   so `dpRem[R]` is the max number of _additional_ cycles from a leftover of size $R$.
+
+**Answering each pile**
+
+For each pile with $C=c_j$:
+
+- If $C < Amin$, we cannot do any cycle of the best class.  We simply take `K_main = 0` and `Rem = C`.
+- Else we do
+  ```
+    K_main = ((C - Amin) / Dmin) + 1
+    Rem    = C - K_main * Dmin
+  ```
+
+- Then `Rem ≤ A`, so the best we can do with the leftover is `dpRem[Rem]` extra cycles.
+
+Hence total cycles = `K_main + dpRem[Rem]`, and each cycle gives 2 XP, so
+```
+  XP_j = 2 * (K_main + dpRem[Rem])
+```
+Sum that over all piles to get the final answer.
+
+The overall complexity is  
+— O(n) to build `startCost[]`,  
+— O(Dmax) to find Dmin, Amin,  
+— O(P log P) to sort P≈Dmax pairs,  
+— O(A + P) to build `min_d_for_R[]`,  
+— O(A) to build `dpRem[]`,  
+— O(m) to process all piles.  
+
+Here $D_{\max},A\le2\cdot10^6$, $n,m\le10^6$.  This easily runs in time and memory.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        int n = in.nextInt();
+        int m = in.nextInt();
+
+        // Read a[i], b[i], compute d[i] = a[i] - b[i]
+        // We only care for each distinct d = 1..1e6 the minimal a.
+        final int DMAX = 1000000;
+        final int INF = Integer.MAX_VALUE;
+        int[] startCost = new int[DMAX+1];
+        Arrays.fill(startCost, INF);
+
+        int[] a = new int[n];
+        for (int i = 0; i < n; i++) {
+            a[i] = in.nextInt();
+        }
+        for (int i = 0; i < n; i++) {
+            int b = in.nextInt();
+            int d = a[i] - b;  // guaranteed > 0
+            if (a[i] < startCost[d]) {
+                startCost[d] = a[i];
+            }
+        }
+
+        // Find global minimal net-cost and its minimal start cost
+        int Dmin = -1, Amin = INF;
+        for (int d = 1; d <= DMAX; d++) {
+            if (startCost[d] < INF) {
+                if (Dmin < 0 || d < Dmin) {
+                    Dmin = d;
+                    Amin = startCost[d];
+                }
+            }
+        }
+
+        // If no class at all (should not happen under problem constraints),
+        // every pile yields 0 XP.
+        if (Dmin < 0) {
+            // read c[] and print 0
+            for (int j = 0; j < m; j++) {
+                in.nextInt();
+            }
+            System.out.println(0);
+            return;
+        }
+
+        // A = upper bound on leftover after doing as many Dmin-cycles as possible
+        int A = Amin + Dmin - 1;
+
+        // Gather pairs (startCost[d], d) for d with startCost[d] <= A
+        ArrayList<int[]> pairs = new ArrayList<>();
+        for (int d = 1; d <= DMAX; d++) {
+            if (startCost[d] <= A) {
+                pairs.add(new int[]{ startCost[d], d });
+            }
+        }
+        // Sort by startCost ascending
+        pairs.sort(Comparator.comparingInt(x -> x[0]));
+
+        // Build min_d_for_R[0..A]
+        int[] min_d_for_R = new int[A+1];
+        int p = 0;
+        int bestD = INF;
+        for (int R = 0; R <= A; R++) {
+            while (p < pairs.size() && pairs.get(p)[0] == R) {
+                bestD = Math.min(bestD, pairs.get(p)[1]);
+                p++;
+            }
+            min_d_for_R[R] = bestD;
+        }
+
+        // DP for leftover: dpRem[R] = max #cycles from leftover R
+        int[] dpRem = new int[A+1];
+        dpRem[0] = 0;
+        for (int R = 1; R <= A; R++) {
+            int d0 = min_d_for_R[R];
+            if (d0 == INF) {
+                dpRem[R] = 0;
+            } else {
+                dpRem[R] = 1 + dpRem[R - d0];
+            }
+        }
+
+        // Process each pile and accumulate XP
+        long totalXP = 0;
+        for (int j = 0; j < m; j++) {
+            long C = in.nextLong();
+            long kMain = 0;
+            long rem = C;
+            if (C >= Amin) {
+                // do as many Dmin-cycles as we can
+                kMain = ((C - Amin) / Dmin) + 1;
+                rem = C - kMain * Dmin;
+            }
+            // now rem <= A
+            int R = (int) rem; 
+            long kTail = dpRem[R];
+            long cycles = kMain + kTail;
+            totalXP += 2L * cycles;  // each cycle = 2 XP
+        }
+
+        System.out.println(totalXP);
+    }
+
+    // Fast I/O
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+
+        FastReader() {
+            br = new BufferedReader(new InputStreamReader(System.in));
+        }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens()) {
+                String s = br.readLine();
+                if (s == null) return null;
+                st = new StringTokenizer(s);
+            }
+            return st.nextToken();
+        }
+        int nextInt() throws IOException {
+            return Integer.parseInt(next());
+        }
+        long nextLong() throws IOException {
+            return Long.parseLong(next());
+        }
+    }
+}
+```
+
+**Explanation of the main steps**
+
+1. Build `startCost[d] = min { a_i : (a_i−b_i)=d }`.  
+2. Find the _globally cheapest_ cycle‐cost `Dmin = min d` for which `startCost[d]` exists, and let `Amin = startCost[Dmin]`.  
+3. After doing as many cycles of that class as you can, any pile of size `C` leaves a remainder  
+   ```
+     Rem = C − ((C−Amin)/Dmin +1)*Dmin,
+   ```
+   which is guaranteed < `Amin + Dmin` (≤2 ×10^6).  
+4. In that small range `[0..Amin+Dmin−1]` we precompute by a tiny DP how many additional 2-XP cycles we can squeeze out, by always picking the _smallest_ `d` whose forging‐cost `a` fits in the current remainder.  
+5. Finally we sum up `2*(mainCycles + tailCycles)` over all piles.  
+
+This runs in about O(n + Dmax log Dmax + A + m), comfortably fitting the constraints.

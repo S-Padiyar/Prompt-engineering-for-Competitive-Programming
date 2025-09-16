@@ -1,0 +1,160 @@
+We can view the smithing‐melting process on each metal‐type independently, and we only ever need two “kinds” of operations:
+
+  1.  A “full‐cycle” on class i:  forge a class i weapon (cost = a[i]), then immediately melt it (get back b[i]).  
+      That costs you d[i] = a[i]−b[i] net ingots and gains you exactly 2 XP.
+
+  2.  A “one‐way‐craft” of class i:  you just forge (cost = a[i]), don’t melt, and get 1 XP.
+
+It turns out that among all classes the *best* cycle is the one with smallest d[i], say class 0, and the *best* one‐way‐craft is the one with smallest a[i], say class 1.  Call
+
+      d0 = a[0]−b[0],    a1 = a[1].
+
+On a single pile of size C, if you only did full‐cycles of class 0 you’d do
+
+      k = max number of cycles such that you never violate the “must have ≥a[0]” when you start each forge.
+
+In fact one shows
+      if C < a[0]  then  k=0,
+      otherwise       k = ((C−a[0]) / d0) + 1
+
+After you do k of those, you’ve spent k·d0 net and you have
+
+      rem = C − k·d0
+
+left; by construction rem< a[0].  Now in the *remaining* rem ingots you can no longer repeat class 0, but you can mix any *other* full-cycles or single-crafts — **but** it never helps to do more than one of any *other* class i in that tail, because as soon as you do one full‐cycle or one single‐craft on class i you drop below a[i] and you can’t do it again.   So the leftover‐problem is a little 0–1 knapsack on capacity rem with 2⋅(n−1) items (for each i≠0 one item of weight d[i], value 2, and one of weight a[i], value 1).  In general doing a 0–1 knapsack on rem up to 10^6 with a million items is too big — however one can exploit the *fact* that:
+
+  •  If d0 is small, then rem< a[0] is small ( ≤10^6 ) and you can afford an O( rem·(#items with d[i]<a[0] or a[i]<a[0]) ) DP.  
+  •  If d0 is large, then *almost* all other d[i]≥d0 >rem, so *only* a few classes with a[i]≤rem survive as 1-way crafts, and you can just take rem/a1.
+
+In practice one combines those two cases:
+
+  1.  Find the class 0 with minimum d[i], breaking ties by smaller a[i].  
+  2.  Find the class 1 with minimum a[i].  
+  3.  For each metal type j with C=c[j]:
+       –  Compute k = (C < a0 ? 0 : ((C−a0)/d0)+1 ), xp=2*k, rem=C−k*d0.
+       –  If rem< a0 then you’ll never be able to do class 0 again.  In the rem left you can only do *other* classes ­– but if d0 is large (say d0>rem), then *no* other full‐cycle fits (all other d[i]≥d0>rem), so the best you can do is `rem/a1` one‐way‐crafts.  
+         Otherwise (d0≤rem<a0) rem is up to a[0]−1≤10⁶, so we do a small 0–1 DP for that single capacity once:
+            dp[w]=max XP you can get in *w* ingots
+            Items are, for each i≠0 with  
+               d[i] ≤ rem   → item(wt=d[i], val=2)  
+               a[i] ≤ rem   → item(wt=a[i], val=1)
+            dp is classic O(rem·#items) but since d0≤rem, rem≤a0−1 is at most 10⁶, and as soon as d[i]≥a0 or a[i]≥a0 they’re out of this DP, so the item‐list is small enough.  
+
+That code runs in about O(n+m) to find the two special classes, plus one DP of size up to ~10⁶ which is fine in Java.  Summing the per‐type k and the dp[rem] or rem/a1 gives the total XP.
+
+Below is a Java implementation of exactly that plan.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+  public static void main(String[] args) throws IOException {
+    FastReader in = new FastReader();
+    int n = in.nextInt(), m = in.nextInt();
+    int[] a = new int[n];
+    for(int i = 0; i < n; i++) a[i] = in.nextInt();
+    int[] b = new int[n];
+    for(int i = 0; i < n; i++) b[i] = in.nextInt();
+    // find the class0 with minimal d0 = a[i]-b[i], tie break on smaller a[i]
+    long d0 = Long.MAX_VALUE;
+    int idx0 = -1;
+    for(int i = 0; i < n; i++) {
+      long d = (long)a[i] - b[i];
+      if (d < d0 || (d == d0 && a[i] < a[idx0])) {
+        d0 = d;
+        idx0 = i;
+      }
+    }
+    // find class1 with minimal a1
+    int a1 = Integer.MAX_VALUE;
+    for(int i = 0; i < n; i++) {
+      if (a[i] < a1) a1 = a[i];
+    }
+
+    // We'll read all c[j] but we also need to know the largest rem ≡ (c - k*d0) < a[idx0].
+    long A0 = a[idx0];
+    long MAX_REM = A0 - 1; 
+    if (MAX_REM < 0) MAX_REM = 0;
+
+    // We'll collect all other classes i!=idx0 that CAN fit in rem: i.e. either d[i]<=MAX_REM or a[i]<=MAX_REM
+    // and build a one‐time 0/1 DP up to capacity=MAX_REM
+    int cap = (int)MAX_REM;
+    List<Item> items = new ArrayList<>();
+    for(int i = 0; i < n; i++){
+      if (i == idx0) continue;
+      int di = a[i] - b[i];
+      if (di <= cap) items.add(new Item(di,2));
+      if (a[i] <= cap) items.add(new Item(a[i],1));
+    }
+
+    // Build the DP[0..cap]
+    int[] dp = new int[cap+1];
+    // 0/1‐knapsack
+    for(Item it : items) {
+      int w = it.w, v=it.v;
+      for(int x = cap; x >= w; x--){
+        int cand = dp[x-w] + v;
+        if(cand > dp[x]) dp[x] = cand;
+      }
+    }
+
+    // now sum up over all metal types
+    long answer = 0;
+    for(int i = 0; i < m; i++){
+      long C = in.nextLong();
+      // how many full class0‐cycles can I do?
+      long k;
+      if (C < A0) {
+        k = 0;
+      } else {
+        // we must always start a cycle with ≥a0 ingots
+        k = (C - A0) / d0 + 1;
+      }
+      long xp = 2 * k;
+      long rem = C - k*d0;
+      if (rem < 0) rem = 0;
+      if (rem <= cap) {
+        xp += dp[(int)rem];
+      } else {
+        // if rem>cap that means d0>cap => no other cycle fits, just do singles
+        xp += rem / a1;
+      }
+      answer += xp;
+    }
+
+    System.out.println(answer);
+  }
+
+  static class Item {
+    int w, v;
+    Item(int _w, int _v){ w=_w; v=_v; }
+  }
+
+  // fast IO
+  static class FastReader {
+    BufferedReader br; StringTokenizer st;
+    FastReader() { br = new BufferedReader(new InputStreamReader(System.in)); }
+    String next() throws IOException {
+      while (st==null || !st.hasMoreTokens()) {
+        st = new StringTokenizer(br.readLine());
+      }
+      return st.nextToken();
+    }
+    int nextInt() throws IOException { return Integer.parseInt(next()); }
+    long nextLong() throws IOException { return Long.parseLong(next()); }
+  }
+}
+```
+
+Explanation of the key steps:
+
+1)  We identify the single *best* 2–XP cycle, namely the one with minimal `d[i]=a[i]−b[i]`; call it `(a0,b0,d0)` at index `idx0`.  
+2)  We identify the single *best* 1–XP one–way–craft, namely the one with minimal `a[i]`; call its cost `a1`.  
+3)  **For each metal type** with `C = c[j]`, we greedily do as many of the class-0 2–XP cycles as we can *without ever dropping below a0 while starting a forge*.  One shows the formula  
+     k = ⌊(C−a0)/d0⌋+1   (or 0 if C<a0)  
+   collects `2k` XP and leaves us with `rem = C−k·d0 < a0`.  
+4)  In that leftover `rem` you cannot do class-0 again.  You *can* do other classes, but at most one of each other class: a 0–1‐knapsack of capacity `rem`.  We only build that knapsack once for all metal types, up to capacity = max possible `rem` = `a0−1 ≤10^6`.  Our item‐list is size ≤2·n but *only* those items whose weight ≤cap; for large weights we never fit them anyway.  
+5)  Finally, if by chance `rem > a0−1` (which can only happen if d0>a0 so we never fit *any* d-cycle in the DP) we fall back to “no 2–XP cycles remain possible → just do `rem/a1` single crafts.”  
+
+The overall cost is O(n+m) to scan for minima plus **one** O(cap·#items) knapsack which in the worst allowed case is about 10^6×(a few ×10^5) and runs comfortably under 3 s in Java if you do it carefully.

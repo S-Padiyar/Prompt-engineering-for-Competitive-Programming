@@ -1,0 +1,249 @@
+**Problem Restatement**
+
+We have \(n\) finite integer‐sequences \(S_1,\dots,S_n\).  We start with an integer \(x=k\).  We may perform zero or more *operations*, but each sequence may be used at most once.  In one operation we pick an unused sequence \(S_i\), and set
+\[
+   x \;:=\;\mex\bigl(\{x\}\cup S_i\bigr)
+   \;=\;\min\{\,y\ge0 : y\notin\{x\}\cup S_i\}\,.
+\]
+We denote by \(f(k)\) the *maximum* value of \(x\) achievable (by choosing an optimal subset and order of sequences) starting from \(x=k\).  Finally, we are given a nonnegative integer \(m\), and we must compute
+\[
+   \sum_{k=0}^{m} f(k).
+\]
+
+**Input & Output**
+
+Input:  
+- \(t\) — number of test cases,  
+  for each test case:  
+  - \(n,m\)  
+  - then \(n\) lines, each line begins with \(l_i\), followed by \(l_i\) integers \(a_{i,1},\dots,a_{i,l_i}\).  
+
+Output:  
+- For each test case, output \(\sum_{k=0}^{m} f(k)\).
+
+**Constraints**
+
+- \(1 \le t \le 10^4\)  
+- \(1 \le n \le 2\times10^5\) summed over all test cases  
+- \(\sum l_i \le 2\times10^5\) over all test cases  
+- \(0 \le m \le 10^9\)  
+- \(0 \le a_{i,j}\le10^9\)
+
+Because \(m\) can be as large as \(10^9\), we cannot afford to compute \(f(k)\) one‐by‐one up to \(m\).  We must exploit structure to handle the “tail” of large \(k\) in closed form.
+
+---
+
+**Key Observations & Algorithm**
+
+1. **Characterizing each sequence**  
+   Let \(S_i\) be de‐duplicated and sorted.  Define  
+   \[
+     d_i = \min\{x\ge0:x\notin S_i\} = \mex(S_i),
+     \quad
+     e_i = \mex\bigl(S_i\cup\{d_i\}\bigr).
+   \]
+   It can be shown that if our current \(x\) satisfies
+   - \(x<d_i\), then \(\mex(\{x\}\cup S_i)=d_i\);
+   - \(x=d_i\), then \(\mex(\{x\}\cup S_i)=e_i\);
+   - \(x>d_i\), using \(S_i\) would drop \(x\) below \(d_i\), so never helpful.
+
+2. **Dynamic programming recurrence**  
+   Let 
+   \[
+     K = 1 + \max_i d_i.
+   \]
+   Then for any \(k\ge K\), no sequence has \(d_i\ge k\), so you can’t increase beyond \(k\) and \(f(k)=k\).  
+   For \(0\le x< K\), one shows
+   \[
+     f(x)
+     = \max\!\Bigl\{\,x,\;
+       \max_{i: d_i=x} f(e_i),\;
+       \max_{i: d_i>x} f(d_i)
+     \Bigr\}.
+   \]
+   Define an array \(\mathrm{dp}[0\ldots K]\) with \(\mathrm{dp}[K]=K\).  Also let
+   \[
+     \mathrm{suf}[x] = \max_{y>x} \mathrm{dp}[y].
+   \]
+   Then for \(x=K-1\) down to \(0\),
+   \[
+     \mathrm{suf}[x]
+       = \max\bigl(\mathrm{suf}[x+1],\,\mathrm{dp}[x+1]\bigr),
+   \]
+   \[
+     \mathrm{dp}[x]
+       = \max\Bigl\{\,x,\;\mathrm{suf}[x],\;\max_{e_i\in\mathsf{group}[x]}\mathrm{dp}[e_i]\Bigr\},
+   \]
+   where \(\mathsf{group}[x]\) is the list of all \(e_i\) for which \(d_i=x\).  After this pass, \(\mathrm{dp}[x]=f(x)\) for \(0\le x<K\).
+
+3. **Summation for large \(m\)**  
+   - If \(m < K\), the answer is \(\sum_{k=0}^m \mathrm{dp}[k]\).  
+   - If \(m \ge K\), then
+     \[
+       \sum_{k=0}^m f(k)
+       = \sum_{k=0}^{K-1}\mathrm{dp}[k]
+         \;+\;\sum_{k=K}^{m} k
+       = \sum_{k=0}^{K-1}\mathrm{dp}[k]
+         \;+\;\Bigl(\frac{m(m+1)}{2} - \frac{(K-1)K}{2}\Bigr).
+     \]
+
+Overall each test is \(O(\sum_i l_i + K)\).  Since \(\sum l_i\le2\cdot10^5\) and \(K\le \max d_i+1\le \max l_i+1\le2\cdot10^5\), the solution runs in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+        int t = Integer.parseInt(in.readLine().trim());
+
+        // We will reuse these structures across test cases to avoid repeated allocations
+        List<List<Integer>> groups = new ArrayList<>();
+        long[] dp = null, suf = null;
+
+        for (int tc = 0; tc < t; tc++) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long m = Long.parseLong(st.nextToken());
+
+            // First pass: read all sequences, compute d_i and e_i.
+            // Keep track of maxD = max(d_i).
+            int maxD = 0;
+            List<int[]> seqs = new ArrayList<>(n);
+
+            for (int i = 0; i < n; i++) {
+                st = new StringTokenizer(in.readLine());
+                int li = Integer.parseInt(st.nextToken());
+                int[] a = new int[li];
+                for (int j = 0; j < li; j++)
+                    a[j] = Integer.parseInt(st.nextToken());
+                seqs.add(a);
+            }
+
+            // Compute (d_i,e_i) for each sequence
+            int[] ds = new int[n], es = new int[n];
+            for (int i = 0; i < n; i++) {
+                int[] a = seqs.get(i);
+                Arrays.sort(a);
+                // remove duplicates in place
+                int sz = 0;
+                for (int x : a) {
+                    if (sz == 0 || a[sz-1] != x) a[sz++] = x;
+                }
+                // find d_i = mex(a)
+                int d = 0;
+                for (int j = 0; j < sz; j++) {
+                    if (a[j] == d) d++;
+                    else if (a[j] > d) break;
+                }
+                ds[i] = d;
+                maxD = Math.max(maxD, d);
+                // find e_i = mex(a ∪ {d})
+                int e = d;
+                for (int j = 0; j < sz; j++) {
+                    if (a[j] == e) e++;
+                    else if (a[j] > e) break;
+                }
+                es[i] = e;
+            }
+
+            // K = 1 + maxD
+            int K = maxD + 1;
+
+            // Prepare groups: group[d] collects all e_i with that d_i=d
+            if (groups.size() < K) {
+                // enlarge
+                while (groups.size() < K) groups.add(new ArrayList<>());
+            }
+            // clear only 0..K-1
+            for (int i = 0; i < K; i++) groups.get(i).clear();
+            for (int i = 0; i < n; i++) {
+                int d = ds[i], e = es[i];
+                groups.get(d).add(e);
+            }
+
+            // Prepare dp[0..K], suf[0..K]
+            dp = new long[K+1];
+            suf = new long[K+1];
+            dp[K] = K;      // for x>=K, f(x)=x
+            suf[K] = 0;     // not used beyond K
+
+            // Build dp backwards
+            for (int x = K - 1; x >= 0; x--) {
+                // suffix max of dp[y] for y>x
+                suf[x] = Math.max(suf[x+1], dp[x+1]);
+
+                // candidate1 = x  (we can always choose no more ops)
+                long best = x;
+                // candidate2 = suffix max
+                best = Math.max(best, suf[x]);
+                // candidate3 = from e_i of all sequences with d_i=x
+                for (int e : groups.get(x)) {
+                    long val = (e <= K ? dp[e] : e);
+                    if (val > best) best = val;
+                }
+                dp[x] = best;
+            }
+
+            // Now sum f(0..m):
+            // If m < K, just sum dp[0..m].
+            // Otherwise sum dp[0..K-1] + sum_{k=K..m} k
+            long result = 0;
+            if (m < K) {
+                for (int i = 0; i <= m; i++) result += dp[i];
+            } else {
+                // sum dp[0..K-1]
+                for (int i = 0; i < K; i++) result += dp[i];
+                // sum K + (K+1)+...+m = (m(m+1)/2 - (K-1)K/2)
+                long totalUpToM = m * (m+1) / 2;
+                long totalUpToKm1 = (long)(K-1) * K / 2;
+                result += (totalUpToM - totalUpToKm1);
+            }
+
+            out.println(result);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**How It Works on a Small Example**
+
+Consider the very first sample (interpreted for the hard version):
+
+```
+n=3, m=4
+S1 = {0,2}
+S2 = {2,3}
+S3 = {7,0,1,5}
+```
+
+- Compute \((d,e)\):
+  - S1: mex=1, mex({1}∪S1)=3 ⇒ (1,3)
+  - S2: mex=0, mex({0}∪S2)=1 ⇒ (0,1)
+  - S3: mex=2, mex({2}∪S3)=3 ⇒ (2,3)
+- \(\max d = 2\), so \(K=3\).
+- Group by \(d\):
+  - group[0] = {1}, group[1] = {3}, group[2] = {3}.
+- Build dp backwards:
+  - dp[3] = 3
+  - x=2: suf[2]=dp[3]=3, best = max(2, 3, dp[3]) = 3 ⇒ dp[2]=3
+  - x=1: suf[1]=max(dp[2],suf[2])=3, best = max(1,3,dp[3])=3 ⇒ dp[1]=3
+  - x=0: suf[0]=3, best = max(0,3,dp[1])=3 ⇒ dp[0]=3
+- Hence \(f(0)=f(1)=f(2)=3\).  For \(x\ge3\), \(f(x)=x\).
+- Sum up to \(m=4\): \(3+3+3+3+4 = 16\).
+
+**Time & Space Complexity**
+
+- Let \(L=\sum_i l_i\).  Preprocessing all sequences (sorting + dedup) is \(O(L\log L)\) overall.
+- Computing all \((d_i,e_i)\) and grouping is \(O(L)\).
+- Building dp for \(x=K-1\) down to \(0\) is \(O(K + n)\) where \(K\le \max l_i+1\le L+1\).
+- Summation and output is \(O(K)\).
+- Since \(\sum L\le 2\cdot10^5\), every test case is overall \(O(L\log L + K)\) amortized.  Summed over all test cases it fits well within a few hundred milliseconds.
+
+Memory is \(O(L+K)\) extra for storing groups and dp arrays, also within the problem limits.

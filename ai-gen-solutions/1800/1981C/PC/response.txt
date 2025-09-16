@@ -1,0 +1,320 @@
+**Analysis**
+
+We have an (infinite) binary‐tree‐like graph on the positive integers where each integer \(x\) has
+
+- two children \(2x\) and \(2x+1\), and 
+- one parent \(\lfloor x/2\rfloor\) (unless \(x=1\), then \(\lfloor1/2\rfloor=0\), which we will simply discard since we only keep positive integers).
+
+An edge in this tree connects any node to each of its children and its parent.  The given condition
+
+> for each adjacent pair \((b_i,b_{i+1})\), either  
+> \[
+> b_i=\lfloor b_{i+1}/2\rfloor
+> \quad\text{or}\quad
+> b_{i+1}=\lfloor b_i/2\rfloor
+> \]
+
+exactly says that \((b_i,b_{i+1})\) must be an edge of this infinite tree.
+
+We are given some positions \(i\) where \(b_i\) is already fixed to a positive integer \(a'_i\), and others where \(b_i\) is “\(-1\)” (free).  We must decide if we can fill in the \(-1\)–positions so that every adjacent pair is tree‐adjacent, and every fixed slot remains as given, and all \(b_i\le10^9\).
+
+A very neat way is to do interval‐propagation forward and backward:
+
+1.  **Forward Propagation.**  
+    Let \(\mathrm{fwd}[i]\) be the set of integers that \(b_i\) **could** be, considering only constraints from the **left** end \(1\) up to \(i\).  
+    -  Initialize
+       \[
+         \mathrm{fwd}[1]=
+         \begin{cases}
+           \{a'_1\},&a'_1\ne -1,\\
+           [1,10^9],&a'_1=-1.
+         \end{cases}
+       \]
+    -  For \(i=2\ldots n\), build all parents and all children of every interval in \(\mathrm{fwd}[i-1]\):
+       \[
+        \text{child‐interval of }[L,R] 
+          = [2L,\;\min(10^9,2R+1)],
+       \]
+       \[
+        \text{parent‐interval of }[L,R] 
+          = [\lfloor L/2\rfloor,\,\lfloor R/2\rfloor]
+       \]
+       take the union of those, intersect with \(\{a'_i\}\) if fixed, or \([1,10^9]\) if free, then merge overlaps.  
+       If at any point \(\mathrm{fwd}[i]\) becomes empty, we can already declare “\-1” (no solution).
+
+2.  **Backward Propagation.**  
+    Similarly, define \(\mathrm{bwd}[i]\) by starting from the right end \(i=n\) down to \(1\).  That guarantees every adjacent constraint is satisfied **to the right** of \(i\).
+
+3.  **Intersect.**  
+    Finally for each \(i\), let
+    \[
+      \mathrm{fin}[i]
+      = \mathrm{fwd}[i]\;\cap\;\mathrm{bwd}[i].
+    \]
+    If any \(\mathrm{fin}[i]\) is empty, again “\-1.”
+
+4.  **Greedy construction.**  
+    Having \(\mathrm{fin}[1],\dots,\mathrm{fin}[n]\) nonempty, we pick
+    \[
+      b_1=\min\bigl(\mathrm{fin}[1]\bigr).
+    \]
+    Then for \(i=2\ldots n\), we build the two intervals of valid neighbors of \(b_{i-1}\) in the tree:
+    - its **parent** slot \(\lfloor b_{i-1}/2\rfloor\),  
+    - its **children** slot \([2b_{i-1},2b_{i-1}+1]\cap[1,10^9]\),  
+    intersect that union with \(\mathrm{fin}[i]\), and pick the smallest feasible \(b_i\).  
+    Since we already propagated left and right, this greedy choice always succeeds.
+
+All steps are \(O(n)\) per test case (the interval lists stay size \(\le4\) at every step), so the total over all test cases is \(O(\sum n)\).  
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int INF = 1_000_000_000;
+
+    // A small interval class
+    static class Interval {
+        int l, r;
+        Interval(int _l, int _r) { l = _l; r = _r; }
+    }
+
+    // Merge a list of intervals (possibly overlapping) into a minimal list of non-overlapping intervals
+    static List<Interval> mergeIntervals(List<Interval> v) {
+        if (v.isEmpty()) return v;
+        // sort by left endpoint
+        v.sort(Comparator.comparingInt(a -> a.l));
+        List<Interval> res = new ArrayList<>();
+        Interval cur = v.get(0);
+        for (int i = 1; i < v.size(); i++) {
+            Interval nx = v.get(i);
+            if (nx.l <= cur.r + 1) {
+                // overlap or adjacent => extend
+                cur.r = Math.max(cur.r, nx.r);
+            } else {
+                res.add(cur);
+                cur = nx;
+            }
+        }
+        res.add(cur);
+        return res;
+    }
+
+    // Intersect a list of intervals with [fl..fr] and return the sub-list
+    static List<Interval> intersectWithFixed(List<Interval> v, int fl, int fr) {
+        if (v.isEmpty()) return v;
+        List<Interval> res = new ArrayList<>();
+        for (Interval in : v) {
+            int nl = Math.max(in.l, fl);
+            int nr = Math.min(in.r, fr);
+            if (nl <= nr) {
+                res.add(new Interval(nl, nr));
+            }
+        }
+        return mergeIntervals(res);
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(System.out));
+        int t = Integer.parseInt(br.readLine().trim());
+
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            int[] a = new int[n];
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // fwd[i] = possible intervals for b[i] given constraints from the left
+            List<Interval>[] fwd = new List[n];
+            // bwd[i] = possible intervals for b[i] given constraints from the right
+            List<Interval>[] bwd = new List[n];
+
+            // Forward pass
+            // initialize fwd[0]
+            fwd[0] = new ArrayList<>();
+            if (a[0] == -1) {
+                fwd[0].add(new Interval(1, INF));
+            } else {
+                fwd[0].add(new Interval(a[0], a[0]));
+            }
+
+            boolean ok = true;
+            // propagate forward
+            for (int i = 1; i < n; i++) {
+                List<Interval> tmp = new ArrayList<>();
+                for (Interval iv : fwd[i - 1]) {
+                    long L = iv.l, R = iv.r;
+                    // children
+                    long cl = 2 * L, cr = 2 * R + 1;
+                    if (cl <= INF) {
+                        int il = (int) cl;
+                        int ir = (int) Math.min(cr, INF);
+                        tmp.add(new Interval(il, ir));
+                    }
+                    // parent
+                    int pl = iv.l / 2;
+                    int pr = iv.r / 2;
+                    if (pl <= pr) {
+                        tmp.add(new Interval(pl, pr));
+                    }
+                }
+                // merge, then intersect with the fixed value (if any)
+                tmp = mergeIntervals(tmp);
+                int fl = (a[i] == -1 ? 1 : a[i]);
+                int fr = (a[i] == -1 ? INF : a[i]);
+                tmp = intersectWithFixed(tmp, fl, fr);
+                if (tmp.isEmpty()) {
+                    ok = false;
+                    break;
+                }
+                fwd[i] = tmp;
+            }
+
+            if (!ok) {
+                bw.write("-1\n");
+                continue;
+            }
+
+            // Backward pass
+            bwd[n - 1] = new ArrayList<>();
+            if (a[n - 1] == -1) {
+                bwd[n - 1].add(new Interval(1, INF));
+            } else {
+                bwd[n - 1].add(new Interval(a[n - 1], a[n - 1]));
+            }
+
+            for (int i = n - 2; i >= 0; i--) {
+                List<Interval> tmp = new ArrayList<>();
+                for (Interval iv : bwd[i + 1]) {
+                    long L = iv.l, R = iv.r;
+                    // parent
+                    int pl = iv.l / 2;
+                    int pr = iv.r / 2;
+                    if (pl <= pr) {
+                        tmp.add(new Interval(pl, pr));
+                    }
+                    // children
+                    long cl = 2 * L, cr = 2 * R + 1;
+                    if (cl <= INF) {
+                        int il = (int) cl;
+                        int ir = (int) Math.min(cr, INF);
+                        tmp.add(new Interval(il, ir));
+                    }
+                }
+                tmp = mergeIntervals(tmp);
+                int fl = (a[i] == -1 ? 1 : a[i]);
+                int fr = (a[i] == -1 ? INF : a[i]);
+                tmp = intersectWithFixed(tmp, fl, fr);
+                if (tmp.isEmpty()) {
+                    ok = false;
+                    break;
+                }
+                bwd[i] = tmp;
+            }
+
+            if (!ok) {
+                bw.write("-1\n");
+                continue;
+            }
+
+            // Intersect fwd and bwd to get final possible intervals
+            List<Interval>[] fin = new List[n];
+            for (int i = 0; i < n; i++) {
+                List<Interval> merged = new ArrayList<>();
+                for (Interval i1 : fwd[i]) {
+                    for (Interval i2 : bwd[i]) {
+                        int L = Math.max(i1.l, i2.l);
+                        int R = Math.min(i1.r, i2.r);
+                        if (L <= R) merged.add(new Interval(L, R));
+                    }
+                }
+                merged = mergeIntervals(merged);
+                if (merged.isEmpty()) {
+                    ok = false;
+                    break;
+                }
+                fin[i] = merged;
+            }
+            if (!ok) {
+                bw.write("-1\n");
+                continue;
+            }
+
+            // Finally, build an explicit solution b[] by greedy
+            int[] b = new int[n];
+            // pick smallest in fin[0]
+            b[0] = fin[0].get(0).l;
+            for (int i = 1; i < n; i++) {
+                int prev = b[i - 1];
+                // candidates = parent or children of prev
+                List<Interval> cand = new ArrayList<>();
+                int pl = prev / 2;
+                if (pl >= 1) {
+                    cand.add(new Interval(pl, pl));
+                }
+                long cl = 2L * prev, cr = 2L * prev + 1;
+                if (cl <= INF) {
+                    int il = (int) cl;
+                    int ir = (int) Math.min(cr, INF);
+                    cand.add(new Interval(il, ir));
+                }
+                // intersect cand with fin[i], pick smallest feasible
+                int best = Integer.MAX_VALUE;
+                for (Interval c : cand) {
+                    for (Interval f : fin[i]) {
+                        int L = Math.max(c.l, f.l);
+                        int R = Math.min(c.r, f.r);
+                        if (L <= R && L < best) {
+                            best = L;
+                        }
+                    }
+                }
+                if (best == Integer.MAX_VALUE) {
+                    ok = false;
+                    break;
+                }
+                b[i] = best;
+            }
+
+            if (!ok) {
+                bw.write("-1\n");
+            } else {
+                // print the found sequence
+                for (int i = 0; i < n; i++) {
+                    if (i > 0) bw.write(" ");
+                    bw.write(Integer.toString(b[i]));
+                }
+                bw.write("\n");
+            }
+        }
+
+        bw.flush();
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1. We treat the positive integers and the adjacency condition  
+   \(\,b_i=\lfloor b_{i+1}/2\rfloor\) or \(b_{i+1}=\lfloor b_i/2\rfloor\)  
+   as exactly “\((b_i,b_{i+1})\) is an edge in the infinite binary‐tree.”
+
+2. We do a **forward pass** to collect all values that each slot \(i\) could possibly take if only the constraints **up to** \(i\) (and the fixed slots among them) are enforced.  We store these possible values as a small union of intervals (always \(\le4\) intervals, typically \(\le2\)).
+
+3. We do a **backward pass** similarly, collecting all values that slot \(i\) could take if only constraints **from the right** up to slot \(n\) are enforced.
+
+4. We intersect the forward‐ and backward‐interval sets for each \(i\).  If any becomes empty, there is no way to satisfy both left and right constraints, so we output \(-1\).
+
+5. Otherwise we perform a simple **greedy** fill:  
+   - Pick \(b_1\) as the smallest number in the final interval set at slot 1.  
+   - Then for \(i=2\ldots n\), we only have two ways to connect from \(b_{i-1}\) to \(b_i\):  
+     either go to its parent \(\lfloor b_{i-1}/2\rfloor\),  
+     or go to one of its two children \(2\,b_{i-1}\) or \(2\,b_{i-1}+1\).  
+     We take the union of those up‐to two intervals, intersect with the pre‐computed feasible intervals at \(i\), and pick the smallest feasible integer.
+
+This overall is \(O(n)\) per test because each step works with at most a handful of small intervals.  It easily handles up to \(\sum n\le2\cdot10^5\) under typical contest limits.

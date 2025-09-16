@@ -1,0 +1,175 @@
+**Analysis**
+
+Let us restate the problem in a slightly different (but equivalent) way:
+
+We have an integer‐array \(a\) of length \(n\), each entry in \(\{1,2,\dots,k\}\), and _every_ color \(1,2,\dots,k\) must appear at least once in \(a\).  From \(a\) we form an array \(b\) of the same length by
+\[
+  b_i \;=\;\min_{\substack{1\le j\le n\\a_j\ne a_i}}|i-j|\;,
+\]
+i.e.\ \(b_i\) is the distance from position \(i\) to the nearest index where \(a\) has a _different_ color.  
+
+We want to know _how many distinct arrays_ \(b\) one can get in this way, as \(a\) ranges over all length‐\(n\) arrays using exactly the \(k\) colors, modulo \(998244353\).
+
+---
+
+### 1.  Groups and “break‐bits”
+
+Observe that \(a\) breaks up into _maximal monochromatic runs_ (often called “groups”).  For example
+\[
+   a = [\,1,1,2,3,3,3,3,1\,]
+   \quad\Longrightarrow\quad
+   \underbrace{[1,1]}_{G_1},\;\underbrace{[2]}_{G_2},\;
+   \underbrace{[3,3,3,3]}_{G_3},\;\underbrace{[1]}_{G_4}.
+\]
+Each run \(G_i\) has some length \(L_i\), and these lengths form a _composition_ of \(n\).
+  
+Equivalently, one can encode a composition \(L_1+\cdots+L_m=n\) by a binary “break‐array” \(b_1,\dots,b_{n-1}\), where
+\[
+   b_j = 
+   \begin{cases}
+     1, & \text{if there is a “break” (i.e.\ a color‐change) between positions }j\text{ and }j+1,\\
+     0, & \text{otherwise.}
+   \end{cases}
+\]
+Then a run of \(r\) zeros preceded and followed by ones corresponds to a group of size \(r+1\), etc.  
+ 
+When you build \(b\)-values (the distance‐to‐nearest‐different), each interior group of length \(L\ge3\) _uniquely_ creates a palindromic “hill” 
+\[
+   1,2,3,\dots,L-1,L,L-1,\dots,2,1,
+\]
+and the two end‐groups create a strictly descending (or ascending) slope.  That shows that if an interior group has length \(\ge3\), the resulting piece of \(b\) cannot coincide with any other way of partitioning.  However there is exactly one subtle _ambiguity_:
+
+-  An interior group of length \(2\) produces the segment
+   \[
+     [1,\,1],
+   \]
+   which is _identical_ (as a list of two 1’s) to what you would get from _two_ consecutive interior groups each of length 1.  In effect
+   \[
+     \dots,\,1,2,1,\,\dots
+     \quad\longmapsto\quad
+     \dots,\,1,1,\,1,\,\dots
+   \]
+   when one forgets that it might have been “two 1’s vs. one 2 vs.\ two 1’s.”  
+
+It turns out that \emph{every} distinct \(b\)-array in the problem comes from exactly one way of chopping \(n\) into runs so that \emph{no interior group has length 2}.  (Whenever a composition would have given an interior group of length 2, you instead replace it by two groups of length 1, and this does \emph{not} change the \(b\)-array.)
+
+Hence counting \emph{distinct} \(b\)-arrays is equivalent to counting all binary break‐strings
+\[
+   b_1,b_2,\dots,b_{n-1}
+   \quad\text{(each }b_j\in\{0,1\})
+\]
+subject to:
+
+1.  **Exactly \(k\) colors appear** translates to “the number of breaks must be at least \(k-1\),” because \(m\) runs means \(m-1\) breaks, and we need \(m\ge k\).
+2.  **No interior group of length 2** translates to “\(\mathbf{101}\) never occurs at an \emph{interior} 0.”  101 indicates a single 0 surrounded by 1’s, i.e.\ a run of length 2 if it were interior.  We must forbid 101 around indices \(2,3,\dots,n-2\), but allow it at the very ends if it occurs there (since that corresponds to a first‐ or last‐group of size 2, which is perfectly fine).
+
+Thus the cleanest direct approach is a small‐state **DP** on the break‐string, forbidding the pattern 101 \emph{only} when it occurs fully in positions \(2\dots n-2\).
+
+---
+
+### 2.  The DP
+
+Let us attach sentinels \(b_0=1\), \(b_n=1\).  We will step from \(i=1\) up to \(i=n\), deciding each bit \(b_i\).  (The bits \(b_1,\dots,b_{n-1}\) are free; \(b_n\) is forced to be 1 at the end.)  
+
+We keep track of
+- the _last two bits_ \((b_{i-2},b_{i-1})\), which can be \(00,01,10,11\) (4 states),
+- how many 1’s have occurred so far in positions \(1\le j\le i-1\) (we only need to remember “is it \(\ge k-1\) or not?” because \(k\le10\)).
+
+Whenever we are at step \(i\in\{3,\dots,n-1\}\), we must \emph{forbid} the transition that would produce the triple \(1,0,1\) at \((b_{i-2},b_{i-1},b_i)\).  (At \(i=1,2\) or at \(i=n\), that pattern is allowed, because a run of length 2 at the very start or very end is an end‐group of size 2, which does not cause duplication in the \(b\)-array.)
+
+Denote by \(\text{dp}[s][c]\) the number of ways to have built up to position \(i\!-\!1\) with last‐two‐bits state \(s\in\{0,1,2,3\}\) (encoding \(00,01,10,11\)) and “ones‐count” \(c\in\{0,1,\dots,k-2,\ge k-1\}\).  We do the usual rolling‐array over \(i\).  In the end, we require that \(b_n=1\) but that does not change the count of ones, nor do we forbid the pattern at \(i=n\).  Hence the final answer is simply
+\[
+   \sum_{s=0}^3 \text{dp}_\text{final}[\,s\,][\,\ge k-1\;]
+   \;\bmod\;998244353.
+\]
+
+Complexity is \(O(n\cdot 4\cdot k\cdot 2)=O(nk)\) which for \(n\le2\cdot10^5\), \(k\le10\) easily runs under 2 s in Java.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 998244353;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int n = Integer.parseInt(st.nextToken());
+        int k = Integer.parseInt(st.nextToken());
+        // dp[state][c] where state = last two bits in {00,01,10,11} = 0..3,
+        // and c = how many ones so far in b[1..i-1], clipped at (k-1).
+        int maxC = k - 1;
+        int[][] dp = new int[4][k];
+        int[][] nxt = new int[4][k];
+
+        // initial condition: we imagine b[0] = 1, and no bits yet from 1..0
+        // so last-two bits = (b[-1],b[0]) = (0,1) => state = 0*2+1 = 1
+        dp[1][0] = 1;
+
+        // build b[i] for i = 1..n-1 (free bits)
+        for (int i = 1; i <= n - 1; i++) {
+            for (int s = 0; s < 4; s++) {
+                Arrays.fill(nxt[s], 0);
+            }
+            for (int state = 0; state < 4; state++) {
+                int b2 = (state >> 1) & 1; // b[i-2]
+                int b1 = state & 1;        // b[i-1]
+                for (int c = 0; c < k; c++) {
+                    int ways = dp[state][c];
+                    if (ways == 0) continue;
+                    // try bit = 0 or 1
+                    for (int bit = 0; bit < 2; bit++) {
+                        // forbid pattern 1,0,1 at interior i=3..n-1
+                        if (i >= 3 && i <= n - 1) {
+                            if (b2 == 1 && b1 == 0 && bit == 1) {
+                                // would make "101" in the middle => forbid
+                                continue;
+                            }
+                        }
+                        int nc = c + bit; 
+                        if (nc > maxC) nc = maxC;
+                        int nstate = ((b1 << 1) | bit);
+                        nxt[nstate][nc] = (nxt[nstate][nc] + ways) % MOD;
+                    }
+                }
+            }
+            // swap dp & nxt
+            for (int s = 0; s < 4; s++) {
+                System.arraycopy(nxt[s], 0, dp[s], 0, k);
+            }
+        }
+
+        // finally we must set b[n] = 1, but it does not change c (we do NOT count that one),
+        // nor do we forbid "101" at i=n.
+        // Thus the final count is just sum of dp over c >= k-1
+        long ans = 0;
+        for (int s = 0; s < 4; s++) {
+            ans = (ans + dp[s][maxC]) % MOD;
+        }
+
+        System.out.println(ans);
+    }
+}
+```
+
+**Explanation of key points**
+
+1.  **Break‐string**.  We view any composition of \(n\) into runs of equal‐color as a binary string \(b_1,\dots,b_{n-1}\), where
+    \[
+       b_i=1 \iff \text{color changes between positions }i,i+1.
+    \]
+    Then the number of runs is \(\bigl(\sum b_i\bigr)+1\).  Needing all \(k\) colors forces at least \(k\) runs, so at least \(k-1\) breaks.
+
+2.  **Avoiding double‐count**.  
+    Without restriction, interior groups of size 2 and two consecutive groups of size 1 produce the \emph{same} little segment \([1,1]\) in the final distance‐array \(b\).  One checks that \emph{no other} juggling occurs.  Concretely, requiring that \emph{no interior group has length 2} is equivalent to forbidding the pattern “101” in the break‐string \emph{at interior positions} (since “101” in the break‐string marks precisely a single zero flanked by ones, i.e.\ an interior run of zeros of length 1 ⇒ a group of length 2 there).
+
+3.  **Boundary exceptions**.  
+    A first or last group may well have size 2 without confusion in the final array \(b\).  Hence we only forbid “101” when it occurs in the middle of the break‐string (i.e.\ indexed by \(i=2,\dots,n-2\)), and permit it at the very ends.
+
+4.  **DP**.  
+    We keep a small constant‐size state (last two bits out of \(\{00,01,10,11\}\)) plus a counter of how many 1’s have appeared so far (we only need to know “is it at least \(k-1\)?” since \(k\le10\)).  We march from left to right, forbidding the short substring “101” exactly in the interior, and in the end summing all ways whose break‐count \(\ge k-1\).  
+
+This runs in \(O(n\cdot 4\cdot k\cdot 2)=O(nk)\), perfectly safe for \(n\le2\cdot10^5\), \(k\le10\) under 2 s in Java.

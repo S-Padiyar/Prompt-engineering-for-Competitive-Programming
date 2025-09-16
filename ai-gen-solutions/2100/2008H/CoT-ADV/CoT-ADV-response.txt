@@ -1,0 +1,209 @@
+**Problem Restatement**
+
+We have an array a of length n.  We are allowed the following operation any number of times on an element a[i]:
+
+ If a[i] ≥ x, replace a[i] ← a[i] − x.
+
+In effect, after doing this as much as we like on each element, each element becomes a[i] mod x.  We then sort the resulting array of residues and look at its median (for even n the “upper median” at index n/2+1, for odd n the middle at (n+1)/2).  We want the *minimum possible* median—since subtracting x only lowers values, we just take each element to its residue mod x and then take the median.  
+
+We do not know x in advance, but we will be given q queries, each a candidate x, and for each we must report that minimum‐possible median of the array after reduction modulo x.  
+
+**Input**
+
+t — number of test cases  
+For each test case:  
+ n, q  
+ a₁, a₂, …, aₙ  (1 ≤ aᵢ ≤ n)  
+ q lines follow, each an integer x  
+
+Sum of all n over all tests ≤ 10⁵.  
+Sum of all q over all tests ≤ 10⁵.  
+
+**Output**
+
+For each query x, output the minimum possible median after replacing each a[i] with a[i] mod x.  
+
+---
+
+**Key Observations**
+
+1. Repeatedly subtracting x from a[i] while a[i] ≥ x leaves us with a[i] mod x.  
+2. After that, we have a multiset of n values in [0..x−1].  The median is the ⌈(n/2+1)⌉-th smallest of these values.  
+3. We need to answer up to 10⁵ queries per input (though total over all tests also ≤ 10⁵), and a direct O(n log n) per query is too slow.  
+4. We can preprocess a frequency array cnt[v] = how many a[i] = v, build a prefix‐sum array pref[v] = ∑_{u≤v} cnt[u], and for each query x we want to find the smallest residue r ∈ [0..x−1] such that at least k = ⌈(n/2+1)⌉ of the elements satisfy (a[i] mod x) ≤ r.  
+5. Define  
+ C(r) = # of elements a[i] with (a[i] mod x) ≤ r  
+   = ∑_{j=0..⌊maxA/x⌋} (# of v in [j·x, j·x+r])  
+   = ∑_{j} (pref[min(j·x+r, maxA)] – pref[j·x–1])  
+6. We binary‐search r in [0..min(x−1, maxA)] for the smallest r with C(r) ≥ k.  Each evaluation of C(r) takes O(maxA/x) steps, and the binary search is O(log x).  
+7. Summing over *distinct* queries x, the total work T ≈ ∑_{x in queries} (maxA/x)·log x.  A well‐known integral estimate ∑(log x / x) ≈ (1/2)(log maxA)², so T = O(n·(log n)²).  With n ≤ 10⁵, this is a few million operations—fast enough in Java if we do it carefully and break early once C(r) reaches k.
+
+---
+
+**Solution Outline**
+
+For each test case:
+
+1. Read n, q and the array a[ ].
+2. Compute maxA = the maximum value in a[ ].
+3. Build a frequency array cnt[0..maxA], then a prefix sum pref[0..maxA].
+4. Let k = ⌈(n/2 + 1)⌉ = (n+2)/2 integer division.
+5. Read all q queries x[ ] and collect the *distinct* x‐values.
+6. For each distinct x:
+   a. Let R = min(x−1, maxA).  We search r in [0..R].
+   b. Binary‐search low=0, high=R for the smallest r so that C(r)≥k.
+   c. To compute C(r):  
+      - Sum over j=0..⌊maxA/x⌋ the counts in [j·x .. j·x+r], using the prefix sums.  
+      - Break as soon as the running total ≥k (no need to finish all j).  
+   d. Store the result for x.
+7. Finally, output the stored answer for each query in the original order.
+
+Time complexity per test:  
+- Building freq & prefix: O(maxA) ≤ O(n).  
+- Distinct queries ≤ q.  
+- Per distinct x, cost = O((maxA/x)·log x).  
+- Sum over x of (maxA/x)·log x = O(n·(log n)²).  
+
+With sum of n ≤ 10⁵ and sum of q ≤ 10⁵ over all tests, this runs in well under 1 second in Java.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int T = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (T-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int q = Integer.parseInt(st.nextToken());
+
+            // Read the array and build frequency
+            int[] cnt = new int[n+1];
+            int maxA = 0;
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                int v = Integer.parseInt(st.nextToken());
+                cnt[v]++;
+                if (v > maxA) maxA = v;
+            }
+
+            // Prefix sums of frequencies
+            int[] pref = new int[maxA + 1];
+            for (int v = 1; v <= maxA; v++) {
+                pref[v] = pref[v-1] + cnt[v];
+            }
+
+            // Median index (upper median for even n)
+            int k = (n + 2) / 2;
+
+            // Read queries and collect distinct x's
+            int[] queries = new int[q];
+            HashSet<Integer> distinctX = new HashSet<>();
+            for (int i = 0; i < q; i++) {
+                int x = Integer.parseInt(br.readLine().trim());
+                queries[i] = x;
+                distinctX.add(x);
+            }
+
+            // Map from x to answer
+            // We know x <= n, so we can use an array of size (n+1) to store answers
+            int[] answerOfX = new int[n+1];
+            Arrays.fill(answerOfX, -1);
+
+            // For each distinct x, binary‐search the smallest residue r with C(r) ≥ k
+            for (int x : distinctX) {
+                int R = Math.min(x - 1, maxA);  // max possible residue
+                int low = 0, high = R;
+                while (low < high) {
+                    int mid = (low + high) >>> 1;
+                    if (countUpTo(mid, x, pref, maxA, k) >= k) {
+                        high = mid;
+                    } else {
+                        low = mid + 1;
+                    }
+                }
+                answerOfX[x] = low;
+            }
+
+            // Output in original query order
+            for (int x : queries) {
+                sb.append(answerOfX[x]).append(' ');
+            }
+            sb.append('\n');
+        }
+
+        System.out.print(sb.toString());
+    }
+
+    /**
+     * Compute how many a[i] satisfy (a[i] mod x) <= r,
+     * by summing frequencies in blocks of size x, using prefix sums.
+     * We stop early if the count reaches the target k.
+     */
+    static int countUpTo(int r, int x, int[] pref, int maxA, int target) {
+        int cnt = 0;
+
+        // block j = 0 => range [1 .. r]
+        int right = Math.min(r, maxA);
+        if (right >= 1) {
+            cnt += pref[right];
+            if (cnt >= target) return cnt;
+        }
+
+        // blocks j = 1..floor(maxA/x)
+        int blocks = maxA / x;
+        for (int j = 1; j <= blocks; j++) {
+            int left = j * x;
+            int rr = j * x + r;
+            if (left > maxA) break;
+            if (rr > maxA) rr = maxA;
+            // sum cnt[left..rr]
+            cnt += pref[rr] - pref[left - 1];
+            if (cnt >= target) break;
+        }
+        return cnt;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Frequency array and prefix sums**  
+   We only need to know “how many a[i] = v” for each v, so we build `cnt[v]`.  The prefix array `pref[v] = ∑_{u=1..v} cnt[u]` then lets us get counts in any interval `[L..R]` in O(1).
+
+2. **Reducing to “count of residues ≤ r”**  
+   An element v, when taken mod x, contributes to a residue in `[0..x−1]`.  
+   To know how many final values ≤ r`, we notice that  
+     v mod x ≤ r  
+   if and only if v lies in one of the intervals  
+     [0..r], [x..x+r], [2x..2x+r], …  
+   But since our array elements are in `[1..maxA]`, we shift slightly to `[1..r], [x..x+r], …`.  
+   Summing `cnt[v]` over these intervals is done via the prefix sums.
+
+3. **Binary search for the median residue**  
+   We want the smallest r for which at least k = (n+2)/2 elements have residue ≤ r.  
+   We binary‐search r in `[0..min(x−1, maxA)]`.  Each test `C(r) ≥ k` takes O(maxA/x) time summing over blocks, but over all distinct x this is O(n·(log n)²) total.
+
+4. **Handling multiple queries**  
+   We only solve for *distinct* x‐values once each, store the answers in an array, and then simply look them up in O(1) per query.
+
+---
+
+**Complexity Analysis**
+
+Let n be the array size, and assume maxA = O(n).  
+- Building `cnt` + `pref`: O(n).  
+- Let D = number of *distinct* queries.  D ≤ q ≤ 10⁵.  
+- For each distinct x we do a binary search of O(log x) steps, each step costing O(maxA/x) to sum up blocks.  
+- Total over all distinct x:  
+   ∑_{x in queries} (maxA/x)·log x  =  O(n·(log n)²).  
+
+Since n ≤ 10⁵ (sum over all tests), n·(log n)² is a few million.  This runs comfortably within 1 second in optimized Java.

@@ -1,0 +1,181 @@
+**Analysis**
+
+We have \(n\) countries (numbered \(1\) through \(n\)), each with \(k\) regions (numbered \(1\) through \(k\)).  We are given the original water‐amount array
+\[
+a_{i,j},\quad 1\le i\le n,\;1\le j\le k,
+\]
+and then build the "prefix‐OR" array
+\[
+b_{i,j} = a_{1,j}\;|\;a_{2,j}\;|\;\cdots\;|\;a_{i,j}, 
+\quad
+1\le i\le n,\;1\le j\le k,
+\]
+where \(|\) is bitwise OR.
+
+Because OR is monotonic when you accumulate it row by row, for each fixed column \(j\), the sequence
+\[
+b_{1,j},\,b_{2,j},\,\dots,\,b_{n,j}
+\]
+is non‐decreasing.  Consequently:
+
+- The condition \(b_{i,j} > c\) becomes " \(i \ge i_{\min}\)", where
+  \[
+    i_{\min}
+    = \min\{i : b_{i,j} > c\}.
+  \]
+  We can find \(i_{\min}\) by a standard upper‐bound (binary search) on the non‐decreasing array.
+
+- The condition \(b_{i,j} < c\) becomes " \(i \le i_{\max}\)", where
+  \[
+    i_{\max}
+    = \max\{i : b_{i,j} < c\}.
+  \]
+  We can find \(i_{\max}\) by a standard lower‐bound on the same array, and then subtract 1.
+
+Thus each individual requirement translates to an interval \([i_{\min},n]\) or \([1,i_{\max}]\).  A query with \(m\) requirements simply takes the intersection of all these intervals.  If the intersection is non‐empty, we pick the smallest index in it; otherwise we answer \(-1\).
+
+Since \(\sum m\le10^5\) and \(n\cdot k\le10^5\), computing all the \(b_{i,j}\) is \(O(nk)\le10^5\), and answering each requirement is one or two binary searches in an array of length \(n\).  The total time is thus
+\[
+O(nk + (\sum m)\log n)\le10^5 + 10^5\cdot\log(10^5),
+\]
+which easily fits in 2 s.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer stk = new StringTokenizer(in.readLine());
+        int n = Integer.parseInt(stk.nextToken());
+        int k = Integer.parseInt(stk.nextToken());
+        int q = Integer.parseInt(stk.nextToken());
+
+        // Read the original a[i][j]
+        int[][] a = new int[n][k];
+        for (int i = 0; i < n; i++) {
+            stk = new StringTokenizer(in.readLine());
+            for (int j = 0; j < k; j++) {
+                a[i][j] = Integer.parseInt(stk.nextToken());
+            }
+        }
+
+        // Build b[j][i] = b_{i+1, j+1}, i.e. prefix-OR down each column j
+        int[][] b = new int[k][n];
+        for (int j = 0; j < k; j++) {
+            b[j][0] = a[0][j];
+            for (int i = 1; i < n; i++) {
+                b[j][i] = b[j][i - 1] | a[i][j];
+            }
+        }
+
+        // Process each query
+        StringBuilder sb = new StringBuilder();
+        for (int _q = 0; _q < q; _q++) {
+            int m = Integer.parseInt(in.readLine().trim());
+            // Our candidate interval of country-indices is [low, high], 1-based
+            int low = 1;
+            int high = n;
+
+            for (int t = 0; t < m; t++) {
+                if (low > high) {
+                    // Already impossible, just read and discard
+                    in.readLine();
+                    continue;
+                }
+
+                // Read requirement: r, op, c
+                stk = new StringTokenizer(in.readLine());
+                int r = Integer.parseInt(stk.nextToken()) - 1; // zero-based column
+                String op = stk.nextToken();
+                int c = Integer.parseInt(stk.nextToken());
+
+                int[] col = b[r];
+
+                if (op.equals(">")) {
+                    // Find first index i where col[i] > c
+                    int pos = upperBound(col, c);
+                    // pos is in [0..n]; if pos==n, no such index
+                    int iMin = (pos == n ? n + 1 : pos + 1);
+                    low = Math.max(low, iMin);
+                } else {
+                    // op is "<"
+                    // Find first index i where col[i] >= c
+                    int pos = lowerBound(col, c);
+                    // all indices < pos satisfy col[i] < c
+                    // the largest 1-based index is pos
+                    int iMax = pos;
+                    high = Math.min(high, iMax);
+                }
+            }
+
+            if (low <= high) {
+                sb.append(low).append('\n');
+            } else {
+                sb.append(-1).append('\n');
+            }
+        }
+
+        // Output all answers
+        System.out.print(sb);
+    }
+
+    // lowerBound(a, x): first index i such that a[i] >= x, or a.length if none.
+    static int lowerBound(int[] a, int x) {
+        int l = 0, r = a.length;
+        while (l < r) {
+            int m = (l + r) >>> 1;
+            if (a[m] >= x) {
+                r = m;
+            } else {
+                l = m + 1;
+            }
+        }
+        return l;
+    }
+
+    // upperBound(a, x): first index i such that a[i] > x, or a.length if none.
+    static int upperBound(int[] a, int x) {
+        int l = 0, r = a.length;
+        while (l < r) {
+            int m = (l + r) >>> 1;
+            if (a[m] > x) {
+                r = m;
+            } else {
+                l = m + 1;
+            }
+        }
+        return l;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Prefix‐OR construction**  
+   For each column \(j\), we build an array  
+   \[
+     b[j][0] = a[0][j],\quad
+     b[j][i] = b[j][i-1]\;\bigl|\;a[i][j]
+     \quad(i=1\ldots n-1).
+   \]
+   By construction \(b[j]\) is non‐decreasing.
+
+2. **Translating a requirement**  
+   - `b[i][j] > c`  
+     Because `b[j]` is non‐decreasing in \(i\), once it exceeds \(c\) it never drops below.  
+     We do an **upper‐bound** (first index with value \(>c\)) and call that index `pos`.  
+     Then any valid country \(i\) must satisfy \(i \ge pos+1\) (converting from 0-based `pos` to 1-based country).
+
+   - `b[i][j] < c`  
+     Similarly, once `b[j]` reaches \(\ge c\) it stays \(\ge c\).  
+     We do a **lower‐bound** (first index with value \(\ge c\)), call that `pos`.  
+     Then any valid \(i\) must be \(i \le pos\) (because all \(\;b[j][0..pos-1] < c\)).
+
+3. **Intersection of intervals**  
+   We keep a global \([low,high]\) interval.  Each requirement tightens either the lower end or the upper end of that interval.  At the end, if \(low\le high\), we output \(low\); otherwise we output \(-1\).
+
+This runs in \(O(nk + (\sum m)\log n)\), which is safe for \(n\cdot k\le10^5\) and \(\sum m\le10^5\).

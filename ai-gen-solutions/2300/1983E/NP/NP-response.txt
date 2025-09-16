@@ -1,0 +1,169 @@
+**Analysis**
+
+We have \(n\) balls, of which \(k\) are _special_ and the remaining \(N=n-k\) are _non-special_.  Each ball \(i\) has a value \(v_i\).  Two players, Alice and Bob, alternately draw balls _at random_ (uniformly from those remaining) and add the drawn ball’s value to their own score.  The special rule is:
+
+- If a player draws a **special** ball, that same player goes again immediately (does **not** switch).
+- If a player draws a **non-special** ball, the turn switches.
+
+We want the **expected** total score of Alice and of Bob at the end.  Since expectation is linear, one can show that
+
+1.  The sequence of all \(n\) draws is (in distribution) a uniform random permutation of the \(n\) balls.
+2.  Which player makes the \(j\)-th draw depends only on how many non-specials (toggles) have occurred before that draw, namely on the parity of the number of non-specials drawn so far.
+3.  Hence each draw is assigned to Alice or Bob according to a simple parity rule, and by symmetry **every ball** has the same _probability_ of going to Alice (resp.\ Bob), independent of its value or whether it is special or not.  
+
+It follows that the expected total value Alice collects is
+
+\[
+   \Bigl(\mathbb{E}[\text{# of draws Alice makes}]\Bigr)\times
+   \frac{\text{(total sum of all values)}}{n}\,,
+\]
+
+and similarly for Bob.  So it remains only to compute
+\[
+   E_{\!A}=\mathbb{E}[\#\text{ of draws Alice makes}]
+   \quad\text{and}\quad
+   E_{\!B} = n - E_{\!A}.
+\]
+
+Let \(N=n-k\) be the number of non-special balls.  Every time a non-special is drawn, control toggles.  Hence the entire game can be partitioned into \(N+1\) _segments_ (stretches of consecutive draws by the same player), namely each segment ends with a non-special draw except possibly the last one.  These \(N+1\) segments alternate between Alice and Bob, starting with Alice.  Of the \(N\) non-special balls exactly \(\lceil N/2\rceil\) of them end up being drawn by Alice (those in "odd-numbered" segments).
+
+The \(k\) special balls are scattered uniformly at random among the \(N+1\) segments.  Thus the expected number of special-ball draws _in_ Alice’s segments is
+\[
+   k \times \frac{\#\{\text{Alice segments}\}}{N+1}
+   = k \times \frac{\lceil (N+1)/2\rceil}{\,N+1\,}.
+\]
+
+Hence
+\[
+   E_{A}
+   = \underbrace{\lceil N/2\rceil}_{\text{Alice’s non-special draws}}
+   \;+\;\underbrace{k\;\frac{\lceil (N+1)/2\rceil}{N+1}}_{\text{Alice’s special draws}}.
+\]
+Since each draw (special or not) is worth on average
+\(\tfrac{1}{n}\times(\text{sum of all values})\),
+the expected total score of Alice is
+\[
+   \mathbb{E}[\text{Alice’s score}]
+   = \bigl(\tfrac{E_{A}}{\,n\,}\bigr)\times
+     \bigl(\sum_{i=1}^n v_i\bigr),
+\]
+and Bob’s is the remainder.
+
+All of this is entirely explicit in \(\!O(1)\) per test once we know
+\[
+   N=n-k,\quad
+   c_1=\lceil N/2\rceil=\Bigl\lfloor\frac{N+1}{2}\Bigr\rfloor,\quad
+   s=\lceil\frac{N+1}{2}\rceil=\Bigl\lfloor\frac{N+2}{2}\Bigr\rfloor.
+\]
+In modular arithmetic (mod \(10^9+7\)), we compute
+\[
+   \begin{aligned}
+   A_{\rm num}&=c_1\,(N+1)\;+\;k\,s
+     \quad\bigl(\,\equiv E_{A}\times(N+1)\bigr),\\
+   \text{AliceScore}
+   &=\Bigl(\sum v_i\Bigr)\;\times\;A_{\rm num}\;\times\;
+     \bigl[(N+1)^{-1}\bigr]\;\times\;(n^{-1})
+     \pmod{10^9+7},\\
+   \text{BobScore}&=
+     \Bigl(\sum v_i\Bigr)\;-\;\text{AliceScore}\pmod{10^9+7}.
+   \end{aligned}
+\]
+We only need fast modular inverses of all integers up to \(\max n+1\), which
+we precompute in \(\!O(\max n)\).  Each test then runs in \(\!O(n)\) to
+sum the \(v_i\) plus \(\!O(1)\) more work, for a total \(\!O(\sum n)\)
+overall.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(br.readLine().trim());
+
+        int[] n = new int[t], k = new int[t];
+        long[] sum = new long[t];
+        int maxN = 0;
+
+        // Read all test cases, record sums and track max n
+        for (int i = 0; i < t; i++) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            n[i] = Integer.parseInt(st.nextToken());
+            k[i] = Integer.parseInt(st.nextToken());
+            maxN = Math.max(maxN, n[i]);
+            st = new StringTokenizer(br.readLine());
+            long s = 0;
+            for (int j = 0; j < n[i]; j++) {
+                s = (s + Integer.parseInt(st.nextToken())) % MOD;
+            }
+            sum[i] = s;
+        }
+
+        // Precompute modular inverses up to maxN+1
+        int maxInv = maxN + 1;
+        long[] inv = new long[maxInv + 1];
+        inv[1] = 1;
+        for (int i = 2; i <= maxInv; i++) {
+            inv[i] = MOD - (MOD / i) * inv[MOD % i] % MOD;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < t; i++) {
+            int ni = n[i], ki = k[i];
+            long Si = sum[i];
+
+            int N = ni - ki;  // # non-special
+            // c1 = ceil(N/2) = floor((N+1)/2)
+            long c1 = (N + 1L) / 2;
+            // s = ceil((N+1)/2) = floor((N+2)/2)
+            long s  = (N + 2L) / 2;
+            long den = (N + 1L) % MOD; 
+
+            // A_num = c1*(N+1) + k*s  (mod MOD)
+            long A_num = (c1 * den + ki * s) % MOD;
+
+            // Alice's expected sum:
+            //   = Si * A_num * inv[N+1] * inv[n]  (all mod MOD)
+            long alice = Si % MOD;
+            alice = alice * A_num % MOD;
+            alice = alice * inv[(int)den] % MOD;
+            alice = alice * inv[ni] % MOD;
+
+            // Bob gets the rest
+            long bob = (Si - alice + MOD) % MOD;
+
+            sb.append(alice).append(" ").append(bob).append("\n");
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of key steps**
+
+1.  **Permutation & toggles.**  Drawing without replacement in random order is equivalent to a random permutation.  A “toggle” happens exactly when a non-special is drawn.  Thus the turn on draw \(j\) is determined by the parity of the number of non-specials among the first \(j-1\) draws.
+
+2.  **Counting segments.**  Each non-special ends a “run” of consecutive draws by the same player; there are \(N+1\) such runs in total, alternating between Alice and Bob, starting with Alice.
+
+3.  **Uniform scatter of specials.**  The \(k\) special balls are placed uniformly across the \(N+1\) runs, so Alice expects \(k\cdot\frac{\lceil (N+1)/2\rceil}{N+1}\) of them.  She also _surely_ gets exactly \(\lceil N/2\rceil\) of the non-specials, namely those in her “odd-numbered” runs.
+
+4.  **Linear expectation.**  Since each drawn ball has its value added to whoever drew it, the total expected score of Alice is
+   \[
+     \bigl(\text{expected \# draws by Alice}\bigr)\times 
+     \frac{\sum_i v_i}{n}.
+   \]
+   The same for Bob, who takes the remainder of the total sum.
+
+5.  **Modular arithmetic.**  We precompute inverses \(1^{-1},2^{-1},\dots\) up to \(\max n+1\) via
+   \[
+     \mathrm{inv}[i] = (-\,\lfloor M/i\rfloor) \cdot \mathrm{inv}[M \bmod i]\;\bmod M,
+   \]
+   and then plug in the closed‐form expression in \(\!O(1)\) time per test (after summing the \(n\) values).
+
+This solves each test in \(\!O(n)\) for summing the input plus \(\!O(1)\) extra, comfortably within the overall \(\!O(\sum n)\le5\cdot10^5\) bound.

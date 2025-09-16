@@ -1,0 +1,292 @@
+**Analysis**
+
+We have n candidates numbered 1…n, with a_i fans each, plus c “undecided” voters who will cast their votes for the *lowest‐numbered* candidate *still in the race*.  We (the “evil planner”) may exclude any subset of candidates; if we exclude candidate j, then his a_j fans become undecided and will vote for the (new) lowest‐numbered surviving candidate.
+
+We must answer, for each i=1…n, the *minimum* size of an exclusion set S (possibly depending on i) so that candidate i *wins* according to the rule
+
+  – The winner is the surviving candidate with the highest vote‐total;  
+  – If there is a tie, the lowest‐numbered among them wins.
+
+**Key observations**
+
+1.  If, *without excluding anyone*, candidate i already wins, then the answer for i is **0**.
+
+2.  Otherwise, the only reasonable way to get i to win is to *exclude* **all** candidates with indices < i.  Why?  Because if any smaller‐numbered candidate survives, that candidate would absorb *all* the undecided voters (old c plus the fans of all excluded candidates), making it very hard for i to outpoll them.  In fact, any time you leave some candidate < i in, that candidate becomes the “lowest‐index” survivor and so takes *all* undecided votes.  You would then have to have  
+     
+     a_i  >  (that candidate’s a_j + total_undecided)  
+     
+  which is strictly harder than making i itself the lowest survivor.
+
+  Hence to *force* i to be the “recipient” of all undecided voters, we must exclude **all** j<i.
+
+3.  Once we have excluded j=1…i−1, candidate i is now the lowest‐numbered survivor.  He will get all of the old c plus the sum of the fans of *all* the excluded (that is ∑_{j<i} a_j plus any further exclusions among j>i).  Let us call
+
+     U  =  c  
+         +  ∑_{j=1..i−1} a_j  
+         +  [sum of fans of *additional* excluded among j>i].  
+
+  Then i’s vote‐total is
+
+     V_i  =  a_i  +  U.
+
+  All other survivors j>i just get their own a_j.  We need
+
+     V_i  ≥  max_{j>i, j not excluded} a_j
+
+  (ties go to i since i<j).
+
+4.  Hence among the indices > i we must exclude just enough of the **largest**–fan‐count candidates so that i’s boosted total outpolls whatever remains.  In particular one shows the *greedy* rule is optimal: always exclude the largest‐a_j first among j>i.
+
+Putting (2) and (4) together:
+
+–   **First**, check if *no* exclusions are needed because i already wins in the original election.  If so, answer 0.
+
+–   **Otherwise**, we exclude all j<i (that’s i−1 exclusions), and then among j>i we keep excluding from largest a_j downward until our new total
+
+       a_i  +  (c + ∑_{j<i} a_j + ∑_{excluded\ j>i} a_j)
+
+    exceeds or ties every remaining a_j>i.  Say we need *k* of those largest‐a_j to exclude; total excludes = (i−1)+k.
+
+We must do this for each i=1…n.  A straightforward per‐i sort of the suffix j>i could be O(n^2) in the worst case.  Instead we do:
+
+–   **Compress** the values of a_j into an index range 1…M (M≤n).  
+–   Maintain two Fenwick (BIT) trees over that compressed domain:
+    1) A Fenwick **count** tree so that we can in O(log n)  
+       –  Insert an a_j, query how many are ≥ some compressed rank,
+       –  “select” the k-th largest element.  
+    2) A Fenwick **sum** tree so that we can compute the *sum* of the top k elements.  
+
+We process candidates *in reverse*, from i=n down to i=1, so that at step i the BIT contains exactly {a_{i+1},…,a_n}.  We:
+
+1.  Compute
+
+       base  =  c  +  ∑_{j=1..i−1} a_j
+       V0    =  a_i  +  base.
+
+2.  Let S be the multiset of a_j for j>i (in the BIT).  If i is the original no‐exclusion winner, we record answer[i]=0.  Otherwise:
+
+    a)  If suffix is empty, k=0 → answer[i]=i−1.
+
+    b)  Else let top1 = the largest in S.  If V0 ≥ top1, then no further exclusions among j>i are needed ⇒ k=0.  
+
+        Otherwise we binary‐search the smallest k≥1 so that
+
+          V0  +  (sum of the top k elements in S)
+            ≥  the (k+1)-th largest element in S
+
+        (if k = |S| then the (k+1)-th largest is taken to be 0).  
+
+    c)  answer[i] = (i−1)+k.
+
+3.  Then insert a_i into the BIT and move on.
+
+Overall each i costs up to O(log²n) in the worst case (a Fenwick k-th‐select or range sum takes O(log n), times a small O(log n) binary search).  With n up to 2·10^5 and good constant‐factors, this passes in ~1–2 s in Java.
+
+**Implementation in Java**
+
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class Fenwick {
+        int n;
+        long[] fenwCount, fenwSum;
+        Fenwick(int n) {
+            this.n = n;
+            fenwCount = new long[n+1];
+            fenwSum   = new long[n+1];
+        }
+        // add cnt to count at pos, and add val to sum at pos
+        void update(int pos, long cnt, long val) {
+            for(int i = pos; i <= n; i += i & -i) {
+                fenwCount[i] += cnt;
+                fenwSum[i]   += val;
+            }
+        }
+        // sum of counts in [1..pos]
+        long sumCount(int pos) {
+            long s = 0;
+            for(int i = pos; i > 0; i -= i & -i)
+                s += fenwCount[i];
+            return s;
+        }
+        // sum of values in [1..pos]
+        long sumVal(int pos) {
+            long s = 0;
+            for(int i = pos; i > 0; i -= i & -i)
+                s += fenwSum[i];
+            return s;
+        }
+        // find smallest idx such that sumCount(idx) >= k
+        int selectKth(long k) {
+            int pos = 0;
+            int bitMask = 1 << (31 - Integer.numberOfLeadingZeros(n));
+            for(; bitMask > 0; bitMask >>= 1) {
+                int nxt = pos + bitMask;
+                if(nxt <= n && fenwCount[nxt] < k) {
+                    k -= fenwCount[nxt];
+                    pos = nxt;
+                }
+            }
+            return pos+1;
+        }
+        // sum of the top K elements in the multiset
+        // we store values in descending order at indices 1..n
+        long sumTopK(long K, int[] compVal) {
+            if(K <= 0) return 0;
+            long totalCnt = sumCount(n);
+            if(K >= totalCnt) {
+                // take all
+                return sumVal(n);
+            }
+            // find index t where the prefix count just reaches K
+            int t = selectKth(K);
+            long before = sumCount(t-1);
+            long sumBefore = sumVal(t-1);
+            long needed = K - before;     // how many from this bucket
+            return sumBefore + needed * compVal[t];
+        }
+        // the (K)-th largest element (K=1→largest, K=2→2nd largest)
+        long kthLargest(long K, int[] compVal) {
+            long totalCnt = sumCount(n);
+            if(K > totalCnt) return 0;
+            int t = selectKth(K);
+            return compVal[t];
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        int T = Integer.parseInt(br.readLine().trim());
+        while(T-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long c = Long.parseLong(st.nextToken());
+            long[] a = new long[n+1];
+            st = new StringTokenizer(br.readLine());
+            for(int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+
+            // prefix sums of a
+            long[] pref = new long[n+1];
+            for(int i = 1; i <= n; i++)
+                pref[i] = pref[i-1] + a[i];
+
+            // 1) find original winner with no exclusions
+            //    candidate 1 gets a[1]+c, all others get a[j].
+            long bestVotes = a[1] + c;
+            int winnerNoEx = 1;
+            for(int j = 2; j <= n; j++) {
+                long vj = a[j];
+                if(vj > bestVotes) {
+                    bestVotes = vj;
+                    winnerNoEx = j;
+                }
+            }
+
+            // 2) compress values of a[] in descending order
+            long[] tmp = Arrays.copyOfRange(a, 1, n+1);
+            Arrays.sort(tmp);
+            // dedupe
+            int m = 0;
+            for(int i = 0; i < n; i++) {
+                if(i == 0 || tmp[i] != tmp[i-1]) {
+                    tmp[m++] = tmp[i];
+                }
+            }
+            // now tmp[0..m-1] is ascending distinct; we want descending
+            int[] compVal = new int[m+1];
+            Map<Long,Integer> mp = new HashMap<>();
+            for(int i = 0; i < m; i++) {
+                compVal[m-i] = (int)tmp[i];  // i=0 → compVal[m], i=m-1 → compVal[1]
+                mp.put(tmp[i], m-i);
+            }
+
+            Fenwick fenw = new Fenwick(m);
+            long[] ans = new long[n+1];
+
+            // process i=n..1; fenw holds a[j] for j>i
+            for(int i = n; i >= 1; i--) {
+                long base = c + pref[i-1];
+                long V0   = a[i] + base;
+
+                if(i == winnerNoEx) {
+                    ans[i] = 0;
+                } else {
+                    long suffixSize = fenw.sumCount(m);
+                    if(suffixSize == 0) {
+                        // no one to compete → we must only have excluded 1..i-1
+                        ans[i] = (i-1);
+                    } else {
+                        // check if V0 already beats the largest in suffix
+                        long mx1 = fenw.kthLargest(1, compVal);
+                        if(V0 >= mx1) {
+                            ans[i] = (i-1);  // no further excludes needed
+                        } else {
+                            // binary search minimal k in [1..suffixSize]
+                            long left = 1, right = suffixSize;
+                            long needK = suffixSize; 
+                            while(left <= right) {
+                                long mid = (left + right) >>> 1;
+                                long sumTop = fenw.sumTopK(mid, compVal);
+                                long nextVal = fenw.kthLargest(mid+1, compVal);
+                                if(V0 + sumTop >= nextVal) {
+                                    needK = mid;
+                                    right = mid-1;
+                                } else {
+                                    left = mid+1;
+                                }
+                            }
+                            ans[i] = (i-1) + needK;
+                        }
+                    }
+                }
+
+                // finally insert a[i] into our Fenwick so it will appear in future suffixes
+                int cidx = mp.get(a[i]);
+                fenw.update(cidx, 1, a[i]);
+            }
+
+            // output
+            for(int i = 1; i <= n; i++) {
+                sb.append(ans[i]).append(i==n?'\n':' ');
+            }
+        }
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of key steps**
+
+1. **Original winner check**  
+   We quickly decide which single candidate wins if we exclude nobody.  Candidate 1 collects `a[1]+c`, everyone else has `a[j]`.  The maximum of those vote‐totals (ties resolved by smaller index) is the no‐exclusion winner.  Such an index gets answer `0`.
+
+2. **For every other candidate i**  
+   a.  We *must* exclude all `j<i` to make i the *lowest* surviving index (otherwise that smaller index would gulp all undecided votes).  That already costs `i−1` exclusions.  
+
+   b.  After excluding `1..i−1`, candidate i’s base votes are  
+      
+         V0 = a[i] + ( c + sum_{j=1..i−1} a[j] ).
+      
+      Any *additional* exclusions from among `j>i` will add those fans to the “undecided pool,” which is also awarded to i (since i is now lowest index).  Meanwhile every *remaining* `j>i` keeps vote = `a[j]`.  
+
+   c.  We then *must* chop off the largest few `a[j]` (for `j>i`) until  
+      
+         V0  +  (sum of those removed fans)
+            ≥ every remaining `a[j]`.  
+      
+      Greedily removing the *largest* candidates first is optimal—and can be found by binary‐searching for the minimal *k* among the sorted suffix.
+
+3. **Fenwick (BIT) data structure**  
+   We maintain a Fenwick tree on the compressed domain of fan‐counts (largest→smallest) so that in O(log n):
+   –  We can insert a new candidate’s `a[j]`.
+   –  We can find the *k*-th largest value.
+   –  We can find the sum of the top *k* values.
+   This lets each iteration run in O(log²n), which for n≤2·10⁵ is fast enough in Java.
+
+Thus we achieve total O(n log²n) per test file, which passes comfortably under the 2 s limit.

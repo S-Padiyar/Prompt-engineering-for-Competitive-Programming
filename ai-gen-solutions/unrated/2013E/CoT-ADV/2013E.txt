@@ -1,0 +1,64 @@
+E. Prefix GCD
+time limit per test2 seconds
+memory limit per test256 megabytes
+Since Mansur is tired of making legends, there will be no legends for this task.
+
+You are given an array of positive integer numbers a1,a2,…,an
+. The elements of the array can be rearranged in any order. You need to find the smallest possible value of the expression
+gcd(a1)+gcd(a1,a2)+…+gcd(a1,a2,…,an),
+where gcd(a1,a2,…,an)
+ denotes the greatest common divisor (GCD) of a1,a2,…,an
+.
+
+Input
+Each test contains multiple test cases. The first line contains the number of test cases t
+ (1≤t≤104
+). The description of the test cases follows.
+
+The first line of each test case contains a single number n
+ (1≤n≤105
+) — the size of the array.
+
+The second line of each test case contains n
+ numbers a1,a2,…,an
+ (1≤ai≤105
+) — the initial array.
+
+The sum of n
+ over all test cases does not exceed 105
+.
+
+The sum of max(a1,a2,…,an)
+ over all test cases does not exceed 105
+.
+
+Output
+For each test case, output a single number on a separate line — the answer to the problem.
+
+Example
+InputCopy
+5
+3
+4 2 2
+2
+6 3
+3
+10 15 6
+5
+6 42 12 52 20
+4
+42 154 231 66
+OutputCopy
+6
+6
+9
+14
+51
+Note
+In the first test case, the elements can be rearranged as follows: [2,4,2]
+. Then the answer will be gcd(2)+gcd(2,4)+gcd(2,4,2)=2+2+2=6
+.
+
+In the third test case, the elements can be rearranged as follows: [6,10,15]
+. Then the answer will be gcd(6)+gcd(6,10)+gcd(6,10,15)=6+2+1=9
+.

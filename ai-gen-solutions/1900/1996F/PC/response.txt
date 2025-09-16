@@ -1,0 +1,227 @@
+**Analysis**
+
+We have \(n\) "piles" (indexed by \(i\)), each pile initially has value \(a_i\).  On each operation you may choose any pile \(i\), collect its current value (adding it to your score) and then decrease the pile by \(b_i\), but not below 0; i.e.
+\[
+\text{score} \;+\!=\; a_i,\quad
+a_i\;\gets\;\max(0,\;a_i - b_i).
+\]
+We have in total \(k\) operations, and we want to maximize the total score.
+
+Equivalently, each pile \(i\) generates a finite arithmetic sequence of positive terms
+
+\[
+a_i,\;a_i - b_i,\;a_i - 2b_i,\;\dots
+\]
+
+until it would go non‐positive.  The length of that sequence is
+\[
+L_i \;=\;\Bigl\lceil \tfrac{a_i}{b_i}\Bigr\rceil,
+\]
+since after \(L_i\) decrements it would be \(\le0\).  We may choose up to \(k\) total terms from all these sequences (in any order) so as to maximize their sum.
+
+Hence our answer is just "take the \(k\) largest numbers among the union of all these sequences."  There are two wrinkles:
+
+1.  **If** the total number of positive terms in all piles,
+   \(\displaystyle \sum_i L_i\), is \(\le k\), then we simply take *every* positive term (any further operations would collect only zeros, which do not increase the score).  
+   In that case the answer is
+   \[
+     \sum_{i=1}^n \;\sum_{t=0}^{L_i-1}\;\bigl(a_i - t\,b_i\bigr)
+     \;=\;\sum_{i=1}^n \Bigl(L_i\,a_i \;-\; b_i\frac{L_i(L_i-1)}{2}\Bigr).
+   \]
+
+2.  Otherwise \(\sum_i L_i > k\).  We must pick exactly \(k\) of the (in total more than \(k\)) positive terms, namely the top \(k\).  A standard approach:
+
+   - Binary‐search a threshold \(X\) so that *at least* \(k\) terms are \(\ge X\), but *fewer* than \(k\) terms are \(\ge X+1\).\!
+   - We then *must* take every term \(>X\), and then take just enough terms equal to \(X\) to reach a total of \(k\) picks.
+
+   Concretely, for each pile \(i\) and a threshold \(M\), the count of terms \(\ge M\) is
+   \[
+     \#\{\,t\ge0 : a_i - t\,b_i \ge M\}
+     = 
+     \max\Bigl(0,
+       \Bigl\lfloor \tfrac{a_i - M}{b_i}\Bigr\rfloor + 1
+     \Bigr),
+   \]
+   and if that count is \(c\), the *sum* of those \(c\) terms
+   \[
+     a_i + (a_i - b_i) + \dots + \bigl(a_i - (c-1)b_i\bigr)
+     = c\,a_i \;-\; b_i\,\frac{c(c-1)}2.
+   \]
+   We do a binary‐search on \(X\in[1,\max_i a_i]\) to locate the largest \(X\) such that
+   \(\sum_i \bigl\lfloor(a_i-X)/b_i\rfloor+1 \ge k\).  Then we recompute:
+
+   - Let
+     \[
+       C_{>}\;=\;\sum_i
+       \Bigl\lfloor\frac{a_i - (X+1)}{b_i}\Bigr\rfloor +1 
+       \quad\text{(all terms strictly \(>X\))},
+     \]
+     and
+     \[
+       S_{>}\;=\;\sum_i \Bigl[
+         c_i\,a_i \;-\; b_i\,\frac{c_i(c_i-1)}2
+       \Bigr]
+       \quad\text{where }c_i = \max\bigl(0,\lfloor(a_i-(X+1))/b_i\rfloor+1\bigr).
+     \]
+   - We still need \(k - C_{>}\) more picks, all of value exactly \(X\).  So the final answer is
+     \[
+       S_{>}\;+\;(k - C_{>})\,X.
+     \]
+
+Both steps run in \(O(n)\), and we only do \(O(\log(\max a_i))\) such steps when \(\sum L_i>k\).  Since \(\sum n\le2\cdot10^5\) over all test‐cases, this is efficient.
+
+---
+
+**Code**
+
+```java
+import java.io.*;
+import java.util.StringTokenizer;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            long k = in.nextLong();
+            long[] a = new long[n];
+            long[] b = new long[n];
+            long maxA = 0;
+            for (int i = 0; i < n; i++) {
+                a[i] = in.nextLong();
+                maxA = Math.max(maxA, a[i]);
+            }
+            for (int i = 0; i < n; i++) {
+                b[i] = in.nextLong();
+            }
+
+            // 1) Compute total number of positive terms sum L_i
+            long totalTerms = 0;
+            for (int i = 0; i < n; i++) {
+                // L_i = ceil(a[i]/b[i])
+                long Li = (a[i] + b[i] - 1) / b[i];
+                totalTerms += Li;
+                if (totalTerms > k) {
+                    // We only care if it exceeds k or not
+                    break;
+                }
+            }
+
+            // Case A: sum L_i <= k  --> Just take all positive terms
+            if (totalTerms <= k) {
+                long ans = 0;
+                for (int i = 0; i < n; i++) {
+                    long Li = (a[i] + b[i] - 1) / b[i];
+                    // Sum of arithmetic sequence:
+                    // Li*a[i] - b[i]*(Li*(Li-1)/2)
+                    long sumSeq = Li * a[i] - b[i] * (Li * (Li - 1) / 2);
+                    ans += sumSeq;
+                }
+                out.println(ans);
+                continue;
+            }
+
+            // Case B: sum L_i > k  --> We must pick exactly k of the top values
+            // Binary search threshold X
+            long lo = 1, hi = maxA, best = 1;
+            while (lo <= hi) {
+                long mid = (lo + hi) >>> 1;
+                // Count how many terms >= mid
+                long cnt = 0;
+                for (int i = 0; i < n; i++) {
+                    if (a[i] >= mid) {
+                        cnt += ( (a[i] - mid) / b[i] ) + 1;
+                        if (cnt >= k) break;  // no need to count more
+                    }
+                }
+                if (cnt >= k) {
+                    best = mid;    // we can afford to raise the threshold
+                    lo = mid + 1;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+
+            long X = best;  // final threshold
+
+            // Count how many are strictly > X, and sum them
+            long countGT = 0;    // how many terms > X
+            long sumGT   = 0;    // sum of those terms
+            for (int i = 0; i < n; i++) {
+                if (a[i] >= X + 1) {
+                    long t = (a[i] - (X + 1)) / b[i] + 1;  // number of terms >= X+1
+                    countGT += t;
+                    // sum of the first t terms: a[i] + (a[i]-b[i]) + ... + (a[i]-(t-1)*b[i])
+                    // = t*a[i] - b[i] * (t*(t-1)/2)
+                    long sumSeq = t * a[i] - b[i] * ( t * (t - 1) / 2 );
+                    sumGT += sumSeq;
+                }
+            }
+
+            // We still need (k - countGT) more picks, all worth exactly X
+            long rem = k - countGT;
+            long answer = sumGT + rem * X;
+
+            out.println(answer);
+        }
+        out.flush();
+    }
+
+    // Fast IO template
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader() {
+            br = new BufferedReader(new InputStreamReader(System.in));
+        }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens()) {
+                st = new StringTokenizer(br.readLine());
+            }
+            return st.nextToken();
+        }
+        int nextInt() throws IOException { return Integer.parseInt(next()); }
+        long nextLong() throws IOException { return Long.parseLong(next()); }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1.  **Counting total possible positive picks**  
+    Each pile \(i\) yields exactly
+    \[
+       L_i = \Bigl\lceil \tfrac{a_i}{b_i}\Bigr\rceil
+    \]
+    positive contributions.  We sum \(\sum_i L_i\).  
+    - If this sum \(\le k\), we simply take *all* those positive contributions.  
+      Their total is
+      \[
+        \sum_{i=1}^n \sum_{t=0}^{L_i-1} \bigl(a_i - t\,b_i\bigr)
+        \;=\;
+        \sum_{i=1}^n \Bigl(L_i\,a_i - b_i\,\tfrac{L_i(L_i-1)}2\Bigr).
+      \]
+
+2.  **Otherwise** \(\sum_i L_i>k\).  We must pick exactly \(k\) items out of a larger pool of positive numbers, choosing the largest \(k\).  
+    - We binary‐search a threshold \(X\) in \([1,\max_i a_i]\) such that
+      \[
+        \#\{\text{terms}\ge X\} \;\ge\; k,\quad
+        \#\{\text{terms}\ge X+1\} \;<\; k.
+      \]
+    - Then we *must* pick all terms strictly above \(X\), and to make up exactly \(k\) total picks, we pick exactly
+      \(\;k - \#\{\text{terms}>X\}\) 
+      terms of value \(X\).  
+    - We can compute both the **count** and **sum** of all terms \(\ge M\) in \(O(n)\) by noting that
+      \[
+        \#\{t\ge0: a_i - t\,b_i \ge M\}
+        = \max\!\Bigl(0,\bigl\lfloor\tfrac{a_i - M}{b_i}\bigr\rfloor + 1\Bigr),
+      \]
+      and if that count is \(c\), the sum of those \(c\) terms is
+      \[
+        c\,a_i \;-\; b_i\,\frac{c(c-1)}2.
+      \]
+
+Since each test is \(O(n\log(\max a_i))\) and the total \(\sum n\) over all tests is up to \(2\cdot10^5\), this solution is efficient.

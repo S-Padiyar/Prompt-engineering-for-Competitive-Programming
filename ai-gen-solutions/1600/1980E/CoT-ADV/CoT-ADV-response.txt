@@ -1,0 +1,132 @@
+First, restating the problem:
+
+We have two \(n\times m\) matrices \(A\) and \(B\), each of which contains each integer from \(1\) to \(n\cdot m\) exactly once.  We are allowed to permute (swap) entire rows of \(A\) arbitrarily, and also permute (swap) entire columns arbitrarily.  We want to know whether by doing some sequence of row‐swaps and column‐swaps on \(A\), we can transform it exactly into \(B\).
+
+Equivalently, because every entry from \(1\) to \(n\cdot m\) is distinct, each number \(x\) appears once in \(A\) at some \((r_A(x),c_A(x))\) and once in \(B\) at some \((r_B(x),c_B(x))\).  A row‐swap permutation \(P\) on the rows of \(A\) and a column‐swap permutation \(Q\) on the columns of \(A\) will send the entry at \((r,c)\) to \((P(r),\,Q(c))\).  We need
+\[
+  P\bigl(r_A(x)\bigr)=r_B(x),\quad Q\bigl(c_A(x)\bigr)=c_B(x)
+  \quad\text{for all }x.
+\]
+Since \(P\) must be a well‐defined bijection on \(\{1,\dots,n\}\), this forces that all entries in the same original row of \(A\) must end up in the same row of \(B\).  In particular, if two different numbers \(x\) and \(y\) both lie in row \(i\) of \(A\), then \(r_B(x)\) must equal \(r_B(y)\); otherwise there would be no single row‐permutation taking row \(i\) everywhere consistently.  The same reasoning applies to columns.
+
+Concretely, the algorithm is:
+
+1. Read off for each \(x\in[1\ldots n\cdot m]\) its \((r_A(x),c_A(x))\) in \(A\), and \((r_B(x),c_B(x))\) in \(B\).
+2. Try to build a row‐map array `P` of length \(n\):
+   - Initialize all entries to \(-1\).
+   - For each \(x\), let `i = rA[x]`, `j = rB[x]`.  
+     If `P[i] == -1`, set `P[i] = j`;  
+     else if `P[i] != j`, we have an inconsistency → answer NO.
+3. Do the same for the column‐map array `Q` of length \(m\).
+4. Finally, check that both `P` and `Q` are actually bijections (i.e.\ one‐to‐one and onto).  That means each row of \(A\) is mapped to a distinct row of \(B\), and similarly for columns.  If either fails, answer NO.
+5. Otherwise answer YES.
+
+This runs in \(O(n\cdot m)\) time per test, which is fine since the total \(\sum n\,m\le 2\cdot 10^5\).
+
+Below is a clean Java implementation using fast I/O.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine());
+        while (t-- > 0) {
+            // Read n, m
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            int N = n * m;
+
+            // For each x from 1..N, record its position in A: (rA[x], cA[x])
+            int[] rA = new int[N + 1], cA = new int[N + 1];
+            for (int i = 0; i < n; i++) {
+                st = new StringTokenizer(br.readLine());
+                for (int j = 0; j < m; j++) {
+                    int x = Integer.parseInt(st.nextToken());
+                    rA[x] = i;
+                    cA[x] = j;
+                }
+            }
+
+            // Record its position in B: (rB[x], cB[x])
+            int[] rB = new int[N + 1], cB = new int[N + 1];
+            for (int i = 0; i < n; i++) {
+                st = new StringTokenizer(br.readLine());
+                for (int j = 0; j < m; j++) {
+                    int x = Integer.parseInt(st.nextToken());
+                    rB[x] = i;
+                    cB[x] = j;
+                }
+            }
+
+            // Build row‐map P: for each original row i, P[i] = target row
+            int[] P = new int[n];
+            Arrays.fill(P, -1);
+            boolean ok = true;
+            for (int x = 1; x <= N && ok; x++) {
+                int fromRow = rA[x];
+                int toRow = rB[x];
+                if (P[fromRow] == -1) {
+                    P[fromRow] = toRow;
+                } else if (P[fromRow] != toRow) {
+                    ok = false;  // inconsistent row‐mapping
+                }
+            }
+
+            // Build column‐map Q
+            int[] Q = new int[m];
+            Arrays.fill(Q, -1);
+            for (int x = 1; x <= N && ok; x++) {
+                int fromCol = cA[x];
+                int toCol = cB[x];
+                if (Q[fromCol] == -1) {
+                    Q[fromCol] = toCol;
+                } else if (Q[fromCol] != toCol) {
+                    ok = false;  // inconsistent column‐mapping
+                }
+            }
+
+            // Check P is a bijection on [0..n-1], and Q is a bijection on [0..m-1]
+            if (ok) {
+                boolean[] usedRow = new boolean[n];
+                for (int i = 0; i < n && ok; i++) {
+                    if (P[i] < 0 || P[i] >= n || usedRow[P[i]]) {
+                        ok = false;
+                    } else {
+                        usedRow[P[i]] = true;
+                    }
+                }
+                boolean[] usedCol = new boolean[m];
+                for (int j = 0; j < m && ok; j++) {
+                    if (Q[j] < 0 || Q[j] >= m || usedCol[Q[j]]) {
+                        ok = false;
+                    } else {
+                        usedCol[Q[j]] = true;
+                    }
+                }
+            }
+
+            out.println(ok ? "YES" : "NO");
+        }
+
+        out.flush();
+    }
+}
+```
+
+Explanation of the steps:
+
+1. We scan both matrices and for each value \(x\) record its row/column in `A` and in `B`.
+2. Building `P`: we want that all numbers originally in row \(i\) of `A` must end up in the same row of `B`.  So for each appearance of \(x\), we force `P[rA[x]] == rB[x]`.  If two different \(x\)'s in the same original row lead to two different target rows, it is impossible.
+3. Similarly for columns and the mapping `Q`.
+4. Finally we ensure both `P` and `Q` are bijections: every original row must map to a distinct row, and every original column to a distinct column.  If any row of `A` claims to map to the same `B`-row as another, or if something is unassigned, the answer is “NO.”
+5. Otherwise, the decomposition \(B = P\cdot A \cdot Q\) (row‐permute by \(P\), column‐permute by \(Q\)) is valid, so we output “YES.”
+
+Time Complexity: We do \(O(n\cdot m)\) work per test (reading, then two passes through the \(n\cdot m\) values, plus checks of size \(n\) and \(m\)), giving \(O(\sum n\,m)\le 2\cdot10^5\).  
+Space Complexity: \(O(n\,m)\) to store the four coordinate arrays.

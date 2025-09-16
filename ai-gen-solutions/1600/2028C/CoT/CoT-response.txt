@@ -1,0 +1,189 @@
+**Analysis**
+
+We have an array a₁,…,aₙ of positive integers (each aᵢ≥1), a number of creatures m (m≤n), and a threshold v.  We want to cut the cake (the array) into exactly m+1 contiguous pieces, give m of those pieces to the creatures so that each of those has total tastiness ≥v, and give the one remaining piece to Alice.  Alice wants to maximize the tastiness of her piece; if it is impossible to give m pieces each ≥v, we output –1.
+
+Equivalently, we may view the process as follows:
+
+- Alice's own piece will be some contiguous subarray [l…r] (possibly empty).
+- The rest of the array — the prefix [1…l–1] and the suffix [r+1…n] — must be chopped into exactly m contiguous segments, each of which has total sum ≥v.  
+
+Because all aᵢ>0, a standard “greedy as soon as the running sum ≥v cut off a piece” produces the maximum possible number of disjoint segments of sum ≥v.  Moreover, if we can produce *more* than m such segments in the remaining parts, we can always merge some of them together without dropping below v (since merging two segments each ≥v yields a segment ≥2v ≥v).  Hence the feasibility condition is:
+
+> Let  
+> &nbsp;&nbsp;P[i] = “maximum number of disjoint subarrays of sum ≥v in the prefix a[1..i]”,  
+> &nbsp;&nbsp;S[i] = “maximum number of disjoint subarrays of sum ≥v in the suffix a[i..n]”.  
+> Then it is possible to leave exactly m segments of sum ≥v in the complement of [l..r] if and only if  
+> 
+> &nbsp;&nbsp;P[l–1] + S[r+1] ≥ m.  
+
+Among all [l..r] satisfying that, Alice’s piece has sum  
+  sum(a[l..r]) = pref[r] – pref[l–1],  
+and we want its maximum.
+
+Observations:
+
+1.  All aᵢ≥1 ⇒ pref is strictly increasing ⇒ for fixed l, the best choice of r is the *largest* r for which P[l–1]+S[r+1]≥m, because extending r only increases Alice’s sum.
+2.  We only need to check all l=1…n: compute need = m – P[l–1].  If need ≤0 then even with r=n we can satisfy the creatures, so we take r=n.  Otherwise we must find the maximum r for which S[r+1] ≥ need.  
+3.  We precompute P[0..n] by a single left‐to‐right pass, and S[1..n+1] by a single right‐to‐left pass.  Both are O(n).  Then for each l we do one binary search on S to find the last index i with S[i]≥need and set r=i–1.  That is O(log n) per l, total O(n log n).  
+4.  If P[n]<m, it is flat‐out impossible to find m creature‐pieces anywhere, so we output –1.  Otherwise there *is* at least the trivial solution that gives Alice an empty piece (sum=0) and uses the greedy segmentation to get ≥m pieces in the whole array; we therefore know the answer is ≥0.
+
+Total over all test‐cases Σn≤2⋅10⁵, so O(Σn log n) is fine.
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader(InputStream in) {
+            br = new BufferedReader(new InputStreamReader(in));
+        }
+        String next() {
+            while (st == null || !st.hasMoreTokens()) {
+                try {
+                    String line = br.readLine();
+                    if (line == null) return null;
+                    st = new StringTokenizer(line);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            return st.nextToken();
+        }
+        int nextInt() { return Integer.parseInt(next()); }
+        long nextLong() { return Long.parseLong(next()); }
+    }
+
+    public static void main(String[] args) {
+        FastReader in = new FastReader(System.in);
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            int m = in.nextInt();
+            long v = in.nextLong();
+            long[] a = new long[n+1];
+            for (int i = 1; i <= n; i++) {
+                a[i] = in.nextLong();
+            }
+
+            // Compute prefix sums for quick range sums
+            long[] pref = new long[n+1];
+            pref[0] = 0;
+            for (int i = 1; i <= n; i++) {
+                pref[i] = pref[i-1] + a[i];
+            }
+
+            // P[i] = maximum # of disjoint segments of sum>=v in a[1..i]
+            int[] P = new int[n+1];
+            {
+                long curSum = 0;
+                int cnt = 0;
+                for (int i = 1; i <= n; i++) {
+                    curSum += a[i];
+                    if (curSum >= v) {
+                        cnt++;
+                        curSum = 0;
+                    }
+                    P[i] = cnt;
+                }
+            }
+
+            // S[i] = maximum # of disjoint segments of sum>=v in a[i..n]
+            // We'll build S[1..n], plus S[n+1]=0 for convenience.
+            int[] S = new int[n+2];
+            {
+                long curSum = 0;
+                int cnt = 0;
+                for (int i = n; i >= 1; i--) {
+                    curSum += a[i];
+                    if (curSum >= v) {
+                        cnt++;
+                        curSum = 0;
+                    }
+                    S[i] = cnt;
+                }
+                S[n+1] = 0;
+            }
+
+            // If even the full array cannot produce >=m segments, answer = -1
+            if (P[n] < m) {
+                out.println(-1);
+                continue;
+            }
+
+            long ans = Long.MIN_VALUE;
+            // Try Alice's piece starting at l=1..n
+            for (int l = 1; l <= n; l++) {
+                int already = P[l-1];
+                int need = m - already;
+                int r;
+                if (need <= 0) {
+                    // creatures can be made entirely outside by the full suffix
+                    r = n;
+                } else {
+                    // binary search for largest i in [1..n+1] with S[i] >= need
+                    int low = 1, high = n+1, best = 0;
+                    while (low <= high) {
+                        int mid = (low + high) >>> 1;
+                        if (S[mid] >= need) {
+                            best = mid;
+                            low = mid + 1;
+                        } else {
+                            high = mid - 1;
+                        }
+                    }
+                    // best=0 means no suffix index had S[i]>=need => impossible for this l
+                    if (best == 0) {
+                        continue;
+                    }
+                    // best is the start of the suffix; Alice's r = best-1
+                    r = best - 1;
+                }
+                // we must have r>=l for a non-empty piece
+                if (r >= l) {
+                    long aliceSum = pref[r] - pref[l-1];
+                    if (aliceSum > ans) {
+                        ans = aliceSum;
+                    }
+                }
+            }
+
+            // We know P[n]>=m, so Alice can always get an empty piece of sum=0 at worst.
+            ans = Math.max(ans, 0L);
+
+            out.println(ans);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Greedy prefix segmentation (P array).**  
+   We scan left to right, accumulating running sum `curSum`.  Whenever `curSum ≥ v`, we “cut” a piece, increment our segment‐count, and reset `curSum=0`.  All elements are positive, so this indeed produces the *maximum* number of disjoint segments whose sums are each ≥ v.
+
+2. **Greedy suffix segmentation (S array).**  
+   Similarly, scanning right to left allows us to know, for every suffix start position `i`, how many disjoint “≥ v” pieces can fit into `a[i..n]`.
+
+3. **Checking a candidate Alice‐piece `[l..r]`.**  
+   If we take `[l..r]` for Alice, the creatures’ parts live in `a[1..l-1]` (prefix) and `a[r+1..n]` (suffix).  We need together at least `m` pieces of sum ≥ v, i.e.
+   ```
+     P[l-1] + S[r+1] ≥ m.
+   ```
+   For a fixed `l`, `P[l-1]` is known; we then pick the *largest* `r` for which `S[r+1] ≥ (m - P[l-1])`.  Since Alice’s sum `sum(a[l..r])` only grows as `r` grows (all aᵢ>0), the optimal `r` is that maximal one, which we find by binary‐searching on the non‐increasing array `S`.
+
+4. **Edge cases.**  
+   - If `P[n] < m`, even the entire array can’t be cut into m pieces ≥ v, so we output –1.  
+   - Otherwise giving Alice an *empty* piece is always possible (use the greedy segmentation to cover the whole array with ≥m creature‐pieces), so the answer is at least 0.  Hence after scanning all non‐empty candidates we take `max(found_ans, 0)`.
+
+The overall complexity per test is O(n + n log n), and since ∑n≤2⋅10⁵ over all test cases, this easily runs in time.

@@ -1,0 +1,212 @@
+**Problem Restatement**
+
+We have a rooted tree (root = 1) of n vertices. Each vertex v has an integer value a_v written on it.  We call the tree *wonderful* if, for every non‐leaf vertex v,  
+```
+a_v  ≤  ∑_{u child of v} a_u.
+```
+In one operation, we may pick any vertex v and increase its a_v by 1.  We want the minimum number of operations to make the given tree wonderful.
+
+**Input**
+
+t (number of test cases)  
+For each test case:  
+  n  
+  a_1 a_2 … a_n  
+  p_2 p_3 … p_n  (each p_i < i, gives the parent of i)
+
+**Output**
+
+For each test case, print the minimum number of operations needed.
+
+Constraints:
+- 1 ≤ t ≤ 1000  
+- 2 ≤ n ≤ 5000  
+- 0 ≤ a_i ≤ 10^9  
+- sum of n over all test cases ≤ 5000
+
+---
+
+**Key Observation and Algorithm**
+
+1.  **Where to put your +1 increments?**  
+    - An increment on a node v directly increases a_v by 1.  That helps satisfy the constraint at v’s *parent* if v is a child of that parent.  But if we ever need to propagate an increase further up (grandparent, etc.), we must also increment the parent itself (and then repair its own children‐sum constraint), and so on.  
+    - Thus, each node v has a *cost* `cost[v]` = minimum number of single‐increments needed to raise a_v by 1 while still maintaining the wonderful‐constraint *in v’s entire subtree*.  Leaves have `cost[leaf] = 1` (just do one operation on the leaf).  Internal nodes might have `cost[v] > 1` if raising a_v forces us to first increase its children.
+
+2.  **DFS bottom‐up**  
+    We do a post‐order DFS.  For each node v:
+    - First solve all children u, so we know:
+      - `ops[u]` = minimum operations to make *u’s subtree* wonderful (and put a_u into a stable state).
+      - `cost[u]` = cost to bump a_u by +1 thereafter.
+      - `a[u]` will be its final value after we repaired its subtree.
+    - Sum up  
+      ```
+      sumOps = ∑ ops[u]
+      S = ∑ a[u]       (the sum of child‐values)
+      ```
+    - If S < a[v], we have to raise S up to a[v].  Each unit increase of S means we raise *some* child u by +1; doing that costs `cost[u]`.  To minimize, pick the child with smallest `cost[u]`, call that `minCost`, and do 
+      ```
+      deficit = a[v] - S
+      sumOps += deficit * minCost
+      // simulate raising that child by 'deficit':
+      a[bestChild] += deficit
+      S += deficit
+      ```
+      (This ensures `a[v] ≤ S`.)
+    - Now the subtree of v is wonderful, and `ops[v] = sumOps`.
+    - Finally we compute `cost[v]`, i.e. how many more ops it would cost us to do one more +1 on a[v] later:
+      - After fixing, the surplus on v is `surplus = S - a[v]`.
+      - If `surplus ≥ 1`, we can do +1 on v at cost 1 (we’ll still have `surplus-1 ≥ 0`).  
+      - Otherwise (`surplus == 0`), raising a[v] by 1 forces us to push +1 again into children, so  
+        `cost[v] = 1 + minCost`.
+
+3.  **Answer**  
+   After doing DFS(1), `ops[1]` is the total minimal operations.
+
+This runs in O(n) per test (we visit each node once, summing over children).  n ≤ 5000 total across all tests, easily fits 2 sec.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static int n;
+    static long[] a;            // a[v] will be updated to its "fixed" value
+    static long[] ops;          // ops[v] = min operations to fix subtree v
+    static long[] cost;         // cost[v] = cost to raise a[v] by +1 after fixing its subtree
+    static List<Integer>[] children;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            n = Integer.parseInt(br.readLine().trim());
+            a = new long[n+1];
+            ops = new long[n+1];
+            cost = new long[n+1];
+            children = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) {
+                children[i] = new ArrayList<>();
+            }
+
+            // Read the a[i]
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+
+            // Read parents p[2..n], build child lists
+            st = new StringTokenizer(br.readLine());
+            for (int i = 2; i <= n; i++) {
+                int p = Integer.parseInt(st.nextToken());
+                children[p].add(i);
+            }
+
+            // Run DFS from root = 1
+            dfs(1);
+
+            // The answer is ops[1]
+            sb.append(ops[1]).append('\n');
+        }
+
+        System.out.print(sb.toString());
+    }
+
+    // Post-order DFS: fix the subtree under v, compute ops[v] & cost[v]
+    static void dfs(int v) {
+        // If v is a leaf, no child‐constraint to fix
+        if (children[v].isEmpty()) {
+            ops[v] = 0;
+            cost[v] = 1;  // raising a[v] by 1 just costs 1 op
+            return;
+        }
+
+        long sumOps = 0;       // total ops in all child subtrees
+        long S = 0;            // sum of child a[u]
+        long minCost = Long.MAX_VALUE;
+        int bestChild = -1;
+
+        // First, solve children
+        for (int u : children[v]) {
+            dfs(u);
+            sumOps += ops[u];
+            S += a[u];
+            if (cost[u] < minCost) {
+                minCost = cost[u];
+                bestChild = u;
+            }
+        }
+
+        // If children's sum S < a[v], we must push 'deficit' units into children
+        if (S < a[v]) {
+            long deficit = a[v] - S;
+            // We will always push into the child of smallest cost
+            sumOps += deficit * minCost;
+            // simulate raising that child's value
+            a[bestChild] += deficit;
+            S += deficit;
+        }
+
+        // Now the local constraint a[v] <= S is satisfied
+        ops[v] = sumOps;
+
+        // Compute cost[v]: cost to raise a[v] by +1 later
+        long surplus = S - a[v];
+        if (surplus >= 1) {
+            // We have slack, so a single '+1 at v' costs exactly 1
+            cost[v] = 1;
+        } else {
+            // No slack; raising a[v] by 1 will force one unit into children first
+            cost[v] = 1 + minCost;
+        }
+    }
+}
+```
+
+**How it works on a small example**
+
+Consider the sample  
+```
+n=5
+a = [9,3,4,1,2]
+edges: 1→2, 1→3, 3→4, 3→5
+```
+Tree:
+
+```
+      (1:9)
+     /     \
+   (2:3)  (3:4)
+         /   \
+       (4:1) (5:2)
+```
+
+DFS bottom‐up:
+
+- Node 2 and 4 and 5 are leaves.  
+  - ops[2]=ops[4]=ops[5]=0, cost[2]=cost[4]=cost[5]=1.
+
+- Node 3 has children 4,5  
+  - sumOps=0, S=1+2=3, minCost=1  
+  - But a[3]=4 so S<4 ⇒ deficit=1 ⇒ sumOps+=1×1=1, a[5]+=1 ⇒ a[5]=3, S=4  
+  - ops[3]=1.  Now S–a[3]=4–4=0 ⇒ cost[3]=1+minCost=2.
+
+- Node 1 has children 2,3 with a[2]=3, a[3]=4  
+  - sumOps=0+1=1, S=3+4=7, minCost=1 (via child 2)  
+  - a[1]=9 ⇒ deficit=2 ⇒ sumOps+=2×1=2 ⇒ total sumOps=3; say we bumped a[2]+=2 ⇒ a[2]=5, S=9  
+  - ops[1]=3.  S–a[1]=9–9=0 ⇒ cost[1]=1+1=2 (not needed further).
+
+Answer for this test case is ops[1]=3, matching the sample.
+
+**Complexity**
+
+- Each node is visited once.  For each node we scan its children O(deg(v)).  Over the tree that’s O(n).  
+- We do a constant amount of work per child (summing, min‐tracking).  
+- Therefore total time per test = O(n), and sum of n over all tests ≤ 5000, which easily runs in 2 seconds.
+
+Memory is O(n) for arrays and adjacency lists.

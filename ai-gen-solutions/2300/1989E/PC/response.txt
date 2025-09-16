@@ -1,0 +1,85 @@
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 998244353;
+    static int add(int a, int b) {
+        a += b;
+        if (a >= MOD) a -= MOD;
+        return a;
+    }
+    static int sub(int a, int b) {
+        a -= b;
+        if (a < 0) a += MOD;
+        return a;
+    }
+    static int mul(long a, long b) {
+        return (int)((a*b) % MOD);
+    }
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int n = Integer.parseInt(st.nextToken());
+        int k = Integer.parseInt(st.nextToken());
+        int[] a = new int[n+1], S = new int[n+1];
+        a[0] = 1;  S[0] = 1;
+        if (n >= 1) { a[1] = 1; S[1] = 2; }
+        if (n >= 2) { a[2] = 1; S[2] = 3; }
+        for (int i = 3; i <= n; i++) {
+            int val = add(a[i-1], S[i-3]);
+            a[i] = val;
+            S[i] = add(S[i-1], a[i]);
+        }
+        int cn = 1;
+        for (int M = 0; M <= n-2; M++) {
+            int ways = mul(a[M], n-1-M);
+            cn = add(cn, ways);
+        }
+        int maxT = Math.max(1, k-1);
+        int[][] dp2 = new int[maxT+1][n];
+        int[][] dp2sum = new int[maxT+1][n];
+        for (int s = 1; s < n; s++) {
+            dp2[1][s] = 1;
+        }
+        for (int s = 0; s < n; s++) {
+            dp2sum[1][s] = (s==0 ? dp2[1][0] : add(dp2sum[1][s-1], dp2[1][s]));
+        }
+        for (int t = 2; t <= k-1; t++) {
+            int[] cur = new int[n+1], nxt = new int[n+1];
+            cur[0] = 1;
+            for (int pos = 1; pos <= t; pos++) {
+                int[] prefix = new int[n+1];
+                prefix[0] = cur[0];
+                for (int i = 1; i <= n; i++)
+                    prefix[i] = add(prefix[i-1], cur[i]);
+                Arrays.fill(nxt, 0);
+                if (pos < t) {
+                    for (int s = 1; s <= n; s++) {
+                        int ways = prefix[s-1];
+                        if (s-2 >= 0) ways = sub(ways, cur[s-2]);
+                        nxt[s] = ways;
+                    }
+                } else {
+                    for (int s = 1; s <= n; s++) {
+                        nxt[s] = prefix[s-1];
+                    }
+                }
+                int[] tmp = cur; cur = nxt; nxt = tmp;
+            }
+            for (int s = 0; s < n; s++) {
+                dp2[t][s] = cur[s];
+            }
+            dp2sum[t][0] = dp2[t][0];
+            for (int s = 1; s < n; s++) {
+                dp2sum[t][s] = add(dp2sum[t][s-1], dp2[t][s]);
+            }
+        }
+        int dpSmall = 0;
+        dpSmall = add(dpSmall, 1);
+        for (int j = 2; j <= k-1; j++) {
+            dpSmall = add(dpSmall, dp2sum[j-1][n-1]);
+        }
+        int ans = sub(cn, dpSmall);
+        System.out.println(ans);
+    }
+}

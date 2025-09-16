@@ -1,0 +1,239 @@
+**Problem Restatement**  
+We have an \(n\times m\) grid (\(2\le n,m\le10^9\)), and \(k\) “fountains” each in a distinct cell (none in \((n,1)\)).  Alice will draw a monotonic (only‐right or only‐down) path from the left or top border to the right or bottom border; that path plus the grid border splits the grid into two regions.  The region containing \((n,1)\) is Alice’s, the other is Bob’s.  Bob wants **all** fountains in his region; equivalently, Alice’s path may not pass through any fountain cell.  We want:
+
+1.  \(\alpha\) = the maximum number of cells Alice can secure under these rules.
+2.  For each fountain \(i\), if Bob *gives* that fountain to Alice (so Alice may now include it on or below her path), does \(\alpha\) strictly increase?  Output `1` if yes, else `0`.
+
+**Key Observation & Reduction**  
+Label rows \(1..n\) (top→down) and columns \(1..m\) (left→right).  Any monotonic path (R or D steps) from left/top border to right/bottom border can be viewed as a non‐decreasing sequence
+\[
+y_1,\;y_2,\;\dots,\;y_m,
+\]
+where \(y_j\) is “how far down” the path is between columns \(j-1\) and \(j\).  More precisely,
+- \(0\le y_j\le n\),
+- \(y_{j+1}\ge y_j\) (since you never go up),
+- Alice’s path cuts off the top \(y_j\) rows of column \(j\) as Bob’s region, and the bottom \(n - y_j\) rows (plus the path cell itself) as Alice’s region.
+
+Hence
+\[
+\text{Bob’s cells} \;=\;\sum_{j=1}^m y_j,\quad
+\text{Alice’s cells} \;=\;n\,m-\sum_{j=1}^m y_j.
+\]
+**Fountain constraint.**  A fountain at \((r,c)\) must lie in Bob’s region, so \(y_c\ge r\).  Denote
+\[
+z_j = \max\{\,r_i\mid\text{there is a fountain at }(r_i,j)\}\quad(\text{or }0\text{ if none}).
+\]
+Then the constraints become
+\[
+y_j \;\ge\; z_j,\quad
+y_1\le y_2\le\cdots\le y_m.
+\]
+To minimize \(\sum_j y_j\) (hence maximize Alice’s area), we simply take the smallest non‐decreasing sequence above the \(z_j\).  Concretely,
+\[
+y_1 = z_1,\quad
+y_j = \max(y_{j-1},\,z_j)\quad(j=2,\dots,m).
+\]
+All other columns \(j\) with no fountain have \(z_j=0\).  Because \(m\) can be up to \(10^9\), we cannot literally walk all \(m\) columns; we only need to process the \(k\) columns that *do* have fountains.  In intervals between fountain‐columns, \(z_j=0\), so \(y_j\) stays constant.
+
+Let the distinct fountain‐columns be  
+\[
+c_{(1)}<c_{(2)}<\dots<c_{(t)}.
+\]
+For each such column \(c_{(i)}\) define  
+\[
+z_i = \max\{r\text{ for fountains in column }c_{(i)}\}.
+\]
+Compute the prefix maxima  
+\[
+M_i = \max(z_1,z_2,\dots,z_i)\quad (i=1,\dots,t),\quad M_0=0.
+\]
+Between \(c_{(i)}\) and \(c_{(i+1)}\!-\!1\), we have \(y_j=M_i\), so the contribution to \(\sum y_j\) is
+\[
+(c_{(i+1)} - c_{(i)})\times M_i.
+\]
+Finally, from \(c_{(t)}\) through \(m\) we get \((m - c_{(t)}+1)\times M_t\).  Summing these and subtracting from \(n\,m\) gives \(\alpha\).
+
+**Which fountain, if “given” to Alice, raises \(\alpha\)?**  
+Giving fountain \((r,c)\) to Alice relaxes the constraint at column \(c\).  If that fountain was *not* the unique maximal \(z_i\) in its column, nothing changes (the column’s \(z_i\) remains the same).  If it *was* the unique maximum, \(z_i\) would drop to the second‐largest fountain‐row in that column (or \(0\) if none), which strictly lowers the prefix‐max chain from the first place that maximum appeared up until it is overtaken by a larger fountain further right.  This *always* reduces \(\sum y_j\), hence increases Alice’s area, **if and only if**:
+
+1.  \((r,c)\) is the (unique) maximum‐row fountain in column \(c\).
+2.  That column is the first place up to which that maximum appears; formally, \(z_i > M_{i-1}\).
+
+Otherwise the sum of the \(y_j\) and thus \(\alpha\) does not improve.
+
+**Algorithm Outline**  
+For each test case:
+
+1.  Read \(n,m,k\) and the list of fountains \((r_i,c_i)\).
+2.  Group fountains by column in a map.  For each column store:
+    - the maximum fountain‐row \(z\),
+    - the count of fountains achieving that max (to detect uniqueness).
+3.  Extract the distinct fountain‐columns, sort them, and build arrays
+   \(\,c_{(i)}\,,\,z_i\,,\) and compute the prefix maxima \(M_i\).
+4.  Compute
+   \[
+   S = \sum_{i=1}^{t-1}\bigl(c_{(i+1)}-c_{(i)}\bigr)\,M_i
+         \;+\;(m-c_{(t)}+1)\,M_t,
+   \]
+   then \(\displaystyle \alpha = n\,m - S.\)
+5.  For each fountain \(i\):
+   - find its column‐index \(j\);
+   - check if \(r_i = z_j\), that \(z_j\) was unique in that column, and \(z_j>M_{j-1}\).  
+     If all true print `1`, else `0`.
+
+This runs in \(O(k\log k)\) per test (sorting the at most \(k\) distinct columns), comfortable for \(\sum k\le2\cdot10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter    out = new PrintWriter(System.out);
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            long n = Long.parseLong(st.nextToken());
+            long m = Long.parseLong(st.nextToken());
+            int  k = Integer.parseInt(st.nextToken());
+
+            // Read fountains
+            int[] R = new int[k], C = new int[k];
+            for (int i = 0; i < k; i++) {
+                st = new StringTokenizer(br.readLine());
+                R[i] = Integer.parseInt(st.nextToken());
+                C[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // 1) Group by column: track max-r and count of that max
+            HashMap<Integer,int[]> colData = new HashMap<>();
+            // colData.get(c) = { maxR, countOfMaxR }
+            for (int i = 0; i < k; i++) {
+                int c = C[i], r = R[i];
+                int[] dat = colData.get(c);
+                if (dat == null) {
+                    dat = new int[]{r, 1};
+                    colData.put(c, dat);
+                } else {
+                    if (r > dat[0]) {
+                        dat[0] = r;
+                        dat[1] = 1;
+                    } else if (r == dat[0]) {
+                        dat[1]++;
+                    }
+                }
+            }
+
+            // 2) Extract and sort distinct columns
+            int   tcols = colData.size();
+            int[] cols  = new int[tcols];
+            {
+                int idx = 0;
+                for (int c : colData.keySet()) cols[idx++] = c;
+                Arrays.sort(cols);
+            }
+
+            // 3) Build z[i] = maxR at cols[i], and prefix maxima M[i]
+            long[] z = new long[tcols];
+            long[] M = new long[tcols];
+            for (int i = 0; i < tcols; i++) {
+                z[i] = colData.get(cols[i])[0];
+                if (i == 0) M[i] = z[i];
+                else      M[i] = Math.max(M[i-1], z[i]);
+            }
+
+            // 4) Compute sum_y = sum_j y_j; length of each segment times M[i]
+            //    segments are [c[i]..c[i+1]-1] all have y=M[i], and
+            //    from c[tcols-1]..m are M[tcols-1].
+            long sumY = 0;
+            for (int i = 0; i < tcols; i++) {
+                long len;
+                if (i < tcols - 1) {
+                    len = (long)cols[i+1] - cols[i];
+                } else {
+                    len = m - cols[i] + 1;
+                }
+                sumY += len * M[i];
+            }
+
+            // 5) Alpha = total cells - sumY
+            long total = n * m;
+            long alpha = total - sumY;
+            out.println(alpha);
+
+            // 6) Precompute a map from column to its index i
+            HashMap<Integer,Integer> colIndex = new HashMap<>();
+            for (int i = 0; i < tcols; i++) {
+                colIndex.put(cols[i], i);
+            }
+
+            // 7) For each fountain, decide if removing it would lower sumY
+            //    => raises alpha => print 1.
+            //    Conditions:
+            //    (a) its row R[i] == z[j]
+            //    (b) that z[j] was unique in that column
+            //    (c) z[j] > M[j-1]  (with M[-1]=0)
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < k; i++) {
+                int c     = C[i];
+                int r     = R[i];
+                int j     = colIndex.get(c);
+                int[] dat = colData.get(c);
+                long zj   = dat[0];    // the max-row in that column
+                int  cnt  = dat[1];    // how many fountains share that max
+
+                boolean inc = false;
+                if (r == zj && cnt == 1) {
+                    long prevMax = (j == 0 ? 0 : M[j-1]);
+                    if (zj > prevMax) {
+                        inc = true;
+                    }
+                }
+                sb.append(inc ? '1' : '0');
+                if (i+1 < k) sb.append(' ');
+            }
+            out.println(sb.toString());
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**  
+
+1. **Modeling the dividing path.**  
+   A monotonic (right/down) path induces a non‐decreasing sequence \(y_1\le y_2\le\cdots\le y_m\), where \(y_j\) is the number of rows in column \(j\) that go to Bob (the top side).  Alice’s cells are the bottom \(n - y_j\) of each column.  Summing gives Bob: \(\sum y_j\), Alice: \(nm - \sum y_j\).
+
+2. **Fountain constraints \(\implies y_j\ge z_j\).**  
+   Each fountain at \((r,c)\) must be in Bob’s region, so that column’s \(y_c\ge r\).  We only need the **maximum** fountain‐row \(z_j\) in each column.
+
+3. **Greedy minimal non‐decreasing solution.**  
+   The minimal non‐decreasing \((y_j)\) with \(y_j\ge z_j\) is
+   \[
+     y_1=z_1,\quad y_j=\max(y_{j-1},\,z_j).
+   \]
+   We only store the *distinct* fountain‐columns (others have \(z_j=0\)), build their prefix maxima \(M_i\), and multiply by the counts of columns between fountain‐columns.
+
+4. **Computing \(\alpha\).**  
+   If fountain‐columns are \(c_{(1)}<\cdots<c_{(t)}\) with prefix maxima \(M_i\), then
+   \[
+     \sum_{j=1}^m y_j
+       = \sum_{i=1}^{t-1} \bigl(c_{(i+1)}-c_{(i)}\bigr)\,M_i
+       \;+\;(m - c_{(t)} + 1)\,M_t.
+   \]
+   So \(\alpha = nm - \sum y_j\).
+
+5. **Which fountains matter if “given” to Alice?**  
+   Removing a fountain from the constraint in its column lowers that column’s \(z_j\) **only** if that fountain was the unique maximum.  That in turn lowers the prefix‐max chain from the first place it appeared until overtaken, strictly decreasing \(\sum y_j\).  However, if that column’s maximum never set a new prefix max (i.e.\ \(z_j \le M_{j-1}\)), then even a drop in \(z_j\) does not change any \(M_i\).
+
+Hence a fountain \((r,c)\) strictly increases \(\alpha\) iff:
+
+- It is the unique maximum in its column (\(r = z_j\) and count of that max is 1), **and**
+- \(z_j > M_{j-1}\) (it actually raised the prefix max there).
+
+Otherwise it prints `0`.
+
+This runs in \(O(k\log k)\) per test (sorting the distinct columns), with total \(k\le2\cdot10^5\).

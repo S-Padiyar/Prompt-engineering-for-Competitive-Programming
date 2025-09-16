@@ -1,0 +1,193 @@
+**Problem Restatement**
+
+We have an uppercase text string *s* of length *n*, over an alphabet of size *c* (the first *c* letters 'A', 'B', …). The ancient language's words can be at most *k* letters long, and each word's _case_ is determined by its last letter.  If the language does _not_ have a case for some letter X, then no word in the language may end in X.
+
+The spaces between words have been lost, so the given string *s* must be segmentable into consecutive words, each of length ≤ *k*, in such a way that _every_ word ends in one of the letters for which the language _does_ have cases.
+
+We must choose a subset *S* of the letters of minimal size (this size is our answer) such that:
+
+1. Every word in a valid segmentation ends in a letter of *S*.
+2. Every word length ≤ *k*.
+3. The segmentation covers the entire text (so in particular the last letter *s[n–1]* must belong to *S*).
+
+We want the minimal possible |*S*|.
+
+---
+
+**Key Observation and Reduction**
+
+- If we decide that the language has cases exactly for the set *S* of letters, then in any segmentation we may end a word at _any_ occurrence of a letter in *S_.  
+- To cover the entire text in segments of length ≤ *k*, the _distance_ between consecutive segment-end positions cannot exceed *k*.  Concretely, if you look at the positions where the letter lies in *S*, those positions (plus a dummy "0" at the start) must never be more than *k* apart.
+- Equivalently, there must be **no** run of length *k* in the text that contains _zero_ letters from *S_.  In other words, _every_ substring of length *k* must contain at least one letter from *S_.  (That enforces that you cannot go k positions without seeing a possible word-end.)
+
+Thus our problem becomes:
+
+- We must pick a subset *S* of the *c* letters that:
+  1. Always hits every contiguous window of length *k* in the text (so that no k-length block is free of an allowed ending letter).
+  2. Contains the final letter of the text *s[n–1]* (so that the last word can end at the end).
+- Minimize |*S*|.
+
+---
+
+**Equivalent “Forbidden Window” Formulation via Complements**
+
+Let *U* be the complement of *S* (the letters for _which_ we have _no_ case).  Then requiring that _every_ window of length *k* has at least one letter from *S* is the same as saying:
+
+> _No_ window of length *k* is composed entirely of letters from *U*.
+
+So to test whether a given *U* is valid:
+
+- For each contiguous window of length *k*, we take the set of distinct letters appearing in that window—call its bitmask `m`.  
+- If `m` is a subset of *U* (i.e. `(m & ~U) == 0`), then that window is entirely forbidden letters, and *U* is invalid.
+- Otherwise *U* is okay.
+
+We also must ensure the last letter (say index `e`) is _not_ in *U*, because we do need `s[n–1] ∈ S`, so `e ∉ U`.
+
+We want the _largest_ possible *U* (so that *S* = complement is as small as possible) under these constraints.
+
+---
+
+**Algorithm**
+
+1. **Edge case**: if `n ≤ k`, then we can take the _entire_ text as one word, so we only need one case: whatever letter `s[n–1]` is.  Answer = 1.
+
+2. **Collect “window-masks”**  
+   We slide a length-k window over the text.  There are `n–k+1` windows, each window contributes a mask `m` of which letters appear in that window.  We record in a boolean array `forbidden[m] = true` for each such mask `m`.
+
+3. **Mark invalid complements**  
+   We want to mark all subsets `U` of `{0..c−1}` that _contain_ any of those window‐masks entirely.  In bit‐mask terms, we want to mark every `U` that has a subset `m` with `forbidden[m] == true`.  
+   A standard “superset‐fill” trick:  
+   - Initialize `bad[m] = forbidden[m]`.  
+   - For each `bit` from 0 to `c−1`, for each mask `M`, if `M` has that `bit` set, then `bad[M] |= bad[M ^ (1<<bit)]`.  
+   After this, `bad[U]` is true whenever `U` covers at least one forbidden mask.
+
+4. **Pick the largest valid U**  
+   We iterate `U` from `0` to `(1<<c)–1`.  Keep only those with:
+   - `bad[U] == false`  (no k-window is fully inside `U`)
+   - `(U & (1<<e)) == 0` (the last‐letter index `e` is _not_ in `U`)
+   Among those, take the maximum popcount(`U`).  Call it `bestU`.
+
+5. **Answer** = `c − bestU`.
+
+Overall complexity per test is `O(n + c·2^c)`, and constraints guarantee that across all tests ∑n ≤ 2^18 and ∑2^c ≤ 2^18, so it runs in a few million operations total.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        // Fast input
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder out = new StringBuilder();
+
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int c = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+
+            String s = in.readLine().trim();
+            // If the whole text length <= k, we can make it one word, need only the last letter's case.
+            if (n <= k) {
+                out.append(1).append('\n');
+                continue;
+            }
+
+            // Convert characters to 0..c-1
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = s.charAt(i) - 'A';
+            }
+            int endIdx = a[n - 1];  // index of the final letter
+
+            int limit = 1 << c;
+            // forbidden[M] = true if there's a k-length window whose set of letters = M
+            boolean[] forbidden = new boolean[limit];
+
+            // Build the first window's letter counts
+            int[] cnt = new int[c];
+            int mask = 0;
+            // first k letters
+            for (int i = 0; i < k; i++) {
+                int x = a[i];
+                if (cnt[x] == 0) {
+                    mask |= (1 << x);
+                }
+                cnt[x]++;
+            }
+            // record the mask of window [0..k-1]
+            forbidden[mask] = true;
+            // slide the window from i=1..n-k
+            for (int i = k; i < n; i++) {
+                // remove a[i-k], add a[i]
+                int outChar = a[i - k];
+                cnt[outChar]--;
+                if (cnt[outChar] == 0) {
+                    mask &= ~(1 << outChar);
+                }
+                int inChar = a[i];
+                if (cnt[inChar] == 0) {
+                    mask |= (1 << inChar);
+                }
+                cnt[inChar]++;
+                forbidden[mask] = true;
+            }
+
+            // bad[U] = true if U contains any forbidden mask as a subset
+            boolean[] bad = Arrays.copyOf(forbidden, limit);
+            // superset DP: any superset of a bad set is also bad
+            for (int bit = 0; bit < c; bit++) {
+                for (int m = 0; m < limit; m++) {
+                    if ((m & (1 << bit)) != 0 && bad[m ^ (1 << bit)]) {
+                        bad[m] = true;
+                    }
+                }
+            }
+
+            // Among complements U that are not bad and exclude the final letter,
+            // pick the one with the largest popcount.
+            int bestU = 0;
+            for (int U = 0; U < limit; U++) {
+                if (!bad[U] && ((U & (1 << endIdx)) == 0)) {
+                    int pc = Integer.bitCount(U);
+                    if (pc > bestU) {
+                        bestU = pc;
+                    }
+                }
+            }
+
+            // The answer is c - bestU (we choose S = complement of U)
+            out.append((c - bestU)).append('\n');
+        }
+
+        // Print all answers
+        System.out.print(out);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Sliding-window masks**  
+   We maintain a count of each of the *c* letters in the current window of length *k*, and a bitmask of which letters have nonzero count.  Every time the window moves one step to the right, we update counts and the mask in O(1).  We mark `forbidden[mask] = true` for each window.
+
+2. **Superset‐DP to mark bad complements**  
+   We want any set *U* that contains (as a subset) a forbidden‐mask to be marked bad.  A classic technique: initialize `bad[m] = forbidden[m]`, then for each bit, for each mask, if `mask` has that bit, we `bad[mask] |= bad[mask ^ (1<<bit)]`.  This propagates "badness" upwards through supersets in O(c·2^c).
+
+3. **Selecting the final answer**  
+   From all subsets *U* that are not `bad` and do _not_ include the final letter, we pick the one with the largest popcount.  Its complement has the minimal number of letters (cases) needed.
+
+---
+
+Time Complexity:
+- Sliding-window: O(n).
+- Superset DP: O(c · 2^c).
+- Iteration to find best U: O(2^c).
+Summing over all test cases stays within about 5 million operations (since ∑n ≤2^18 and ∑2^c ≤2^18), which is efficient for the time limits. 
+
+Space Complexity:
+- O(2^c) for the `forbidden` and `bad` arrays (up to 2^18 boolean entries) plus O(n) for the input string.

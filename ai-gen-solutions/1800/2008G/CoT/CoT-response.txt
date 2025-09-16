@@ -1,0 +1,157 @@
+**Analysis**
+
+We have an array \(a\) of size \(n\).  We may repeatedly pick two distinct indices \(i\neq j\) with \(a_i\ge a_j\) and replace  
+\[a_i \;\leftarrow\; a_i - a_j\quad\text{or}\quad a_i \;\leftarrow\; a_i + a_j.\]
+
+We wish to maximize  
+\[
+  \mathrm{mex}_k(a)
+\]
+—the \(k\)-th nonnegative integer *not* appearing in the final array.
+
+---
+
+**Key observations**
+
+1.  If \(n=1\), **no** operation is possible (we must have two distinct indices to do anything), so the array stays \(\{a_1\}\).  Its missing elements are simply all nonnegative integers except \(a_1\).  Hence the \(k\)-th missing is
+   \[
+     \text{if }k \le a_1:\quad k\text{-th missing} = k-1,
+     \quad
+     \text{else}\quad k\text{-th missing} = k.
+   \]
+   (E.g.\ if \(a_1=3\), the missing list is \(0,1,2,4,5,\dots\).)
+
+2.  If \(n\ge2\), one can show by repeatedly using \((+)\) and \((-)\) that the array’s elements can be driven to any multiset of **nonnegative multiples** of  
+   \[
+     g \;=\;\gcd(a_1,a_2,\dots,a_n),
+   \]
+   in arbitrary quantities (so long as the total count stays \(n\)).  In particular one can produce \(0\), then produce \(g\), then \(2g\), etc.  Hence the *best* way to push the missing‐numbers out as far as possible is to occupy the \(n\) smallest multiples of \(g\):
+   \[
+     \{\,0,\;g,\;2g,\;\dots,\;(n-1)g\}.
+   \]
+   Then the **missing** integers are
+   - Every non‐multiple of \(g\) (they never enter the set).
+   - Every multiple \(mg\) with \(m\ge n\) (we only included up to \((n-1)g\)).
+
+   We now count how many missing numbers lie below a given \(M\).  One shows
+   \[
+     \#\{\,x\le M : x\notin\{0,g,2g,\dots,(n-1)g\}\}
+     \;=\;
+     (M+1)\;-\;\min\Bigl(\lfloor M/g\rfloor+1,\;n\Bigr).
+   \]
+   From this one works out a closed‐form for the \(k\)-th missing:
+
+   - Let  
+     \[
+       S = n\,(g-1).
+     \]
+     Up to \(M = ng - 1\), all *non*-multiples of \(g\) are missing, and there are exactly \(S\) of them in \([0,ng-1]\).  
+   - If \(k\le S\), the \(k\)-th missing lies *below* \(ng\), and in that range the missing numbers are exactly the integers that are not multiples of \(g\).  One finds
+     \[
+       \text{(for \(g>1\), \(k\le S\))}\quad
+         q\;=\;\Bigl\lfloor\frac{k-1}{\,g-1}\Bigr\rfloor,\quad
+         r\;=\;(k-1)\bmod(g-1)\;+\;1,
+         \quad
+         \text{answer} = q\,g + r.
+     \]
+     Indeed this picks out the \(k\)-th residue‐class hole in each block of length \(g\).
+   - Otherwise \(k>S\).  Then the \(k\)-th missing is a multiple of \(g\) \(\ge ng\), and because beyond \(ng\) **all** integers are missing (we only included up to \((n-1)g\)), they come one‐by‐one.  The first new missing here is \(ng\) itself, which is the \((S+1)\)-th missing.  Hence for \(k>S\) the answer is
+     \[
+       ng\;+\;(k - S - 1).
+     \]
+
+Putting it all together gives an \(O(n)\) scan to compute the gcd, plus \(O(1)\) per test.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer tk = new StringTokenizer(in.readLine());
+        int t = Integer.parseInt(tk.nextToken());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            tk = new StringTokenizer(in.readLine());
+            long n = Long.parseLong(tk.nextToken());
+            long k = Long.parseLong(tk.nextToken());
+
+            tk = new StringTokenizer(in.readLine());
+            long[] a = new long[(int)n];
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(tk.nextToken());
+            }
+
+            // Case n=1: no operations possible.
+            if (n == 1) {
+                long v = a[0];
+                if (k <= v) {
+                    sb.append(k - 1).append('\n');
+                } else {
+                    sb.append(k).append('\n');
+                }
+                continue;
+            }
+
+            // Compute gcd of all a[i].
+            long g = a[0];
+            for (int i = 1; i < n; i++) {
+                g = gcd(g, a[i]);
+            }
+
+            // If gcd = 1, it's the special case g-1 = 0 => S = 0.
+            // Then we occupy 0,1,...,n-1 => first missing is n.
+            if (g == 1) {
+                // S = n*(1-1) = 0
+                // answer = n + (k - 1)
+                sb.append(n + (k - 1)).append('\n');
+                continue;
+            }
+
+            // For g > 1:
+            long S = n * (g - 1);  // total missing below n*g
+            if (k <= S) {
+                // The k-th missing is in [0, n*g), in the non-multiples of g
+                long blockSize = g - 1;
+                long fullBlocks = (k - 1) / blockSize;
+                long rem = (k - 1) % blockSize + 1;
+                long ans = fullBlocks * g + rem;
+                sb.append(ans).append('\n');
+            } else {
+                // The k-th missing is >= n*g, all integers missing there,
+                // so they come one by one after n*g.
+                long ans = n * g + (k - S - 1);
+                sb.append(ans).append('\n');
+            }
+        }
+
+        System.out.print(sb);
+    }
+
+    // Standard Euclidean gcd
+    static long gcd(long x, long y) {
+        while (y != 0) {
+            long t = x % y;
+            x = y;
+            y = t;
+        }
+        return x;
+    }
+}
+```
+
+**Explanation of key steps**
+
+- For \(n\ge2\) we can drive the array to exactly the first \(n\) multiples of its overall gcd \(g\):  
+  \[
+    \{0,g,2g,\dots,(n-1)g\}.
+  \]
+- Every non‐multiple of \(g\) is *unavoidably* missing; that alone gives \(n\,(g-1)\) missing numbers in \([0,n\,g-1]\).
+- If \(k\) lies within those first \(n(g-1)\) missing holes, they occur in each block of size \(g\) as the \(g-1\) non-multiples.
+- Once you exhaust those holes, from \(n\,g\) onward *every* integer is missing (we didn’t include \(n\,g\) or higher multiples), so the missing sequence continues one‐by‐one.
+
+This runs in \(O(n)\) per test (to compute the gcd) and \(O(1)\) for the final formula.

@@ -1,0 +1,193 @@
+**Analysis**
+
+We have an \(n\times m\) grid and \(k\) “fountains” (forbidden cells) at distinct positions \((r_i,c_i)\).  Alice must draw a monotonic (only “down” or “right”) path \(P\) from some free cell on the top or left border to some free cell on the bottom or right border.  The path itself belongs to Alice, and it carves the grid into two pieces:
+
+- Alice’s piece is the component containing the cell \((n,1)\).
+- Bob’s piece is the component containing the cell \((1,m)\).
+
+Because Bob wants to keep all fountains on his side, the path \(P\) may *not* pass through any fountain cell, and every fountain must lie in the *Bob* component (i.e.\ “northeast” of \(P\)).  On the other hand Alice wants to maximize the number of cells she gets.  One can show that
+
+\[
+\text{Alice\_size} \;=\; nm \;-\;\sum_{c=1}^m (\text{row of }P\text{ in column }c \;-\;1),
+\]
+
+where “row of \(P\) in column \(c\)” we denote by \(f(c)\).  Since \(P\) moves only down or right, the sequence \(f(1),f(2),\dots,f(m)\) is non‐decreasing.  To keep a fountain at \((r,c)\) on Bob’s side (i.e.\ strictly above the path), we need
+
+\[
+f(c)\;>\;r.
+\]
+
+Thus if in column \(c\) the maximal fountain‐row is \(r_{\max}(c)\), we get the lower‐bound
+
+\[
+f(c)\;\ge\;r_{\max}(c)+1\;=:L(c).
+\]
+
+To maximize Alice’s size is equivalent to minimizing
+\(\sum_{c=1}^m (f(c)-1)\), subject to
+
+1. \(f\) non‐decreasing,
+2. \(f(c)\ge L(c)\) wherever column \(c\) has fountains,
+3. elsewhere \(f(c)\ge1\).
+
+A classical greedy shows that the unique minimum\--sum choice is
+\[
+f(c)\;=\;\max_{1\le j\le c}\,L(j),
+\]
+where we take \(L(j)=1\) for columns \(j\) with no fountain.
+
+Since \(m\) can be up to \(10^9\) but \(k\) only up to \(2\cdot10^5\), we do the following:
+
+1.  **Group fountains by column**.  For each column \(c\) that has fountains, let
+   \[
+     r_{\max}(c)\;=\;\max\{r_i\mid c_i=c\},
+     \quad L(c)=r_{\max}(c)+1.
+   \]
+2.  Sort these special columns \(c_1<c_2<\dots<c_u\).  Between those columns, \(L\) is “1” and so
+   \(f\) is just the running maximum of the \(L\)-values.
+3.  We can compute Bob’s piece size
+   \[
+     B \;=\;\sum_{c=1}^m \bigl(f(c)-1\bigr)
+   \]
+   by noting that on any interval of columns \([c_j,c_{j+1}-1]\) (or to \(m\) at the end), 
+   \(f(c)\) is constant, so we only need
+   \[
+     B \;=\;\sum_{j=1}^u \bigl(f(c_j)-1\bigr)\times\bigl(\,c_{j+1}-c_j\bigr),
+     \quad c_{u+1}=m+1.
+   \]
+4.  Thus
+   \[
+     \alpha \;=\; nm \;-\; B.
+   \]
+5.  Now we must decide, for each fountain \(i\), whether *giving* that fountain to Alice
+   (i.e.\ removing its constraint) would strictly increase \(\alpha\).  It is not hard to show
+   that the only way removing a fountain changes \(\alpha\) is if it was the *unique* top
+   fountain in its column and that column's \(L(c_j)\) was strictly *above* the running
+   maximum so far.  In that case the prefix‐maximum \(f(c_j)\) would drop, thus decreasing
+   Bob’s area and *increasing* \(\alpha\).  Otherwise \(\alpha\) is unchanged.
+
+All of the above can be done in \(O(k\log k)\) per test (sorting the \(k\) fountains by column
+and picking off the column‐wise maximum).  Across all tests, \(\sum k\le2\cdot10^5\), which
+is efficient enough in 3 s.
+
+Below is a Java implementation.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class Fountain {
+        int r, c, idx;
+        Fountain(int r, int c, int idx) {
+            this.r = r; this.c = c; this.idx = idx;
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(in.readLine());
+        int t = Integer.parseInt(st.nextToken());
+
+        StringBuilder out = new StringBuilder();
+        while (t-- > 0) {
+            st = new StringTokenizer(in.readLine());
+            long n = Long.parseLong(st.nextToken());
+            long m = Long.parseLong(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+
+            // Read the fountains
+            Fountain[] F = new Fountain[k];
+            for (int i = 0; i < k; i++) {
+                st = new StringTokenizer(in.readLine());
+                int r = Integer.parseInt(st.nextToken());
+                int c = Integer.parseInt(st.nextToken());
+                F[i] = new Fountain(r, c, i);
+            }
+
+            // Sort by column asc, then row desc
+            Arrays.sort(F, (a,b) -> {
+                if (a.c != b.c) return Integer.compare(a.c, b.c);
+                return -Integer.compare(a.r, b.r);
+            });
+
+            // Group by column: pick the single top fountain in each column
+            ArrayList<int[]> cols = new ArrayList<>();
+            // each entry is { col, r_max, idx_of_that_max }
+            for (int i = 0; i < k; ) {
+                int c = F[i].c;
+                int rMax = F[i].r;
+                int idxMax = F[i].idx;
+                int j = i + 1;
+                // skip any others in same column
+                while (j < k && F[j].c == c) j++;
+                cols.add(new int[]{ c, rMax, idxMax });
+                i = j;
+            }
+
+            int u = cols.size();
+            long[] prevF = new long[u], fVal = new long[u];
+            long cur = 1L;
+
+            // Compute the non‐decreasing f(c_j) = max so far of L(c_j)=r_max+1
+            for (int j = 0; j < u; j++) {
+                prevF[j] = cur;
+                long L = (long)cols.get(j)[1] + 1L;
+                if (L > cur) cur = L;
+                fVal[j] = cur;
+            }
+
+            // Compute Bob's area B = sum_{columns} (f(c)-1).
+            // We only need to do it in O(u) by noticing f(c) is constant
+            // between c_j..(c_{j+1}-1).
+            long B = 0;
+            for (int j = 0; j < u; j++) {
+                long c_j = cols.get(j)[0];
+                long nextC = (j+1 < u ? cols.get(j+1)[0] : m+1L);
+                long len = nextC - c_j;
+                B += (fVal[j] - 1L) * len;
+            }
+
+            // Alice's max area:
+            long alpha = n*m - B;
+            out.append(alpha).append('\n');
+
+            // Which fountains are "critical"?  Only the unique max‐of‐column
+            // for which L(c_j)=r_max+1 > prevF[j].
+            int[] ans = new int[k];
+            for (int j = 0; j < u; j++) {
+                long L = (long)cols.get(j)[1] + 1L;
+                if (L > prevF[j]) {
+                    int idxMax = cols.get(j)[2];
+                    ans[idxMax] = 1;
+                }
+            }
+
+            // Print the k answers in the original order
+            for (int i = 0; i < k; i++) {
+                out.append(ans[i]).append(i+1<k ? ' ' : '\n');
+            }
+        }
+        System.out.print(out);
+    }
+}
+```
+
+**Explanation of key steps**
+
+1. We only need, for each column that actually has fountains, the *highest* fountain row `r_max`.  That produces a lower‐bound  
+   \[
+     f(c)\ge L(c)\;=\;r_{\max}(c)+1.
+   \]
+2. Because the path moves only *down* (increasing row) or *right* (increasing column), the sequence  
+   \(f(1),f(2),\dots,f(m)\) is non‐decreasing, and we want to minimize  
+   \(\sum_{c=1}^m (f(c)-1)\).  
+   A well‐known greedy shows the minimum possible is  
+   \[
+     f(c)\;=\;\max_{1\le j\le c}\;L(j)\quad(\text{with }L(j)=1\text{ if column }j\text{ has no fountain}).
+   \]
+3. From that \(f\)-profile one obtains Bob’s area \(B=\sum_{c=1}^m(f(c)-1)\).  Since \(f\) is constant on large intervals of columns (between columns that actually have fountains), one can compute \(B\) in \(O(u)\) time, where \(u\) is the number of distinct columns that contain fountains.
+4. Alice’s area is then \(\alpha = nm - B\).
+5. Finally, deciding which individual fountain (if “given” to Alice) strictly raises \(\alpha\) amounts to checking whether that fountain was the *unique* top‐row in its column *and* its \(L(c)\) actually pushed up the running maximum at that column.  If so, removing it drops the path’s height there (and thus shrinks Bob’s area), strictly increasing Alice’s score.
+
+This runs in \(O(k\log k)\) per test (dominated by sorting the \(k\) fountains), and \(\sum k\le2\cdot10^5\) over all tests is perfectly fine in 3 seconds.

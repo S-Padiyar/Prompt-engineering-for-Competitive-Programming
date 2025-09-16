@@ -1,0 +1,239 @@
+**Analysis**
+
+We have the array  
+  a[i] = i,  
+for i = 0,1,2,…,n−1,  
+and an integer k.  We call the subarray \([L..R]\)  
+“k-good” if every element in it has at most k one-bits in its binary representation:
+
+   \(\forall\,i\in[L..R]:\;\mathrm{popcount}(a[i])\le k\).
+
+Equivalently, we mark each index \(i\) as
+
+   forbidden if \(\mathrm{popcount}(i)>k\),  
+   allowed   if \(\mathrm{popcount}(i)\le k\).
+
+Then a subarray is k-good exactly when it contains no forbidden index.  If we look at the entire length-\(n\) array of 0/1 markers (0=allowed, 1=forbidden), the k-good subarrays are exactly the subarrays entirely inside runs of zeros.  If there is a maximal run of \(L\) consecutive zeros, it contributes
+
+   \(1 + 2 + \cdots + L = \tfrac{L\,(L+1)}2\)
+
+k-good subarrays.  So our answer is
+
+   \(\displaystyle
+     \sum_{\text{runs of allowed of length }L} \frac{L\,(L+1)}2
+     \quad(\bmod 10^9+7).\)
+
+We cannot afford an \(O(n)\) scan because \(n\) can be up to \(10^{18}\).  Nor can we list all forbidden indices.  Instead we exploit two facts:
+
+1.  **Binary‐aligned blocks.**  
+    Any integer \(n\) has a binary expansion  
+      \(n = 2^{d_1} + 2^{d_2} + \cdots\)  
+    and the interval \([0\ldots n-1]\) can be cut into at most \(\log n\) disjoint aligned blocks  
+      \([0..2^{d_1}-1],\, [2^{d_1}..2^{d_1}+2^{d_2}-1],\,\dots\).  
+    Each block is of the form
+      \([B\cdot 2^d,\;B\cdot2^d + (2^d-1)]\),
+    a power‐of-two‐length interval aligned on a \(2^d\) boundary.
+
+2.  **Prefix‐suffix DP merge.**  
+    For any interval of values \([X..X+2^d-1]\), if I know how many one-bits are in the upper bits of \(X\) (i.e.\ in \(\lfloor X/2^d\rfloor\)), then whether a point in that interval is allowed depends only on the popcount of the lower \(d\) bits.  Concretely
+      \[
+        \mathrm{popcount}(X+t)
+         = \mathrm{popcount}\bigl(\lfloor X/2^d\rfloor\bigr)
+         + \mathrm{popcount}(t),
+        \quad t\in[0..2^d-1].
+      \]
+    Hence each aligned block reduces to the same pattern of allowed/forbidden if I know
+      \[
+        K' \;=\; k \;-\;\mathrm{popcount}\bigl(\lfloor X/2^d\rfloor\bigr).
+      \]
+    One may precompute for every \(d=0,1,\dots,60\) and every threshold \(K'=-1,0,1,\dots,60\) the following data for the interval of length \(2^d\):
+
+    -   `len` = \(2^d\).  
+    -   `all` = “does the entire block have popcount ≤ K′?”  
+    -   `pre` = length of the maximal **prefix** of allowed positions  
+    -   `suf` = length of the maximal **suffix** of allowed positions  
+    -   `ans` = total number of all-allowed subarrays **inside** that block, i.e.\  
+          \(\sum_{\text{zero‐runs}} \tfrac{L(L+1)}2\)  
+
+    We store these in a small table  
+      `DP[d][K'+1]`  
+    where index = \(K'+1\) runs from 0 (meaning \(K'=-1\), no points allowed) up to 61 (meaning \(K'=60\) or more).
+
+    We also know how to **merge** two adjacent intervals \(A\) and \(B\), carrying over those five data items, in \(O(1)\).  In particular the merged answer
+    \[
+      \mathrm{ans}_{A\|B}
+      = \mathrm{ans}_A
+      + \mathrm{ans}_B
+      + (\mathrm{suf}_A)\,\times(\mathrm{pre}_B),
+    \]
+    all mod \(10^9+7\).  The new prefix and suffix are computed in the usual “carry‐over” way.
+
+Putting it all together, for each test case:
+
+1.  **Precompute** once (over all test cases)  
+    the table `DP[d][kidx]` for \(d=0..60\) and \(kidx=0..61\) in \(O(60\cdot60)\approx3600\) steps.
+
+2.  **Answering** a single \((n,k)\):  
+    - Initialize a “current” node `cur` to the empty interval  
+      \((\,\mathrm{len}=0,\;\mathrm{all}=true,\;\mathrm{pre}=\mathrm{suf}=\mathrm{ans}=0\,)\).  
+    - Let `popH = 0`, the popcount of the high‐bits prefix so far.  
+    - Scan the bits of \(n\) from top down.  Whenever you see a 1 in position \(d\), you append the aligned block of size \(2^d\).  
+      *Compute threshold* \(K' = k - \mathrm{popH}\).  Clamp to \([-1..60]\).  
+      *Lookup* `block = DP[d][K'+1]`.  
+      *Merge* `cur = merge(cur, block)`.  
+      *Increment* `popH++` (since that bit of \(n\) is now part of the prefix).  
+    - At the end `cur.ans` is exactly the total number of k‐good subarrays in \([0..n-1]\).
+
+Each test runs in \(O(\log n)\approx60\) merges, which is more than fast enough up to \(10^4\) test cases.
+
+Below is a full Java implementation.
+
+```java
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+import java.util.StringTokenizer;
+
+public class Main {
+    static final int MAXD = 60;
+    static final int MAXK = 60;
+    static final int Kdim = MAXK + 2;    // indices 0..61 represent thresholds -1..60
+    static final int MOD = 1_000_000_007;
+
+    // We'll store for each d=0..60 and each kidx=0..61
+    // a small struct of 5 fields:
+    //   len  = length 2^d
+    //   all  = true if every point is allowed
+    //   pre  = length of maximal prefix of allowed
+    //   suf  = length of maximal suffix of allowed
+    //   ans  = sum of L*(L+1)/2 over zero‐runs inside the block
+    static Node[][] DP = new Node[MAXD+1][Kdim];
+
+    // A small record for merging
+    static class Node {
+        long len;   // up to 2^60
+        boolean all;
+        long pre, suf;
+        int ans;    // mod 1e9+7
+
+        Node() {}
+
+        Node(long len, boolean all, long pre, long suf, int ans) {
+            this.len = len;
+            this.all = all;
+            this.pre = pre;
+            this.suf = suf;
+            this.ans = ans;
+        }
+    }
+
+    // Merge two adjacent intervals A, B -> C
+    static Node merge(Node A, Node B) {
+        Node C = new Node();
+        C.len = A.len + B.len;
+        C.all = A.all && B.all;
+        C.pre = A.all ? (A.len + B.pre) : A.pre;
+        C.suf = B.all ? (B.len + A.suf) : B.suf;
+        long cross = ((A.suf % MOD) * (B.pre % MOD)) % MOD;
+        C.ans = (int)(((long)A.ans + B.ans + cross) % MOD);
+        return C;
+    }
+
+    public static void main(String[] args) throws Exception {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        // 1) Precompute DP table
+        // d = 0: block of size 1.  That single point t=0 has popcount=0.
+        // so it's allowed iff K' >= 0.
+        for (int kidx = 0; kidx < Kdim; kidx++) {
+            int Kp = kidx - 1;      // actual threshold
+            boolean ok = (Kp >= 0);
+            DP[0][kidx] = new Node(
+                1,       // len = 1
+                ok,      // all
+                ok ? 1 : 0,   // pre
+                ok ? 1 : 0,   // suf
+                ok ? 1 : 0    // ans = 1*(1+1)/2 = 1 if allowed
+            );
+        }
+        // Build up to d=60
+        for (int d = 1; d <= MAXD; d++) {
+            for (int kidx = 0; kidx < Kdim; kidx++) {
+                Node A = DP[d-1][kidx];
+                int bidx = (kidx == 0 ? 0 : kidx - 1);
+                Node B = DP[d-1][bidx];
+                DP[d][kidx] = merge(A, B);
+            }
+            // Fix the len field = 2^d
+            long l = 1L << d;
+            for (int kidx = 0; kidx < Kdim; kidx++) {
+                DP[d][kidx].len = l;
+            }
+        }
+
+        // 2) Answer queries
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            long n = Long.parseLong(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+
+            // We'll build up the merged interval [0..n-1]
+            Node cur = new Node(0, true, 0, 0, 0);
+            int popH = 0;   // popcount of the high‐bits prefix processed
+
+            for (int d = MAXD; d >= 0; d--) {
+                if (((n >>> d) & 1L) != 0) {
+                    // we have a block of size 2^d aligned at the current position
+                    int Kp = k - popH;
+                    if (Kp < -1)   Kp = -1;
+                    if (Kp > MAXK) Kp = MAXK;
+                    int kidx = Kp + 1;
+
+                    // merge with DP[d][kidx]
+                    cur = merge(cur, DP[d][kidx]);
+                    popH++;
+                }
+            }
+
+            out.println(cur.ans);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **DP table** `DP[d][kidx]` for \(d=0\ldots60\), `kidx=0..61` stores, for the block of length \(2^d\):
+
+   - `len = 2^d`.
+   - `all = (popcount ≤ threshold)` for every element.
+   - `pre,suf` = maximal prefix/suffix of allowed.
+   - `ans` = sum of \(\tfrac{L(L+1)}2\) over all runs of zeros inside that block.
+
+   Here `kidx = K' + 1`, so index 0 means \(K'=-1\) (no points allowed), index 1 means \(K'=0\), … up to index 61 for \(K'=60\).
+
+2.  **Building the table**  
+    - Base \(d=0\): block = a single number 0, which has popcount=0, so it is allowed iff \(K'\ge0\).  
+    - Recurrence for \(d\ge1\): split the \(2^d\) block into two halves of size \(2^{d-1}\).  
+      The lower half (where the high new bit is 0) uses the same threshold \(K'\).  
+      The upper half (where that new bit contributes +1 to popcount) uses threshold \(K' - 1\).  
+      We have already computed those two halves, so we `merge` them in \(O(1)\).
+
+3.  **Answering a test** \((n,k)\).  
+    We view \([0..n-1]\) in binary and cut it into aligned blocks.  Concretely, if the binary expansion of \(n\) has 1s in positions \(d_1>d_2>\dots\), then
+
+        [0..n-1]
+        = [0..2^{d_1}-1]
+        ∪ [2^{d_1}..2^{d_1}+2^{d_2}-1]
+        ∪ … 
+
+    Each block \([B\cdot2^d,\,B\cdot2^d + (2^d-1)]\) shares the same “high‐bit prefix” \(B\).  We track
+    its popcount in `popH`.  Then the allowed‐for‐this‐block threshold is
+      \(K' = k - \text{popcount}(B)\).
+    We clamp \(K'\) to \([-1..60]\), look up `DP[d][K'+1]`, and merge it into our running result.
+
+The final merged `ans` is exactly the total number of k-good subarrays, modulo \(10^9+7\). This runs in \(O(60\cdot60)\) precomputation plus \(O(60)\) per test, which is very fast even for \(10^4\) tests.

@@ -1,0 +1,216 @@
+**Analysis**
+
+We want to check, for each subarray \(b=a[\ell..r]\), whether it can be “peeled off” by repeatedly choosing a maximal constant run whose value still appears somewhere in the subarray, removing all its copies, and continuing until the subarray is empty.  A known necessary‐and‐sufficient condition (e.g. via an “interval–laminarity” argument) is that when you look at each value \(v\) in the subarray and record its first and last positions
+\[
+    I_v = [\,f_v,\,g_v\,],
+\]
+no two of these intervals may “cross.”  Concretely a crossing would be
+\[
+   f_u < f_v \le g_u < g_v\,,
+\]
+in which case no deletion order can succeed.
+
+We can test laminarity of **all** subarrays in a single \(O(n\log n)\) “two‐pointer” sweep over left‐endpoints \(\ell=1,2,\dots,n\).  We keep a window \([\ell..r-1]\) that **is** laminar, then try to extend it to \([\ell..r]\).  When we add the new element \(v=a[r]\),
+
+ 1. If \(v\) is new in the window, its interval is \([r,r]\).  A 1‐length interval cannot cross anyone, so we just insert it.
+ 2. Otherwise \(v\)’s interval was \([f,g_{\rm old}]\) and becomes \([f,r]\).  The only way to introduce a crossing is if there is some other interval \([f_u,g_u]\) with
+    \[
+       f_u < f
+       \quad\text{and}\quad
+       g_u > g_{\rm old}.
+    \]
+    But while we are still at window end \(r-1\), we know all existing \(g_u\le r-1<r\).  
+    So the test reduces to:
+    \[
+      \max_{\,1\le i<f}\,M[i]\;>\;g_{\rm old},
+    \]
+    where \(M[i]\) is the current “last–position” of whatever interval starts at \(i\) (or 0 if no interval starts at \(i\)).  
+    If that maximum is \(\le g_{\rm old}\), no crossing appears, and we safely update \(M[f]=r\).  Otherwise we stop; we have found the minimal \(r\) that breaks laminarity.
+
+We maintain
+
+  • A segment‐tree (or Fenwick‐tree) **supporting**  
+    – point‐update \(\;M[i]\leftarrow x\),  
+    – range‐maximum query on \([1..i]\).  
+
+  • For each value \(v\), a **global** list of its occurrence positions in \(a\).  
+    We remember in two small arrays `fIdx[v]` and `hIdx[v]` the _indices_ within that list that bracket the first and last occurrence **currently** in the window.  
+    Whenever we slide the window right (increment \(r\)) or slide it left (increment \(\ell\)), we in \(O(1)\) adjust those two indices and do at most two segment‐tree updates to keep \(M[f_v]=g_v\).
+
+Because each of \(\ell\) and \(r\) moves forward at most \(n\) times, and each move does \(O(\log n)\) work in the segment‐tree, the total is \(O(n\log n)\).  Finally, after we record for each \(\ell\) the _first_ bad \(r\) in an array `R[ℓ]`, each query \((\ell,r)\) is answered by checking
+
+   “Is \(r < R[\ell]\) ?”
+
+– if yes, the subarray is laminar & deletable, else no.
+
+Below is a single, self‐contained Java solution.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    // A standard segment‐tree for point‐update and range‐max query on [1..n].
+    static class SegTree {
+        int n;
+        int[] st;
+        SegTree(int _n) {
+            n = 1;
+            while (n < _n) n <<= 1;
+            st = new int[2*n];
+        }
+        // set position i (1-based) to value v
+        void update(int i, int v) {
+            i = i + n - 1;
+            st[i] = v;
+            for (i >>= 1; i > 0; i >>= 1) {
+                st[i] = Math.max(st[2*i], st[2*i+1]);
+            }
+        }
+        // maximum on interval [l..r], 1-based
+        int query(int l, int r) {
+            if (l > r) return 0;
+            int res = 0;
+            l = l + n - 1; 
+            r = r + n - 1;
+            while (l <= r) {
+                if ((l & 1) == 1) res = Math.max(res, st[l++]);
+                if ((r & 1) == 0) res = Math.max(res, st[r--]);
+                l >>= 1; 
+                r >>= 1;
+            }
+            return res;
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+        int T = Integer.parseInt(in.readLine().trim());
+        while (T-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int Q = Integer.parseInt(st.nextToken());
+            int[] a = new int[n+1];
+            st = new StringTokenizer(in.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // Build global occurrence lists
+            ArrayList<Integer>[] occ = new ArrayList[n+1];
+            for (int v = 1; v <= n; v++) occ[v] = new ArrayList<>();
+            for (int i = 1; i <= n; i++) {
+                occ[a[i]].add(i);
+            }
+            // For each index i, store its position in occ[a[i]]
+            int[] posIdx = new int[n+1];
+            for (int v = 1; v <= n; v++) {
+                ArrayList<Integer> L = occ[v];
+                for (int j = 0; j < L.size(); j++) {
+                    posIdx[L.get(j)] = j;
+                }
+            }
+
+            // fIdx[v], hIdx[v]: the window‐local first/last indices into occ[v].
+            int[] fIdx = new int[n+1], hIdx = new int[n+1];
+            int[] cnt  = new int[n+1];
+            Arrays.fill(fIdx, -1);
+            Arrays.fill(hIdx, -1);
+
+            // R[l] = the minimal r that BREAKS laminarity for window starting at l.
+            int[] R = new int[n+2];
+
+            // Segment tree for M[i]=gpos of interval starting at i, or 0 if none.
+            SegTree seg = new SegTree(n);
+
+            // Two‐pointer sweep
+            int r = 1;    // current window is [l..r-1]
+            for (int l = 1; l <= n; l++) {
+                // extend r as far as we can
+                while (r <= n) {
+                    int v = a[r];
+                    int idx = posIdx[r];  // which occurrence of v is this?
+                    if (cnt[v] == 0) {
+                        // new interval [r,r] – cannot cross
+                        fIdx[v] = hIdx[v] = idx;
+                        seg.update(r, r);
+                        cnt[v]++;
+                        r++;
+                    } else {
+                        // interval grows from [f..oldg] to [f..r]
+                        int firstPos = occ[v].get(fIdx[v]);
+                        int oldg     = occ[v].get(hIdx[v]);
+                        // test if any other interval [f_u..g_u] with f_u<firstPos
+                        // has g_u > oldg
+                        int bestLeft = seg.query(1, firstPos-1);
+                        if (bestLeft > oldg) {
+                            // crossing would occur → stop extensions
+                            break;
+                        }
+                        // safe to grow
+                        hIdx[v] = idx;
+                        seg.update(firstPos, r);
+                        cnt[v]++;
+                        r++;
+                    }
+                }
+                // r is the first breaker (or r==n+1)
+                R[l] = r;
+
+                // remove a[l] from the window
+                int w = a[l];
+                int id = posIdx[l];
+                if (--cnt[w] == 0) {
+                    // delete the whole interval
+                    int fp = occ[w].get(fIdx[w]);
+                    seg.update(fp, 0);
+                    fIdx[w] = hIdx[w] = -1;
+                } else {
+                    // still has copies.  Maybe we removed the first or last.
+                    if (id == fIdx[w]) {
+                        // lost the first
+                        int oldFp = occ[w].get(fIdx[w]);
+                        int gpos  = occ[w].get(hIdx[w]);
+                        seg.update(oldFp, 0);
+                        fIdx[w]++;
+                        int newFp = occ[w].get(fIdx[w]);
+                        seg.update(newFp, gpos);
+                    } else if (id == hIdx[w]) {
+                        // lost the last
+                        int fp   = occ[w].get(fIdx[w]);
+                        hIdx[w]--; 
+                        int newG = occ[w].get(hIdx[w]);
+                        seg.update(fp, newG);
+                    }
+                    // if it was an interior occurrence, no change to [f..g]
+                }
+            }
+
+            // Answer queries in O(1) each
+            for (int i = 0; i < Q; i++) {
+                st = new StringTokenizer(in.readLine());
+                int L = Integer.parseInt(st.nextToken());
+                int RR= Integer.parseInt(st.nextToken());
+                out.println(RR < R[L] ? "YES" : "NO");
+            }
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of the key ideas**
+
+1.  We treat each value \(v\) in the window as contributing an interval \([f_v,g_v]\).  
+2.  A subarray is orangutan‐approved exactly when no two such intervals *cross* (i.e.\ are not laminar).  
+3.  We do a two-pointer sweep on \(\ell\) and \(r\) so that the window \([\ell..r-1]\) **is** laminar, and we try to extend it to \([\ell..r]\).  
+4.  Extending the interval for the newly inserted value \(v\) from \([f,g_{\rm old}]\) to \([f,r]\) can only violate laminarity if  
+       there is some other interval \([f_u,g_u]\) with \(f_u<f\) and \(g_u>g_{\rm old}\).  
+5.  We maintain a segment tree `seg` on positions \(1..n\), where at each leaf `i` we store the current “end” \(g_v\) of the interval whose start is \(i\) (or 0 if no interval starts at \(i\)).  Then  
+       max on \[1..f−1\]  >  old g  
+   exactly signals a crossing.  
+6.  We keep each value \(v\)’s first–and–last occurrence in the window by indexing into the **global** list of all occurrences of \(v\).  Sliding the window in or out causes at most two point‐updates in the segment tree.  
+7.  Overall the pointers \(\ell\) and \(r\) each move forward at most \(n\) times, each step costs \(O(\log n)\) for segment‐tree operations.  Thus \(O(n\log n)\) for each test, plus \(O(1)\) per query.  
+
+This easily runs under the typical \(2\cdot10^5\)–size and 3 s time limit.

@@ -1,0 +1,187 @@
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class Fenwick {
+        int n;
+        long[] treeCnt, treeSum;
+        Fenwick(int _n) {
+            n = _n;
+            treeCnt = new long[n+1];
+            treeSum = new long[n+1];
+        }
+        // add `cnt` occurrences of value `val` at index i
+        void update(int i, long cnt, long val) {
+            for (; i <= n; i += i & -i) {
+                treeCnt[i] += cnt;
+                treeSum[i] += val;
+            }
+        }
+        // sum of counts in [1..i]
+        long queryCnt(int i) {
+            long s = 0;
+            for (; i > 0; i -= i & -i) s += treeCnt[i];
+            return s;
+        }
+        // sum of values in [1..i]
+        long querySum(int i) {
+            long s = 0;
+            for (; i > 0; i -= i & -i) s += treeSum[i];
+            return s;
+        }
+        // find smallest index p such that prefix count >= k
+        int findByOrder(long k) {
+            int pos = 0;
+            int bit = Integer.highestOneBit(n);
+            for (; bit > 0; bit >>= 1) {
+                int nxt = pos + bit;
+                if (nxt <= n && treeCnt[nxt] < k) {
+                    k -= treeCnt[nxt];
+                    pos = nxt;
+                }
+            }
+            return pos + 1;
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int T = Integer.parseInt(in.readLine());
+        while (T-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long c = Long.parseLong(st.nextToken());
+            long[] a = new long[n+2];
+            st = new StringTokenizer(in.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+
+            // prefix-sum of fans
+            long[] pref = new long[n+2];
+            for (int i = 1; i <= n; i++) {
+                pref[i] = pref[i-1] + a[i];
+            }
+            // prefix-max of fans
+            long[] prefixMax = new long[n+2];
+            prefixMax[1] = a[1];
+            for (int i = 2; i <= n; i++) {
+                prefixMax[i] = Math.max(prefixMax[i-1], a[i]);
+            }
+            // suffix-max of fans
+            long[] sufMax = new long[n+3];
+            sufMax[n+1] = 0;
+            for (int i = n; i >= 1; i--) {
+                sufMax[i] = Math.max(a[i], sufMax[i+1]);
+            }
+
+            // compress the distinct a[i]s in descending order
+            long[] vals = new long[n];
+            for (int i = 0; i < n; i++) vals[i] = a[i+1];
+            Arrays.sort(vals);
+            int m = 0;
+            for (int i = n-1; i >= 0; i--) {
+                if (i == n-1 || vals[i] != vals[i+1]) {
+                    vals[m++] = vals[i];
+                }
+            }
+            long[] compVal = new long[m+1];
+            for (int i = 1; i <= m; i++) {
+                compVal[i] = vals[i-1];
+            }
+            Map<Long,Integer> compMap = new HashMap<>();
+            for (int i = 1; i <= m; i++) {
+                compMap.put(compVal[i], i);
+            }
+
+            Fenwick fenw = new Fenwick(m);
+            long totalCnt = 0;
+            long maxOpp = 0;
+            long[] ans = new long[n+2];
+
+            // process candidates from n down to 1
+            for (int i = n; i >= 1; i--) {
+                boolean zeroWay = false;
+
+                // empty‐set check: no one excluded
+                if (i > 1) {
+                    // need:
+                    // 1) a[i] > max(a[1]+c, max_{2<=j<i} a[j])
+                    // 2) a[i] >= max_{j>i} a[j]
+                    long needHigher = Math.max(a[1] + c, prefixMax[i-1]);
+                    if (a[i] > needHigher && sufMax[i+1] <= a[i]) {
+                        ans[i] = 0;
+                        zeroWay = true;
+                    }
+                }
+                // for i=1, we handle in scenario A below
+
+                if (!zeroWay) {
+                    // scenario A: exclude 1..i-1 for sure
+                    // candidate i becomes smallest => picks up c + sum_{j<i} a[j]
+                    long basePower = a[i] + c + pref[i-1];
+                    if (totalCnt == 0 || maxOpp <= basePower) {
+                        // no opponents or all <= basePower
+                        ans[i] = (i - 1);
+                    } else {
+                        // binary‐search minimal t in [1..totalCnt] so that
+                        // basePower + sumTop(t) >= (t+1)-th largest
+                        long low = 1, high = totalCnt;
+                        while (low < high) {
+                            long mid = (low + high) >>> 1;
+                            // compute sum of top‐mid values
+                            int p = fenw.findByOrder(mid);
+                            long cntBefore = fenw.queryCnt(p - 1);
+                            long sumBefore = fenw.querySum(p - 1);
+                            long takeHere = (mid - cntBefore) * compVal[p];
+                            long sumTopMid = sumBefore + takeHere;
+
+                            // (mid+1)-th largest value
+                            long nextVal = 0;
+                            if (mid + 1 <= totalCnt) {
+                                int q = fenw.findByOrder(mid + 1);
+                                nextVal = compVal[q];
+                            }
+                            if (basePower + sumTopMid >= nextVal) {
+                                high = mid;
+                            } else {
+                                low = mid + 1;
+                            }
+                        }
+                        ans[i] = (i - 1) + low;
+                    }
+                }
+
+                // insert candidate i's fans into Fenwick (as an opponent for smaller i)
+                int pos = compMap.get(a[i]);
+                fenw.update(pos, 1, a[i]);
+                totalCnt++;
+                if (a[i] > maxOpp) {
+                    maxOpp = a[i];
+                }
+            }
+
+            // output answers
+            for (int i = 1; i <= n; i++) {
+                out.print(ans[i]);
+                if (i < n) out.print(' ');
+            }
+            out.println();
+        }
+
+        out.flush();
+    }
+}
+```
+
+Explanation of the fix:
+
+- We introduced a `prefixMax[]` array so that `prefixMax[i-1]` = max (a[1],…,a[i−1]).
+- In the "empty‐set" check (no exclusions), candidate i must beat
+  1) all previous candidates (so `a[i] > prefixMax[i-1]`),
+  2) plus beat candidate 1 with all undecideds (`a[i] > a[1]+c`),
+  3) and have at least as many votes as any later candidate (`a[i] ≥ sufMax[i+1]`).
+- Only if all three hold do we set `ans[i]=0`. Otherwise we fall back to the "exclude 1..i−1, then bribe largest opponents" strategy as before.

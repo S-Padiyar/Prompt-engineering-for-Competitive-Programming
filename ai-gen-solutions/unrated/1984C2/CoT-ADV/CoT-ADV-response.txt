@@ -1,0 +1,185 @@
+**Problem restatement**  
+We have an array a of length n. We start with a running total c=0. For each i from 1 to n we choose exactly one of two operations:
+
+- Option 1: set c := c + a[i].  
+- Option 2: set c := |c + a[i]|.  
+
+After processing all n elements, we obtain some final value of c.  
+1) First, among all 2ⁿ possible choices of options, determine the maximum possible final c; call it k.  
+2) Count how many different choice‐sequences achieve that maximum final c = k. Two choice‐sequences are different if at any index i one uses option 1 and the other uses option 2 (even if they happen to produce the same intermediate c).  
+Output the count modulo 998244353.  
+
+**Input**  
+t — number of test-cases (1 ≤ t ≤ 10⁴)  
+Each test-case:  
+    n (2 ≤ n ≤ 2·10⁵)  
+    a₁ a₂ … aₙ (each |aᵢ| ≤ 10⁹)  
+Sum of all n over all test cases ≤ 3·10⁵  
+
+**Output**  
+For each test case, one integer: the number of ways to achieve the maximal final c, modulo 998244353.
+
+**Key observations and DP state**  
+1. Brute‐forcing 2ⁿ choices is impossible for n up to 2·10⁵. We need an O(n) or O(n log n) DP.  
+2. At each step i, the value cᵢ can in principle be any of many integers, but to track just the *maximum* reachable cᵢ and the *minimum* reachable cᵢ (the two extremes) is enough to determine the new extremes after adding aᵢ and possibly taking absolute value.  
+3. Even more directly, one can show that at each step, the only values that matter for *future extremes* are the current minimum reachable c and the current maximum reachable c.  
+4. We keep a small DP over at most two “endpoint” states:  
+   – (value = low,  count = ways to reach exactly low)  
+   – (value = high, count = ways to reach exactly high)  
+5. From each endpoint value v_prev, we generate two children at step i:  
+   - option 1 → v = v_prev + aᵢ  
+   - option 2 → v = |v_prev + aᵢ|  
+   Each inherits the same count of ways.  
+6. That produces at most 4 candidates. We then recombine by collapsing all equal values (sum their counts) and keep only the new minimum and new maximum.  
+7. After processing all n elements, the maximum endpoint is the global maximum k, and its count is the answer.
+
+This DP runs O(1) work per element (constant number of candidates, merges) so overall O(n) per test.
+
+**Solution outline**  
+For each test case:  
+1. Initialize a small map/array of endpoints: only one entry `(value=0, count=1)`.  
+2. For i = 1..n:  
+   a) Read aᵢ.  
+   b) From each existing endpoint `(v_prev, cnt_prev)`, form two new values:  
+      - v1 = v_prev + aᵢ,  ways = cnt_prev  
+      - v2 = |v_prev + aᵢ|, ways = cnt_prev  
+   c) Collect up to 4 pairs `(v, ways)`, merge duplicates by summing ways modulo 998244353.  
+   d) Find the minimum key (call it newLow) and maximum key (newHigh); record their total ways `waysLow`, `waysHigh`.  
+   e) Discard any other keys. Now endpoints = `{(newLow, waysLow), (newHigh, waysHigh)}`, except if newLow == newHigh keep a single entry.  
+3. At the end, among the endpoints keep the one with the larger value (that’s k) and print its ways.  
+
+**Java implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 998244353;
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer tok = new StringTokenizer(in.readLine());
+        int t = Integer.parseInt(tok.nextToken());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            tok = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(tok.nextToken());
+            tok = new StringTokenizer(in.readLine());
+            
+            // We'll maintain at most two endpoints.
+            // Each endpoint: value v, count cnt ways to get exactly v.
+            long[] vals = new long[2];
+            long[] cnts = new long[2];
+            int size = 1;
+            vals[0] = 0;
+            cnts[0] = 1;
+
+            for (int i = 0; i < n; i++) {
+                long ai = Long.parseLong(tok.nextToken());
+                // Up to 4 new candidate pairs:
+                long[] candV = new long[4];
+                long[] candC = new long[4];
+                int csz = 0;
+
+                // Generate from each existing endpoint
+                for (int j = 0; j < size; j++) {
+                    long vprev = vals[j];
+                    long ways = cnts[j];
+
+                    long t1 = vprev + ai;
+                    long t2 = t1 >= 0 ? t1 : -t1;  // |t1|
+
+                    candV[csz] = t1;
+                    candC[csz] = ways;
+                    csz++;
+
+                    candV[csz] = t2;
+                    candC[csz] = ways;
+                    csz++;
+                }
+
+                // Merge duplicates on the fly and track global min/max
+                long newLow = Long.MAX_VALUE, newHigh = Long.MIN_VALUE;
+                long waysLow = 0, waysHigh = 0;
+
+                for (int j = 0; j < csz; j++) {
+                    long v = candV[j];
+                    long w = candC[j] % MOD;
+                    // Update min
+                    if (v < newLow) {
+                        newLow = v;
+                        waysLow = w;
+                    } else if (v == newLow) {
+                        waysLow = (waysLow + w) % MOD;
+                    }
+                    // Update max
+                    if (v > newHigh) {
+                        newHigh = v;
+                        waysHigh = w;
+                    } else if (v == newHigh) {
+                        waysHigh = (waysHigh + w) % MOD;
+                    }
+                }
+
+                // Prepare for next iteration
+                if (newLow == newHigh) {
+                    size = 1;
+                    vals[0] = newLow;
+                    cnts[0] = waysLow;  // same as waysHigh
+                } else {
+                    size = 2;
+                    vals[0] = newLow; cnts[0] = waysLow;
+                    vals[1] = newHigh; cnts[1] = waysHigh;
+                }
+            }
+
+            // At the end, the answer is the count for the largest endpoint
+            long answer;
+            if (size == 1) {
+                answer = cnts[0] % MOD;
+            } else {
+                // vals[1] is the max (we kept them sorted)
+                answer = cnts[1] % MOD;
+            }
+            sb.append(answer).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of key parts**  
+- We only ever store “endpoint” values (the current minimum reachable c and maximum reachable c) and how many ways reach each.  
+- For each new element aᵢ, each endpoint can go to two new values (with or without absolute). We collect at most 4 candidates.  
+- We then pick out the smallest and largest of these candidate values; we sum up all counts that achieved that exact min or max. Any intermediate candidates cannot become future extrema and so we discard them.  
+- By induction, this correctly tracks the evolving min/max and counts, and in the end the maximum reachable c is the global optimum k, and our stored count is the number of ways.
+
+**Walk-through on the first sample**  
+n=4, a=[2, -5, 3, -3].
+- Start: endpoints = { (0, ways=1) }  
+i=1 (a1=2):  
+  from 0→ opt1=2, opt2=2 ⇒ candidates {2:1+1=2}  
+  endpoints = { (2,2) }  
+i=2 (a2=–5):  
+  from 2→ opt1=(2–5=–3), opt2=|–3|=3 ⇒ {–3:2, 3:2}  
+  endpoints = { (–3,2), (3,2) }  
+i=3 (a3=3):  
+  from –3→(0,0) and (0,0) ⇒ adds {0:2+2=4}  
+  from  3→(6,6) and (6,6) ⇒ adds {6:2+2=4}  
+  endpoints = { (0,4), (6,4) }  
+i=4 (a4=–3):  
+  from  0→ opt1=–3 (4 ways), opt2=3 (4 ways)  
+  from  6→ opt1= 3 (4 ways), opt2=3 (4 ways)  
+  candidates = { –3:4,  3:4+4+4 =12 }  
+  endpoints = { (–3,4), (3,12) }  
+
+The maximum after step 4 is 3, and it can be reached in 12 ways, matching the sample.
+
+**Complexity**  
+- We do a constant amount of work (up to 4 updates, a few comparisons) per array element.  
+- Per test case O(n), overall O(∑n) ≤ 3·10⁵.  
+- Space is O(1) extra (besides input).  
+
+This runs well within the 2 s / 256 MB limits on Codeforces.

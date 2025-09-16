@@ -1,0 +1,307 @@
+**Analysis**
+
+We are given an *incomplete* sequence  
+&nbsp;&nbsp;&nbsp;&nbsp;\(a'_1,a'_2,\dots,a'_n\)  
+of positive integers, where some entries may be missing (denoted \(-1\)).  We want to fill in the missing entries to obtain a *complete* sequence  
+&nbsp;&nbsp;&nbsp;&nbsp;\(b_1,b_2,\dots,b_n\)  
+of positive integers (\(1\le b_i\le10^9\)) so that
+
+ 1. Wherever \(a'_i\ne-1\), we must have \(b_i=a'_i\).
+ 2. For every adjacent pair \(i=1,2,\dots,n-1\), **either**  
+    \[
+      b_i \;=\;\Big\lfloor\frac{b_{i+1}}2\Big\rfloor
+      \quad\text{or}\quad
+      b_{i+1} \;=\;\Big\lfloor\frac{b_{i}}2\Big\rfloor.
+    \]
+ 3. \(1\le b_i\le10^9\) for all \(i\).
+
+Observe that the adjacency requirement forces each pair \((b_i,b_{i+1})\) to differ by roughly a factor of 2: either \(b_{i+1}\) is in \([\!2b_i,2b_i+1]\) (so that \(b_i=\lfloor b_{i+1}/2\rfloor\)) or \(b_i\) is in \([\!2b_{i+1},2b_{i+1}+1]\) (so that \(b_{i+1}=\lfloor b_i/2\rfloor\)).
+
+We split the sequence at the *known* positions into at most three parts:
+
+  1. A **prefix** before the first known element.
+  2. Several **internal segments** between two known elements.
+  3. A **suffix** after the last known element.
+
+On each part we fill in the missing entries as follows.
+
+**1) If there are no known entries at all.**  
+We may output any valid 1–2 alternating pattern, e.g.
+\[
+  b=(1,2,1,2,\dots)\,,
+\]
+which clearly satisfies \(\lfloor2/2\rfloor=1\) and \(\lfloor1/2\rfloor=0\) is invalid so we do the upward move whenever current is 1, etc.
+
+**2) Filling a “tail” after a known element.**  
+Suppose \(b_k\) is known and \(k<n\).  For \(i=k,k+1,\dots,n-1\) we set
+\[
+   b_{i+1} \;=\;\begin{cases}
+     \lfloor b_i/2\rfloor, & \lfloor b_i/2\rfloor\ge1,\\
+     2\,b_i,              & \text{otherwise.}
+   \end{cases}
+\]
+One checks easily that each adjacent pair still satisfies one of the two rules, and we never exceed \(10^9\).
+
+**3) Filling a “head” before a known element.**  
+Exactly symmetrically we go backward from the first known position \(j\) down to 1:
+\[
+   b_{i-1} \;=\;\begin{cases}
+     \lfloor b_i/2\rfloor, & \lfloor b_i/2\rfloor\ge1,\\
+     2\,b_i,              & \text{otherwise.}
+   \end{cases}
+\]
+again preserving the adjacency rule.
+
+**4) Filling an internal segment between two known positions**  
+Say \(b_L=A\) and \(b_R=C\) are known, with \(L<R\).  Let the segment length be \(D=R-L\).  We must walk from \(A\) to \(C\) in exactly \(D\) steps, each step being **either** “down” (go to \(\lfloor x/2\rfloor\)) **or** “up” (go to some \(y\in[2x,2x+1]\)).  
+
+We do a small “reachability” check in \(O(1)\) to see if \(C\) is at all reachable in \(D\) steps from \(A\).  Concretely:
+
+- The **maximum** we can reach in \(D\) “up‐only” steps is
+  \[
+    A\cdot2^D \;+\;(2^D - 1)\,,
+  \]
+  (each up‐move we pick the “+1” end of the interval).
+- The **minimum** we can reach in \(D\) steps if we do as many downs as possible is more subtle because after enough downs we hit 1 and then must alternate up/down to stay positive.  One shows in \(O(1)\) we can compute
+  \[
+    \text{fmin}(A,D)\;=\;
+      \begin{cases}
+        \lfloor A/2^D\rfloor,& A\ge 2^D,\\
+        1\text{ or }2 
+        &\text{depending on parity once you hit 1},
+      \end{cases}
+  \]
+  also in \(O(1)\).  
+
+If \(C\notin[\text{fmin}(A,D),\text{fmax}(A,D)]\), we immediately declare \(-1\).  Otherwise we know some sequence of up/down moves of length \(D\) takes \(A\to C\).  We then construct it **greedily**:
+
+- Let \(x=b_L\).  At each step \(i=L\ldots R-1\),
+  - Let \(\text{down} = \lfloor x/2\rfloor\) if \(\ge1\), else “down” is invalid.
+  - Let \(\text{up}_1=2x\), \(\text{up}_2=2x+1\) (only those \(\le10^9\)).
+  - Among these up to three candidates, we test each \(y\) in the order
+    \[
+       \text{down},\;\text{up}_1,\;\text{up}_2
+    \]
+    to see if *from \(y\) we can reach \(C\) in the remaining steps*.  That is, we check
+    \[
+       \text{fmin}(y,R-(i+1)) \;\le\; C 
+       \quad\text{and}\quad
+       C\;\le\;\text{fmax}(y,R-(i+1)).
+    \]
+  - We pick the first candidate that works, set \(b_{i+1} = y\), and continue.
+
+This is \(O(D)\) per segment and the sum of all \(D\) is \(\le n\).  All computations of powers of two, floors, etc., are done in \(O(1)\) each (using shifts and `Long.numberOfLeadingZeros`).  Overall we fill in all parts in \(O(n)\) per test case, which is fine up to \(n\le2\cdot10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final long INF = (long)1e18;
+    static final long MAXB = (long)1e9;
+
+    // Compute floor of the minimum reachable in rem steps from y
+    static long fmin(long y, int rem) {
+        if (rem == 0) return y;
+        // k = floor(log2(y))
+        int k = 63 - Long.numberOfLeadingZeros(y);
+        if (rem <= k) {
+            // We can just shift down rem times
+            return y >> rem;
+        } else {
+            // We hit 1 after k downs, then we have rem-k steps
+            int r2 = rem - k;
+            // If we have an even number of extra steps we end at 1, else at 2
+            return (r2 % 2 == 0 ? 1 : 2);
+        }
+    }
+
+    // Compute the maximum reachable in rem "up" steps from y
+    static long fmax(long y, int rem) {
+        if (rem >= 31) {
+            // Clearly 2^31>1e9, so we'll exceed 1e9 if rem big
+            return INF;
+        }
+        long mul = 1L << rem;  // 2^rem
+        return y * mul + (mul - 1);
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(in.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine().trim());
+            long[] a = new long[n];
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+
+            // Collect indices of known entries
+            ArrayList<Integer> known = new ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                if (a[i] != -1) known.add(i);
+            }
+
+            long[] b = Arrays.copyOf(a, n);
+            boolean ok = true;
+
+            // Case 1: no known => just alternate 1,2
+            if (known.isEmpty()) {
+                b[0] = 1;
+                for (int i = 1; i < n; i++) {
+                    b[i] = (b[i-1] == 1 ? 2 : 1);
+                }
+            } else {
+                // 2) Fill head before first known
+                int first = known.get(0);
+                for (int i = first; i > 0; i--) {
+                    long cur = b[i];
+                    long down = cur / 2;
+                    if (down >= 1) {
+                        b[i-1] = down;
+                    } else {
+                        b[i-1] = cur * 2;
+                    }
+                }
+
+                // 3) Fill tail after last known
+                int last = known.get(known.size() - 1);
+                for (int i = last; i < n - 1; i++) {
+                    long cur = b[i];
+                    long down = cur / 2;
+                    if (down >= 1) {
+                        b[i+1] = down;
+                    } else {
+                        b[i+1] = cur * 2;
+                    }
+                }
+
+                // 4) Fill internal segments
+                for (int k = 0; k + 1 < known.size(); k++) {
+                    int L = known.get(k);
+                    int R = known.get(k+1);
+                    long A = b[L], C = b[R];
+                    int D = R - L;
+
+                    // Quick reachability check
+                    if (C < fmin(A, D) || C > fmax(A, D)) {
+                        ok = false;
+                        break;
+                    }
+                    // Greedy construct b[L+1..R]
+                    long x = A;
+                    for (int i = L; i < R; i++) {
+                        int rem = R - i;      // steps including this one
+                        int remNext = rem - 1;// steps after choosing b[i+1]
+
+                        // try down
+                        boolean placed = false;
+                        long down = x / 2;
+                        if (down >= 1) {
+                            if (C >= fmin(down, remNext) && C <= fmax(down, remNext)) {
+                                b[i+1] = down;
+                                x = down;
+                                placed = true;
+                            }
+                        }
+                        // try up = 2x
+                        if (!placed) {
+                            long up1 = 2 * x;
+                            if (up1 <= MAXB) {
+                                if (C >= fmin(up1, remNext) && C <= fmax(up1, remNext)) {
+                                    b[i+1] = up1;
+                                    x = up1;
+                                    placed = true;
+                                }
+                            }
+                        }
+                        // try up = 2x+1
+                        if (!placed) {
+                            long up2 = 2 * x + 1;
+                            if (up2 <= MAXB) {
+                                if (C >= fmin(up2, remNext) && C <= fmax(up2, remNext)) {
+                                    b[i+1] = up2;
+                                    x = up2;
+                                    placed = true;
+                                }
+                            }
+                        }
+                        if (!placed) {
+                            ok = false;
+                            break;
+                        }
+                    }
+                    if (!ok) break;
+                    // at the end we must have b[R]==C
+                    if (b[R] != C) {
+                        ok = false;
+                        break;
+                    }
+                }
+            }
+
+            if (!ok) {
+                sb.append("-1\n");
+            } else {
+                for (int i = 0; i < n; i++) {
+                    sb.append(b[i]).append(i+1<n? ' ':'\n');
+                }
+            }
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of key steps**
+
+1. **Splitting by known positions.**  
+   We collect all indices `known` where the input is not `-1`.
+
+2. **Handling the “no‐known” case.**  
+   If there are no fixed entries, we simply output an alternating `1,2,1,2,…`, which is obviously valid because
+   - From `1` to `2`, we have \(\lfloor 2/2\rfloor=1\).
+   - From `2` to `1`, we have \(\lfloor 2/2\rfloor=1\).
+
+3. **Filling the prefix before the first known.**  
+   We walk *backwards* from the first known index down to `0`.  If at position `i` we know `b[i]`, we set  
+   \[
+     b[i-1] = 
+       \begin{cases}
+         \lfloor b[i]/2\rfloor, & \text{if that is}\ge1,\\
+         2\cdot b[i],            & \text{otherwise},
+       \end{cases}
+   \]
+   which automatically satisfies one of the two adjacency rules.
+
+4. **Filling the suffix after the last known.**  
+   We walk *forwards* from the last known index up to `n-1`, doing exactly the same rule.
+
+5. **Filling each internal segment** \([L..R]\) **with known ends** \(b[L]=A\), \(b[R]=C\).  
+   - Compute `D = R-L`, the number of steps needed.
+   - **Quick check**: is \(C\) at all reachable from \(A\) in \(D\) moves?  
+     - **Max** if we always go *up* by choosing the +1 end of \([2x,2x+1]\) is  
+       \[
+         A\,2^D + (2^D -1).
+       \]
+     - **Min** if we go *down* as much as possible until we hit 1 and then alternate up/down (never dropping to 0).  
+       One can show in \(O(1)\) time (using the floor‐shift and parity argument) that we can compute
+       \[
+         \text{fmin}(A,D).
+       \]
+     If \(C\notin[\text{fmin}(A,D),\,\text{fmax}(A,D)]\), we declare failure.
+   - Otherwise we **greedily construct** exactly \(D\) steps from \(A\to C\).  At each step we have at most three choices:  
+     1. **down** \(\lfloor x/2\rfloor\) (if \(\ge1\)),  
+     2. **up1** \(2x\),  
+     3. **up2** \(2x+1\) (if \(\le10^9\)).  
+     We test each candidate in that order, keeping only those from which \(C\) is still reachable in the remaining steps.  We pick the first that works, set it, and move on.
+
+This runs in \(O(n)\) per test case, which is fast enough for \(n\) up to \(2\times10^5\).

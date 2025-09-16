@@ -1,0 +1,269 @@
+**Analysis**
+
+We have $n$ houses arranged in a cycle (edges $1\!-\!2,\;2\!-\!3,\;\dots,\;(n-1)\!-\!n,\;n\!-\!1$), and $m$ friendship‐pairs $(a_i,b_i)$ with $1\le a_i<b_i\le n$.  We must choose a subset $M$ of the cycle–edges ("maintained roads") so that for each friendship $(a,b)$ there is *some* path in $M$ connecting $a$ to $b$.  Equivalently, on the cycle there are two ways to go from $a$ to $b$ (the "clockwise" arc and the "counterclockwise" arc), and we must choose *one* of these two arcs for each friendship—and take *all* edges of that arc into our maintained set.  Our goal is to minimize the total number of maintained edges, counting overlaps only once.
+
+A nice observation (standard in "Steiner‐forest‐on‐a‐cycle" problems) is that if you *cut* the cycle at some edge $k$ (i.e. remove edge $k$), you turn it into a path.  On that path, *every* friendship has exactly one path between its ends (whichever circle‐arc did *not* include edge $k$), so that arc is forced.  Thus for each possible cut‐edge $k\in\{1,2,\dots,n\}$ we can
+
+ 1. remove all friendships whose *clockwise* arc contains $k$, and for each of those take the *counterclockwise* arc instead;
+ 2. for the other friendships (whose clockwise arc does *not* contain $k$) keep the clockwise arc;
+ 3. take the union of all chosen arcs – that is exactly the set of edges we must maintain if we cut at $k$,
+ 4. measure its size $L_k$,
+ 5. and finally choose the best $k$ that minimizes $L_k$.
+
+Since $n,m\le2\cdot10^5$ overall, we cannot for each $k$ separately recompute a big union from scratch.  Instead we do a single **sweep** over $k=1\ldots n$ in $O((n+m)\log n)$ time with a segment‐tree that maintains the *current* union‐size of all chosen intervals, supporting
+
+- range‐add $+1$ or $-1$ to indicate inserting or deleting an interval,
+- and a query of “how many positions have coverage $\ge1$.”
+
+We do this:
+
+1.  **Label each friendship** $i$ with  
+    - its *clockwise* arc (which on the cycle is always the interval of edges 
+      \[
+         [\,a_i,\;b_i-1\,]
+      \]
+      since $a_i<b_i$)  
+    - and its *counterclockwise* arc, which is the complementary wrap‐around interval
+      \[
+         [\,b_i,n\,]\;\cup\;[\,1,a_i-1\,].
+      \]
+      This may split into at most two linear intervals on $[1..n]$.
+
+2.  We will keep in the segment tree the **union** of exactly one arc per friendship:  
+    - initially (before any cut) we assume **all** friendships use their *clockwise* arc, so we bulk‐add (+1) the segment $[a_i,b_i-1]$ for every $i$.  
+    - now we sweep $k=1,2,\dots,n$.  Each time $k$ passes from $k-1$ to $k$, those friendships whose clockwise‐arc *begins* at $k$ (i.e.\ $a_i=k$) become *active*—we must “switch” them from clockwise‐interval to counterclockwise.  Likewise those whose removal point is $k$ (i.e.\ $b_i=k$) become inactive (switch back).
+
+   Concretely at an event for friendship $i$ with delta $+1$ (entering active set) we do
+
+     – **remove** its clockwise range by range‐add $-1$,  
+     – **add** its counterclockwise ranges by range‐add $+1$.  
+
+   And on a delta $-1$ event we undo that:
+
+     – **remove** counterclockwise by $-1$,  
+     – **add** clockwise by $+1$.
+
+3.  After processing all events at position $k$, the segment‐tree knows how many edges among $\{1,\dots,n\}$ are currently covered by at least one chosen interval.  But *by construction* none of the active counterclockwise arcs nor the remaining clockwise arcs will cover the *cut* edge $k$, so the segment‐tree’s “covered‐count” is exactly $L_k$, the total number of *maintained* edges when we cut at $k$.  
+
+4.  We keep $\min_k L_k$ and output that.
+
+Overall each friendship produces just two events ($+1$ at $a_i$, $-1$ at $b_i$), each event causes up to three range‐updates (one for the clockwise interval, two for the wrap in counterclockwise).  Each update is $O(\log n)$ in a lazy segment‐tree; sweeping all $k=1..n$ is $O(n+m)$ events.  Thus $O((n+m)\log n)$ total per test, which fits easily in 3 s for $n,m\le2\cdot10^5$.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAX = 200000;  // sum of n, m ≤ 2⋅10^5
+    // segment tree arrays
+    static int[] mn, cnt, lazy;
+
+    // Friendship data
+    static int[] a, b;
+    static int[] cwL, cwR;            // clockwise interval [cwL..cwR]
+    // counterclockwise arcs may wrap -> up to two pieces:
+    static int[] ccw1L, ccw1R, ccw2L, ccw2R;
+    static boolean[] hasCcw2;
+
+    // Events for sweeping k = 1..n:
+    // at k we have a list of (friendshipIndex, delta=±1) 
+    static List<int[]>[] events;
+
+    // Build or rebuild a segment tree on [1..n]
+    static void buildTree(int idx, int left, int right) {
+        mn[idx] = 0;
+        lazy[idx] = 0;
+        cnt[idx] = right - left + 1;  // initially all zero => all are "min"
+        if (left == right) return;
+        int mid = (left + right) >> 1;
+        buildTree(idx << 1, left, mid);
+        buildTree(idx << 1 | 1, mid + 1, right);
+    }
+
+    // push down lazy
+    static void pushDown(int idx) {
+        if (lazy[idx] != 0) {
+            int v = lazy[idx];
+            for (int c = idx<<1; c <= (idx<<1|1); c++) {
+                mn[c] += v;
+                lazy[c] += v;
+            }
+            lazy[idx] = 0;
+        }
+    }
+
+    // pull up
+    static void pullUp(int idx) {
+        int L = idx<<1, R = L|1;
+        if (mn[L] < mn[R]) {
+            mn[idx] = mn[L];
+            cnt[idx] = cnt[L];
+        } else if (mn[R] < mn[L]) {
+            mn[idx] = mn[R];
+            cnt[idx] = cnt[R];
+        } else {
+            mn[idx] = mn[L];
+            cnt[idx] = cnt[L] + cnt[R];
+        }
+    }
+
+    // range add v to [ql..qr]
+    static void update(int idx, int left, int right, int ql, int qr, int v) {
+        if (ql > qr || ql > right || qr < left) return;
+        if (ql <= left && right <= qr) {
+            mn[idx] += v;
+            lazy[idx] += v;
+            return;
+        }
+        pushDown(idx);
+        int mid = (left + right) >> 1;
+        update(idx<<1, left, mid, ql, qr, v);
+        update(idx<<1|1, mid+1, right, ql, qr, v);
+        pullUp(idx);
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer tok = new StringTokenizer(in.readLine());
+        int T = Integer.parseInt(tok.nextToken());
+
+        // Pre–allocate big arrays
+        mn   = new int[4*MAX+4];
+        cnt  = new int[4*MAX+4];
+        lazy = new int[4*MAX+4];
+
+        a = new int[MAX+1];
+        b = new int[MAX+1];
+        cwL = new int[MAX+1];
+        cwR = new int[MAX+1];
+        ccw1L = new int[MAX+1];
+        ccw1R = new int[MAX+1];
+        ccw2L = new int[MAX+1];
+        ccw2R = new int[MAX+1];
+        hasCcw2 = new boolean[MAX+1];
+
+        events = new ArrayList[MAX+2];
+        for(int i=0;i<events.length;i++){
+            events[i] = new ArrayList<>();
+        }
+
+        while (T-- > 0) {
+            tok = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(tok.nextToken());
+            int m = Integer.parseInt(tok.nextToken());
+
+            // clear events[1..n]
+            for (int i = 1; i <= n+1; i++) {
+                events[i].clear();
+            }
+
+            // read friendships
+            for (int i = 1; i <= m; i++) {
+                tok = new StringTokenizer(in.readLine());
+                a[i] = Integer.parseInt(tok.nextToken());
+                b[i] = Integer.parseInt(tok.nextToken());
+            }
+
+            // prepare intervals and events
+            for (int i = 1; i <= m; i++) {
+                int A = a[i], B = b[i];
+                // clockwise arc = [A..B-1]
+                cwL[i] = A;
+                cwR[i] = B - 1;
+
+                // counterclockwise is the complement: edges [B..n] plus [1..A-1]
+                if (B <= n) {
+                    ccw1L[i] = B;
+                    ccw1R[i] = n;
+                } else {
+                    ccw1L[i] = 1; ccw1R[i] = 0;  // empty
+                }
+                if (A > 1) {
+                    ccw2L[i] = 1;
+                    ccw2R[i] = A - 1;
+                    hasCcw2[i] = true;
+                } else {
+                    hasCcw2[i] = false;
+                }
+
+                // sweeping events for "cut position" k:
+                // when k = A we enter the cw-interval => must switch to ccw => delta=+1
+                // when k = B we leave cw => switch back => delta=-1
+                events[A].add(new int[]{ i, +1 });
+                events[B].add(new int[]{ i, -1 });
+            }
+
+            // build segment tree on [1..n]
+            buildTree(1,1,n);
+
+            // initially add *all* cw-intervals
+            for (int i = 1; i <= m; i++) {
+                int L = cwL[i], R = cwR[i];
+                // note R >= L always since a<b
+                update(1,1,n, L, R, +1);
+            }
+
+            // sweep k=1..n
+            int answer = n;  // upper bound
+            for (int k = 1; k <= n; k++) {
+                // process all events at k
+                for (var ev : events[k]) {
+                    int idx = ev[0], d = ev[1];
+                    if (d == +1) {
+                        // friendship idx becomes active => remove cw, add ccw
+                        update(1,1,n, cwL[idx], cwR[idx], -1);
+                        // add the ccw pieces
+                        update(1,1,n, ccw1L[idx], ccw1R[idx], +1);
+                        if (hasCcw2[idx]) {
+                            update(1,1,n, ccw2L[idx], ccw2R[idx], +1);
+                        }
+                    } else {
+                        // d == -1 => goes inactive => remove ccw, add cw back
+                        update(1,1,n, ccw1L[idx], ccw1R[idx], -1);
+                        if (hasCcw2[idx]) {
+                            update(1,1,n, ccw2L[idx], ccw2R[idx], -1);
+                        }
+                        update(1,1,n, cwL[idx], cwR[idx], +1);
+                    }
+                }
+                // now the segment tree's mn=0 count = number of edges *not* covered.
+                // covered = n - (#not covered).
+                int notCov = cnt[1];     // at root, mn[1] must be 0, and cnt[1] how many zeros
+                int covered = n - notCov;
+                answer = Math.min(answer, covered);
+            }
+
+            // print
+            System.out.println(answer);
+        }
+    }
+}
+```
+
+**How it works**
+
+1. We label each friendship \(i\) by  
+   *clockwise* interval  
+     \[
+        [\,a_i,\;b_i-1\,]
+     \]  
+   (which never wraps since \(a_i<b_i\) in input),  
+   and *counterclockwise* (its complement on the cycle), which *may* wrap:  
+     \[
+       [b_i,n]\;\cup\;[1,a_i-1].
+     \]
+
+2. We choose a “cut‐edge” \(k\).  Any friendship whose clockwise‐arc covers \(k\) must use the counterclockwise arc instead (so that the cut edge \(k\) is out of the maintained set).  All others use their clockwise arc.
+
+3. We sweep \(k=1,2,\dots,n\).  We maintain in a segment‐tree over edges \(\{1,\dots,n\}\) the *current* union of intervals, exactly one per friendship, by *range‐adding* \(+1\) when we insert an interval and \(-1\) when we delete it.  The segment‐tree stores, for each position, the *cover‐count*; from that it also keeps how many positions are at count \(0\) versus \(\ge1\).  
+
+4.  Initially (before \(k=1\)) we assume *all* friendships use their *clockwise* arcs, so we bulk‐add them all.  Then at \(k\) we have two kinds of events:
+
+   - **enter** event \((i,+1)\) at \(k=a_i\): friendship \(i\) becomes active ⇒ remove its clockwise arc (–1) and add its counterclockwise piece(s) (+1).  
+   - **exit** event \((i,-1)\) at \(k=b_i\): reverse that operation.
+
+5.  After processing events at each \(k\), the tree’s “covered count” = #edges with coverage ≥1 is exactly the number of roads maintained if we cut at \(k\).  We take the minimum over all \(k\).
+
+Time is \(O((n+m)\log n)\) per test, which safely handles \(n,m\) up to \(2\times10^5\).

@@ -1,0 +1,276 @@
+**Analysis**
+
+Let \(a_1,\dots,a_n\) be the given integers (each \(0\le a_i<1024\)) and let each \(a_i\) be included in the multiset \(S\) independently with probability
+
+\[
+  p_i \;=\;\frac{\pi_i}{10^4}
+  \quad(\pi_i\in\{1,2,\dots,10000\}),
+\]
+so that
+\[
+  X \;=\;f(S)\;=\;\bigoplus_{i:\,i\in S} a_i
+\]
+is the random XOR‐sum, and we wish to compute
+
+\[
+  \mathbb{E}[X^2]
+  \;=\;
+  \sum_{b=0}^{9}\sum_{c=0}^{9}
+    2^b\,2^c\,
+    \mathbb{E}\bigl[\bigl(\text{bit}_b(X)\bigr)\,\bigl(\text{bit}_c(X)\bigr)\bigr],
+\]
+where \(\text{bit}_b(X)\in\{0,1\}\) is the \(b\)-th bit of \(X\).
+
+Key fact: if
+\[
+  U = \sum_{i\in A}X_i \pmod 2,
+  \quad
+  V = \sum_{i\in B}X_i \pmod 2,
+\]
+where \(X_i\sim\mathrm{Bernoulli}(p_i)\) are independent, then
+\[
+  \Pr(U=1,V=1)
+  \;=\;
+  \frac{1 - \mathbb{E}[(-1)^U] \;-\;\mathbb{E}[(-1)^V]
+          \;+\;\mathbb{E}[(-1)^{U+V}]}{4}.
+\]
+But
+\[
+  \mathbb{E}\bigl[(-1)^{\sum_{i\in A}X_i}\bigr]
+    = \prod_{i\in A}\bigl(1 - 2p_i\bigr),
+  \quad
+  \mathbb{E}\bigl[(-1)^{U+V}\bigr]
+    = \prod_{i\in A\triangle B}\!\!(1-2p_i).
+\]
+In our setting, for bit‐position \(b\), let
+\[
+  S_b \;=\;\prod_{\,i:\,(a_i)_b=1}\,(1 - 2p_i)
+  \quad(\bmod 10^9+7),
+\]
+and for two bit‐positions \(b,c\),
+\[
+  S_{b\oplus c}
+  \;=\;
+  \prod_{\,i:\;(a_i)_b\oplus(a_i)_c=1}\,(1 - 2p_i).
+\]
+Then
+\[
+  \Pr(\text{bit}_b(X)=1,\;\text{bit}_c(X)=1)
+  \;=\;
+  \frac{1 - S_b - S_c + S_{b\oplus c}}{4}
+  \quad(\bmod\,10^9+7).
+\]
+Hence
+\[
+  \mathbb{E}[X^2]
+  \;=\;
+  \sum_{b=0}^9\sum_{c=0}^9
+    2^b\,2^c
+    \;\bigl(\tfrac{1 - S_b - S_c + S_{b\oplus c}}4\bigr).
+\]
+
+We need only 10 bits (\(0\) through \(9\)), so a naïve double‐sum is \(100\) terms.  The nontrivial part is computing all the \(S_b\) and \(S_{b\oplus c}\) efficiently under the usual modulus \(M=10^9+7\).  Since each \(a_i\) is in \([0,1023]\), we can group together all indices \(i\) with the same mask \(m=a_i\).  Define
+
+\[
+  G[m] \;=\;\prod_{\,i:\,a_i=m} (\,1 - 2p_i)\pmod M.
+\]
+
+Then
+
+- \(S_b = \displaystyle\prod_{\,m:\,(m\text{ has bit }b=1)} G[m]\),
+- \(S_{b\oplus c} = \displaystyle\prod_{\,m:\,(m_b\oplus m_c)=1}G[m].\)
+
+Since there are at most \(1024\) masks, and we only need to multiply \(G[m]\) into at most \(10\) different \(S_b\) and at most \(100\) different \(S_{b\oplus c}\), the overall work per test is \(O(n + \#\text{distinct masks}\times 10)\), which is very fast.  Finally, we do the \(100\)‐term double sum to get the answer.
+
+Below is a Java implementation using exactly this plan.  It runs in \(O(n + 100)\) per test case (amortized), and easily handles \(\sum n\le 2\cdot10^5\) in under a second or two.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+    static final int MAXMASK = 1<<10;  // 1024
+    static int inv10000, inv4;
+    static int[] pow2 = new int[10];
+    // bitsOfMask[m] = array of bit‐positions that are 1 in m
+    static int[][] bitsOfMask = new int[MAXMASK][];
+    
+    public static void main(String[] args) throws IOException {
+        precomputeStatics();
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int t = Integer.parseInt(st.nextToken());
+        
+        // We'll reuse these arrays across test‐cases to avoid repeated allocation:
+        int[] G = new int[MAXMASK];
+        boolean[] active = new boolean[MAXMASK];
+        ArrayList<Integer> activeList = new ArrayList<>();
+        
+        StringBuilder sb = new StringBuilder();
+        for (int _case = 0; _case < t; _case++) {
+            int n = Integer.parseInt(br.readLine().trim());
+            
+            // read a_i
+            st = new StringTokenizer(br.readLine());
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+            
+            // read p_i, form w_i = (1 - 2 p_i) mod
+            st = new StringTokenizer(br.readLine());
+            activeList.clear();
+            for (int i = 0; i < n; i++) {
+                int pi = Integer.parseInt(st.nextToken());
+                // p_i mod M = pi * inv10000 mod M
+                long pmod = (long)pi * inv10000 % MOD;
+                // w_i = 1 - 2 p_i
+                int w = (int)((1 - 2*pmod + 2L*MOD) % MOD);
+                int m = a[i];
+                if (!active[m]) {
+                    active[m] = true;
+                    G[m] = w;
+                    activeList.add(m);
+                } else {
+                    G[m] = (int)((long)G[m] * w % MOD);
+                }
+            }
+            
+            // Compute S_b for b=0..9
+            int[] S_b = new int[10];
+            Arrays.fill(S_b, 1);
+            for (int m : activeList) {
+                int g = G[m];
+                for (int b : bitsOfMask[m]) {
+                    S_b[b] = (int)((long)S_b[b] * g % MOD);
+                }
+            }
+            
+            // Compute S_{b⊕c} in a 10×10 array
+            int[][] S_xor = new int[10][10];
+            for (int b = 0; b < 10; b++) {
+                for (int c = 0; c < 10; c++) {
+                    S_xor[b][c] = 1;
+                }
+            }
+            // For each active mask m, multiply G[m] into those pairs (b,c)
+            // for which bit_b(m)⊕bit_c(m)=1
+            for (int m : activeList) {
+                int g = G[m];
+                // we'll use bitsOfMask[m] = positions of ones
+                // and for each b in that set we do c's that are zeros
+                for (int b : bitsOfMask[m]) {
+                    for (int c = 0; c < 10; c++) {
+                        if (((m >> c) & 1) == 0) {
+                            // (b,c) and (c,b) both need multiplying
+                            S_xor[b][c] = (int)((long)S_xor[b][c] * g % MOD);
+                            S_xor[c][b] = (int)((long)S_xor[c][b] * g % MOD);
+                        }
+                    }
+                }
+            }
+            
+            // Now form the double sum
+            long answer = 0;
+            for (int b = 0; b < 10; b++) {
+                for (int c = 0; c < 10; c++) {
+                    // numerator = 1 - S_b - S_c + S_{b⊕c}
+                    long num = 1 - S_b[b] - S_b[c] + S_xor[b][c];
+                    num %= MOD;
+                    if (num < 0) num += MOD;
+                    // divide by 4
+                    long term = num * inv4 % MOD;
+                    // multiply by 2^b * 2^c
+                    term = term * pow2[b] % MOD * pow2[c] % MOD;
+                    answer += term;
+                }
+            }
+            
+            answer %= MOD;
+            sb.append(answer).append('\n');
+            
+            // clear active[] for next test
+            for (int m : activeList) {
+                active[m] = false;
+            }
+        }
+        
+        System.out.print(sb);
+    }
+    
+    /** Precompute factorials, inverses, powers of two, and bit‐lists. */
+    static void precomputeStatics() {
+        inv10000 = modInv(10000, MOD);
+        inv4 = modInv(4, MOD);
+        pow2[0] = 1;
+        for (int i = 1; i < 10; i++) {
+            pow2[i] = (int)((pow2[i-1] * 2L) % MOD);
+        }
+        // build bit lists for masks 0..1023
+        for (int m = 0; m < MAXMASK; m++) {
+            int cnt = Integer.bitCount(m);
+            bitsOfMask[m] = new int[cnt];
+            int idx = 0;
+            for (int b = 0; b < 10; b++) {
+                if (((m >> b) & 1) != 0) {
+                    bitsOfMask[m][idx++] = b;
+                }
+            }
+        }
+    }
+    
+    /** Fast exponentiation a^p mod m. */
+    static long modPow(long a, long p, int m) {
+        long r = 1 % m;
+        a %= m;
+        while (p > 0) {
+            if ((p & 1) != 0) r = (r * a) % m;
+            a = (a * a) % m;
+            p >>= 1;
+        }
+        return r;
+    }
+    
+    /** Modular inverse of a mod m (m prime) via Fermat's little theorem. */
+    static int modInv(int a, int m) {
+        return (int)modPow(a, m - 2, m);
+    }
+}
+```
+
+**Explanation of the main steps**
+
+1. **Probability transform**  
+   We read each probability \(\pi_i/10000\), convert it modulo \(10^9+7\) by multiplying \(\pi_i\) with \(\text{inv}(10000)\), and then form  
+   \[
+     w_i = 1 \;-\; 2\,p_i \pmod{10^9+7}.
+   \]
+   Such a factor \(w_i\) encodes the contribution of the \(i\)-th Bernoulli trial to \(\;\mathbb{E}[(-1)^{\mathrm{sum}}]\).
+
+2. **Mask‐grouping**  
+   Since each \(a_i\) is in \([0,1023]\), we group all equal masks together.  We maintain  
+   \[
+     G[m] \;=\;\prod_{\,i:\,a_i=m} w_i,
+   \]
+   so in the end there are at most 1024 groups, no matter how large \(n\) is.
+
+3. **Computing \(S_b\) and \(S_{b\oplus c}\)**  
+   - \(S_b=\prod G[m]\) over all masks \(m\) that have bit \(b\) set.  
+   - \(S_{b\oplus c}=\prod G[m]\) over all masks \(m\) whose bits \(b\) and \(c\) differ.  
+
+   We do a small loop over the *active* masks (those that occurred in this test) and multiply into the relevant \(S_b\) or \(S_{b\oplus c}\).  This costs only \(O(\#\text{active masks}\times 10)\) or so.
+
+4. **Summation**  
+   Finally
+   \[
+     \mathbb{E}[X^2]
+     =
+     \sum_{b=0}^9\sum_{c=0}^9
+     2^b\,2^c
+     \;\frac{1 - S_b - S_c + S_{b\oplus c}}{4}
+     \;(\bmod\,10^9+7),
+   \]
+   which is a straight double sum of 100 terms.
+
+Because each test runs in \(O(n + 100)\) time and \(\sum n\le2\times10^5\), this solution easily passes within the usual time and memory limits.

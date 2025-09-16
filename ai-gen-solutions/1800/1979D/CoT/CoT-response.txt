@@ -1,0 +1,217 @@
+**Analysis**
+
+We have a binary string \(s\) of length \(n\) and an integer \(k\) dividing \(n\).  We want to apply exactly one special operation (reverse the first \(p\) characters, then cyclic‐rotate left by \(p\)) so that the resulting string \(t\) is *\(k\)–proper*.  A string is \(k\)–proper if it is made of blocks of length \(k\), alternating between all-zero and all-one blocks.  There are exactly two such target patterns of length \(n\):
+
+\[
+T_0 = \underbrace{0\ldots0}_{k}\underbrace{1\ldots1}_{k}\underbrace{0\ldots0}_{k}\cdots,
+\quad
+T_1 = \underbrace{1\ldots1}_{k}\underbrace{0\ldots0}_{k}\underbrace{1\ldots1}_{k}\cdots
+\]
+
+We must find a \(p\in[1,n]\) so that the operation produces *exactly* \(T_0\) or \(T_1\), or report \(-1\) if impossible.
+
+Let us denote the operation on \(s\) by selecting \(p\), reversing the prefix \(s[1..p]\), then cyclically shifting left by \(p\).  It is easy to see the final string
+\[
+t = s[p+1..n] \;\|\; \bigl(\text{reverse}(s[1..p])\bigr).
+\]
+We therefore need
+\[
+t \;=\; T \quad\bigl(T\in\{T_0,T_1\}\bigr).
+\]
+Equivalently
+
+1. The first \(n-p\) characters of \(t\) must match the first \(n-p\) of \(T\):
+   \[
+     s[p+1..n]\;=\;T[1..\,n-p].
+   \]
+2. The last \(p\) characters of \(t\) must match the last \(p\) of \(T\):
+   \[
+     \text{reverse}\bigl(s[1..p]\bigr)\;=\;T[n-p+1..n].
+   \]
+   Equivalently
+   \[
+     s[1..p]\;=\;\text{reverse}\bigl(T[n-p+1..n]\bigr).
+   \]
+
+We solve this in \(O(n)\) per test by string–matching (Z –algorithm).
+
+1.  Build the candidate target \(T\).
+2.  Compute \(Z\)-array on  
+   \(\;U_2 = \bigl(\text{reverse}(T)\bigr)\;\#\;s\).  
+   At the position where \(s\) begins (namely index \(n+1\) in \(U_2\)), the Z‐value  
+   \[
+     Z_2[n+1]
+   \]
+   is the maximal prefix‐match length, i.e.\ the largest \(p_{\max}\) such that  
+   \(s[1..p_{\max}]=\text{reverse}(T)[1..p_{\max}]\).  Hence any valid \(p\) must satisfy  
+   \(1\le p\le p_{\max}\).
+
+3.  For each \(p=1\ldots p_{\max}\) we must also check  
+   \(\;s[p+1..n]=T[1..(n-p)]\).  
+   We do that by computing \(Z\)-array on  
+   \(\;U_1 = T\;\#\;s\),  
+   and inspecting  
+   \[
+     Z_1[n+1 + p]\;\ge\;n-p.
+   \]
+   If so, we have found a valid \(p\).  If \(p_{\max}=n\), it means \(s\) fully matches \(\text{reverse}(T)\), so \(p=n\) also works.
+
+We try this for \(T_0\) (starting block of zeros) first, and if no \(p\) is found we repeat with \(T_1\).  If still no solution, answer \(-1\).
+
+Overall each test takes \(O(n)\) time (building two Z‐arrays of length \(2n+1\)), and since \(\sum n \le 2\cdot10^5\), this is efficient.
+
+---
+
+```java
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.io.PrintWriter;
+
+public class Main {
+    // Compute Z-array in O(N)
+    // z[i] = length of longest substring starting i which matches prefix of s
+    static int[] buildZ(char[] s) {
+        int n = s.length;
+        int[] z = new int[n];
+        int l = 0, r = 0;
+        for (int i = 1; i < n; i++) {
+            if (i <= r) {
+                z[i] = Math.min(r - i + 1, z[i - l]);
+            }
+            while (i + z[i] < n && s[z[i]] == s[i + z[i]]) {
+                z[i]++;
+            }
+            if (i + z[i] - 1 > r) {
+                l = i;
+                r = i + z[i] - 1;
+            }
+        }
+        return z;
+    }
+
+    // Try to find a valid p so that the operation on s yields target-pattern T
+    // Returns p (1..n) or -1 if none.
+    static int findP(int n, int k, char[] s, char[] T) {
+        // Build U2 = reverse(T) # s
+        char[] u2 = new char[n + 1 + n];
+        // reverse(T)
+        for (int i = 0; i < n; i++) {
+            u2[i] = T[n - 1 - i];
+        }
+        u2[n] = '#';
+        System.arraycopy(s, 0, u2, n + 1, n);
+        int[] z2 = buildZ(u2);
+        // p_max = how many chars of s match reverse(T)
+        int pMax = z2[n + 1];
+        if (pMax <= 0) {
+            // no nonzero p can satisfy the reversed-prefix condition
+            return -1;
+        }
+        if (pMax >= n) {
+            // full match => we can take p = n
+            return n;
+        }
+        // Now build U1 = T # s to check the first condition
+        char[] u1 = new char[n + 1 + n];
+        System.arraycopy(T, 0, u1, 0, n);
+        u1[n] = '#';
+        System.arraycopy(s, 0, u1, n + 1, n);
+        int[] z1 = buildZ(u1);
+        // Try each p in [1..pMax]
+        for (int p = 1; p <= pMax; p++) {
+            // we need s[p..n-1] == T[0..n-p-1], i.e. Z1 at position (n+1+p)
+            if (z1[n + 1 + p] >= (n - p)) {
+                return p;
+            }
+        }
+        return -1;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            String[] nk = in.readLine().trim().split(" ");
+            int n = Integer.parseInt(nk[0]);
+            int k = Integer.parseInt(nk[1]);
+            char[] s = in.readLine().trim().toCharArray();
+
+            // Build the two alternating-block patterns T0, T1
+            int m = n / k;  // number of blocks
+            char[] T0 = new char[n];
+            char[] T1 = new char[n];
+
+            for (int block = 0; block < m; block++) {
+                // block even => same as block 0; block odd => opposite
+                char c0 = ((block & 1) == 0 ? '0' : '1');
+                char c1 = ((block & 1) == 0 ? '1' : '0');
+                for (int i = 0; i < k; i++) {
+                    T0[block * k + i] = c0;
+                    T1[block * k + i] = c1;
+                }
+            }
+
+            // Try T0 first
+            int ans = findP(n, k, s, T0);
+            if (ans < 0) {
+                // Try T1
+                ans = findP(n, k, s, T1);
+            }
+            out.println(ans);
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Characterization of \(k\)–proper strings.**  
+   Any \(k\)–proper string of length \(n\) must consist of alternating blocks of length \(k\), either  
+   \[0^k\,1^k\,0^k\,1^k\cdots\]  
+   or  
+   \[1^k\,0^k\,1^k\,0^k\cdots\].  
+   We call these two patterns \(T_0\) and \(T_1\).
+
+2. **Operation in closed form.**  
+   If we pick \(p\), after reversing the prefix of length \(p\) and rotating left by \(p\), the new string is  
+   \[
+     t \;=\; s[p+1..n]\;\bigl\|\;\mathrm{rev}\bigl(s[1..p]\bigr).
+   \]
+
+3. **Reducing to two string–matches.**  
+   We need
+   - \(s[p+1..n]\;=\;T[1..\,n-p]\),
+   - \(\mathrm{rev}(s[1..p])\;=\;T[n-p+1..n]\).
+
+   The second is equivalent to  
+   \[
+     s[1..p]\;=\;\mathrm{rev}\bigl(T[n-p+1..n]\bigr).
+   \]
+   We do that in \(O(n)\) via a single Z-algorithm on
+   \[
+     U_2 = \bigl(\mathrm{reverse}(T)\bigr)\;\#\;s,
+   \]
+   whose Z-value at the start of \(s\) tells us the maximum \(p\) for which
+   \(\,s[1..p]=\mathrm{reverse}(T)[1..p]\).
+
+4. **Checking the first part.**  
+   Once we know all \(p\le p_{\max}\) satisfy the reversed‐prefix match, for each such \(p\) we must also ensure
+   \[
+     s[p+1..n]=T[1..n-p].
+   \]
+   We do that by another Z-array on
+   \[
+     U_1 = T\;\#\;s
+   \]
+   and verifying
+   \(\,Z_1[n+1+p]\ge n-p\).
+
+5. **Complexity.**  
+   Each test builds two Z-arrays of size \(2n+1\), so \(O(n)\) per test.  Since \(\sum n\le2\cdot10^5\), this runs well within the limits.
+
+This solves the problem in \(O(\sum n)\) overall, which is efficient for \(n\) up to \(10^5\) per test and total \(\sum n\le2\cdot10^5\).

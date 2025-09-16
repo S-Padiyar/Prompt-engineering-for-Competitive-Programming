@@ -1,0 +1,204 @@
+**Analysis**
+
+We have two rooted trees:
+
+1. Penchick’s tree \(T\) of \(n\) nodes (arbitrary shape).
+2. Chloe’s initial tree: a *perfect* binary tree of depth \(d\) (every internal node has exactly 2 children, all leaves at the same depth \(d\)).
+
+Chloe is allowed only one kind of operation on her tree:
+
+> Pick an edge \((u,v)\) (where \(u\) is the parent of \(v\)), “contract” it by deleting \(v\) and re‐attaching all children of \(v\) directly to \(u\).  In graph‐minor language this is exactly an edge‐contraction on the tree.
+
+We want the minimum \(d\) so that *after* some sequence of edge‐contractions, Chloe’s perfect binary tree of depth \(d\) becomes isomorphic (as a *rooted* tree) to Penchick’s tree \(T\).
+
+A well‐known fact in tree‐minors is that contracting edges in a perfect binary tree allows you to “merge out” entire levels, so a node at depth \(k\) can end up as a direct child of the root, etc.  One can show inductively that to realize a given rooted tree \(T\) as a contraction‐minor of a perfect binary tree of depth \(H\), it suffices (and is necessary) that for each node \(u\) of \(T\) with children \(v_1,\dots,v_k\), if each child‐subtree needs a “binary‐tree height” of \(\text{need}[v_i]\), then you can “schedule” those \(k\) subtrees into the capacity of a single perfect binary subtree of height \(H\) whose root will play the role of \(u\).
+
+More concretely:
+
+- We define \(\text{need}[u]\) = the minimum height \(H\) of a perfect binary tree which can be contracted so that its contracted form is exactly the subtree of \(T\) rooted at \(u\).
+- If \(u\) is a leaf in \(T\), then \(\text{need}[u]=0\) (a single node).
+- If \(u\) has children \(v_1,\dots,v_k\), each requiring \(\text{need}[v_i]\), then we must find the smallest \(H\) so that we can embed all \(k\) child‐subtrees inside a single perfect binary tree of height \(H\) *after* contracting edges to make each subtree a direct child of the root.
+
+  One shows that in such an embedding each child‐subtree \(v_i\) can be hung off at “depth” 
+  \[
+     d_i = H - \text{need}[v_i],
+  \]
+  counted from the root (so that below that point you still have \(\text{need}[v_i]\) levels left to realize the child‐subtree).  Since a perfect binary tree has exactly \(2^d\) nodes at depth \(d\), and node‐contraction is exactly the greedy matching of subtrees to these positions, it reduces to the classical “schedule \(k\) tasks with deadlines \(d_i\) on a machine that has capacity \(2^1\) at time \(1\), \(2^2\) at time \(2\), …, \(2^H\) at time \(H\).”
+
+  A standard necessary‐and‐sufficient check is to sort the deadlines \(d_i\) in ascending order and verify that by the \(j\)th deadline \(d_j\) you have used no more than
+  \[
+     \underbrace{2^1 + 2^2 + \cdots + 2^{d_j}}_{=2^{d_j+1}-2}
+  \]
+  slots.
+
+Thus we do a bottom‐up DP on \(T\):
+
+1.  Build the child‐adjacency for \(T\).
+2.  Process nodes in *reverse child‐count* order (leaves first).  You can do that by initializing a queue with all leaves, then each time you “finish” a node \(u\), you push its parent once *all* of the parent’s children are done.
+3.  For each node \(u\), collect the array \(\{\text{need}[v]\}\) of its children, sort ascending, then binary‐search the minimal height \(H\) that can schedule all deadlines
+   \[
+     d_i = H - \text{need}[v_i].
+   \]
+4.  The answer for the whole tree is \(\text{need}[1]\).
+
+Each node’s processing takes
+- sorting \(\deg(u)\) integers,
+- a little arithmetic to set up a binary‐search range,
+- \(O(\log N_u)\) trial‐checks, each \(O(\deg(u))\),
+
+where \(N_u\) is the number of children of \(u\).  Since \(\sum_u \deg(u)=n-1\) and depths do not exceed \(n\), this runs in \(O(n\log n)\) overall, which is fine for \(n\le10^6\).
+
+Below is the complete Java implementation with fast I/O.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 1000000 + 5;
+    // adjacency in "forward star" form
+    static int[] head = new int[MAXN], nxt = new int[MAXN], to = new int[MAXN];
+    static int[] parent = new int[MAXN], deg = new int[MAXN], need = new int[MAXN];
+    static int[] queue = new int[MAXN], tmp = new int[MAXN];
+    
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+        StringTokenizer st;
+        
+        int t = Integer.parseInt(br.readLine());
+        int ePtr = 0;  // pointer into our edge‐arrays
+        
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine());
+            // initialize
+            for (int i = 1; i <= n; i++) {
+                head[i] = -1;
+                deg[i] = 0;
+            }
+            ePtr = 0;
+            
+            // read parents p[2..n]
+            st = new StringTokenizer(br.readLine());
+            parent[1] = 0;
+            for (int i = 2; i <= n; i++) {
+                int p = Integer.parseInt(st.nextToken());
+                parent[i] = p;
+                // build child‐list
+                to[ePtr] = i;
+                nxt[ePtr] = head[p];
+                head[p] = ePtr++;
+                deg[p]++;
+            }
+            
+            // we will process leaves first
+            int qh = 0, qt = 0;
+            for (int i = 1; i <= n; i++) {
+                if (deg[i] == 0) {
+                    queue[qt++] = i;
+                }
+            }
+            
+            // BFS‐like DP
+            while (qh < qt) {
+                int u = queue[qh++];
+                
+                if (head[u] < 0) {
+                    // no children => leaf => need=0
+                    need[u] = 0;
+                } else {
+                    // gather children's needs
+                    int cnt = 0;
+                    for (int e = head[u]; e != -1; e = nxt[e]) {
+                        tmp[cnt++] = need[to[e]];
+                    }
+                    // sort ascending
+                    Arrays.sort(tmp, 0, cnt);
+                    // binary‐search minimal H
+                    // lower bound from max-child‐need+1
+                    int maxChildNeed = tmp[cnt-1];
+                    int low = maxChildNeed + 1;
+                    // also must have total capacity >= cnt:
+                    //   sum_{d=1..H} 2^d = 2^{H+1}-2 >= cnt
+                    //  => H >= ceil(log2(cnt+2)) - 1
+                    if (cnt > 0) {
+                        int tval = cnt + 2;
+                        int fl = 31 - Integer.numberOfLeadingZeros(tval);
+                        int ce = ((tval & (tval-1)) == 0 ? fl : fl+1);
+                        low = Math.max(low, ce - 1);
+                    }
+                    int high = low + cnt; // a safe upper bound
+                    
+                    int ans = high;
+                    while (low <= high) {
+                        int mid = (low + high) >>> 1;
+                        if (canSchedule(mid, tmp, cnt)) {
+                            ans = mid;
+                            high = mid - 1;
+                        } else {
+                            low = mid + 1;
+                        }
+                    }
+                    need[u] = ans;
+                }
+                
+                // push parent once all its children done
+                int p = parent[u];
+                if (p != 0) {
+                    if (--deg[p] == 0) {
+                        queue[qt++] = p;
+                    }
+                }
+            }
+            
+            // answer for this test is need[1]
+            out.println(need[1]);
+        }
+        
+        out.flush();
+    }
+    
+    /** 
+     * Check if a perfect binary tree of height H can
+     * schedule these cnt child‐needs (in tmp[0..cnt)),
+     * i.e. deadlines d_i = H - tmp[k-1-i], sorted ascending,
+     * and capacity at time x is 2^1 + ... + 2^x = 2^{x+1}-2.
+     */
+    static boolean canSchedule(int H, int[] arr, int cnt) {
+        for (int i = 0; i < cnt; i++) {
+            // l_i = largest‐first => arr[cnt-1-i]
+            int lval = arr[cnt-1 - i];
+            int d = H - lval;
+            if (d < 1) return false;
+            if (d < 31) {
+                long cap = (1L << (d+1)) - 2; 
+                if (cap < i+1) return false;
+            }
+            // if d>=31, capacity >> 1e6 so surely ok
+        }
+        return true;
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1. **`need[u]` definition.**  
+   `need[u]` = the minimum height \(H\) of a perfect binary tree which, after contracting edges appropriately, becomes the exact subtree of \(T\) rooted at \(u\).  
+   - If \(u\) is a leaf, we just need a single node, so `need[u] = 0`.
+   - Otherwise, if \(u\) has children \(v_1,\dots,v_k\) each requiring `need[v_i]`, we must pack those \(k\) subtrees into a *single* perfect binary subtree of height \(H\).  
+
+2. **Scheduling‐view of contraction.**  
+   In a perfect binary tree of height \(H\), there are \(2^d\) nodes at depth \(d\).  By contracting the path from the root down to some node at depth \(d\), one can make that node a *direct* child of the root in the final contracted tree, at the cost of “burning” those \(d\) levels.  To support a child‐subtree of height `need[v_i]`, you must pick depth \(d\le H-\text{need}[v_i]\).  Thus each child‐subtree becomes a “task with deadline”  
+   \[
+      d_i = H \;-\;\text{need}[v_i].
+   \]
+   We have total capacity at depth \(1\) equal to \(2^1\), at depth \(2\) equal to \(2^2\), …, at depth \(d\) equal to \(\sum_{j=1}^d2^j=2^{d+1}-2\).  The standard greedy check for scheduling with deadlines says that, after sorting deadlines in ascending order, by the \(j\)-th deadline \(d_j\) we must have used no more than \(\sum_{r=1}^{d_j}2^r\) slots.
+
+3. **Bottom‐up DP without recursion.**  
+   - We store for each node \(u\) its list of children via a classic forward‐star adjacency.  
+   - We keep a counter `deg[u]` = # of children of \(u\).  Initialize a queue with all leaves (those with `deg[u]==0`).  
+   - Repeatedly pop a node \(u\) from the queue, compute `need[u]` by the above “sort + binary‐search the smallest \(H\) that schedules,” then decrement `deg[parent[u]]`; if that drops to zero we push the parent.  
+   - Eventually we compute `need[1]`, which is the minimum depth \(d\) Chloe needs.
+
+This runs in \(O\bigl(\sum_{u}\deg(u)\log \deg(u)\bigr)\approx O(n\log n)\) overall and easily handles \(n\) up to \(10^6\).

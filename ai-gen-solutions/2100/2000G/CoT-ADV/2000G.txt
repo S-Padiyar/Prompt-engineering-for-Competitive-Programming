@@ -1,0 +1,120 @@
+G. Call During the Journey
+time limit per test4 seconds
+memory limit per test256 megabytes
+You live in a city consisting of n
+ intersections and m
+ streets connecting some pairs of intersections. You can travel in either direction on each street. No two streets connect the same pair of intersections, and no street connects an intersection to itself. You can reach any intersection from any other, possibly passing through some other intersections.
+
+Every minute, you can board a bus at intersection ui
+ and travel for li1
+ minutes to intersection vi
+. Conversely, you can travel from intersection vi
+ to intersection ui
+ in li1
+ minutes. You can only board and exit the bus at intersections. You can only board the bus at an intersection if you are currently there.
+
+You can also walk along each street, which takes li2>li1
+ minutes.
+
+You can make stops at intersections.
+
+You live at intersection number 1
+. Today you woke up at time 0
+, and you have an important event scheduled at intersection number n
+, which you must reach no later than time t0
+. You also have a phone call planned that will last from t1
+ to t2
+ minutes (t1<t2<t0
+).
+
+During the phone call, you cannot ride the bus, but you can walk along any streets, make stops, or stay at home. You can exit the bus at minute t1
+ and board the bus again at minute t2
+.
+
+Since you want to get enough sleep, you became curious — how late can you leave home to have time to talk on the phone and still not be late for the event?
+
+Input
+The first line contains an integer t
+ (1≤t≤104
+) — the number of test cases. The following are the descriptions of the test cases.
+
+The first line of each test case contains two integers n
+, m
+ (2≤n≤105,1≤m≤105
+) — the number of intersections and streets in the city.
+
+The second line of each test case contains three integers t0
+, t1
+, t2
+ (1≤t1<t2<t0≤109
+) — the start time of the event, the start time of the phone call, and its end time, respectively.
+
+The next m
+ lines of each test case contain descriptions of the streets.
+
+The i
+-th line contains four integers ui
+, vi
+, li1
+, li2
+ (1≤ui,vi≤n
+, ui≠vi
+, 1≤li1<li2≤109
+) — the numbers of the intersections connected by the i
+-th street, as well as the travel time along the street by bus and on foot. It is guaranteed that no two streets connect the same pair of intersections and that it is possible to reach any intersection from any other.
+
+It is guaranteed that the sum of the values of n
+ across all test cases does not exceed 105
+. It is also guaranteed that the sum of the values of m
+ across all test cases does not exceed 105
+.
+
+Output
+For each test case, output a single integer — the latest time you can leave home to have time to talk on the phone and not be late for the event. If you cannot reach the event on time, output -1.
+
+Example
+InputCopy
+7
+5 5
+100 20 80
+1 5 30 100
+1 2 20 50
+2 3 20 50
+3 4 20 50
+4 5 20 50
+2 1
+100 50 60
+1 2 55 110
+4 4
+100 40 60
+1 2 30 100
+2 4 30 100
+1 3 20 50
+3 4 20 50
+3 3
+100 80 90
+1 2 1 10
+2 3 10 50
+1 3 20 21
+3 2
+58 55 57
+2 1 1 3
+2 3 3 4
+2 1
+12 9 10
+2 1 6 10
+5 5
+8 5 6
+2 1 1 8
+2 3 4 8
+4 2 2 4
+5 3 3 4
+4 5 2 6
+OutputCopy
+0
+-1
+60
+80
+53
+3
+2

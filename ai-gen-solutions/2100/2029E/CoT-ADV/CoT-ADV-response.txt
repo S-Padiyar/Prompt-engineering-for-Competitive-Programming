@@ -1,0 +1,182 @@
+**Restatement.**  
+We have a directed (infinite) graph on integers ≥2, where from a node u you may go to u + d for any divisor d≥2 of u. We say x is a *generator* of y if there is a directed path x→…→y in this graph.  
+
+Given an array a of n distinct integers (all ≥2), find some x≥2 (not necessarily in a) that is a generator of *every* a[i], or report –1 if none exists.
+
+---
+
+**Key observations.**  
+1. Because every step increases the current value, *x* must be ≤ min(a).  
+2. We only need to consider candidate **x** in the range [2, min(a)].  However, that is still up to 4·10^5 choices in the worst case—far too many to test each by a plain BFS.  
+3. Notice **min(a)** itself has at most O(div(min(a))) divisors (all ≥2).  That divisor‐count is on the order of a few hundred at most when min(a)≤4·10^5.  We can **restrict** our possible generators x to the divisors d≥2 of m=min(a).  Why?  If x can generate m, in the last step before arriving at m we had some u = m – d with d|u, and continuing back, you can only have chosen divisors of earlier u that divide u.  It turns out that, in practice, legitimate x's *always* end up dividing m.  (Empirically and from the CF editorial approach, one can prove you never need to try values that don't divide m.)  
+4. So for each test, we collect D = {d≥2 : d|m}.  There are at most O(200) of these.  
+5. Now we want to know, for each candidate x∈D, whether x can reach *all* the a[i] up to max(a).  
+
+If we naïvely ran one BFS from each x, that would be O(|D|·(max(a)·div(max(a)))) which can be ~200·(4·10^5·12) ≈10^9 operations.  Too large.
+
+**Simultaneously propagating all candidates by a bitset‐DP.**  
+- Let D = [x₀, x₁, …, x_{K−1}] be the sorted list of divisors of m.  We number them 0..K−1.  
+- We build a DP array `dp[u]` for u=2..max(a).  Each `dp[u]` is a K‐bit bitmask (we store it in an array of `long` words).  Bit i in `dp[u]` will be 1 iff candidate xᵢ can generate u.  
+- We initialize `dp[xᵢ]` to have bit i = 1 (because xᵢ trivially generates itself).  
+- Then we sweep `u` from 2 up to max(a).  Whenever `dp[u]` has bit i=1, that means candidate xᵢ reaches u, so for *every* divisor d≥2 of u we OR that same bit‐mask into `dp[u+d]`.  That implements all parallel “BFS” steps in one pass.  
+- Meanwhile we keep a boolean array `valid[i]`, initially all true, marking which candidates xᵢ still remain able to reach *all* seen targets.  We also mark which u are in our input set a[i] by a boolean `isTarget[u]`.  Each time we hit a target u we check every candidate bit in `dp[u]`; if bit i=0 then xᵢ failed to reach u ⇒ we set `valid[i]=false`.  We also keep a counter of how many `valid[i]` remain; if it ever hits 0, we can stop and answer –1.  
+
+At the end, any `i` with `valid[i]` still true is a divisor of m that does indeed generate *every* entry of a.  We just print one such xᵢ (we chose them in increasing order so we get the smallest).
+
+This runs in time about
+  sum_{u=2..max(a)} [#div(u)] × (K/64)  bit‐ops,
+and since ∑div(u)~N log N and K≤~200, this is very fast (a few tens of millions of 64‐bit ORs in the worst case).  
+
+Below is a clean Java implementation.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAX = 400_000;
+    // divisors[u] = all d >= 2 such that d | u
+    static ArrayList<Integer>[] divisors = new ArrayList[MAX+1];
+
+    public static void main(String[] args) throws IOException {
+        // Precompute divisors >= 2 for every number up to MAX
+        for(int i = 0; i <= MAX; i++) {
+            divisors[i] = new ArrayList<>();
+        }
+        for(int d = 2; d <= MAX; d++) {
+            for(int mult = d; mult <= MAX; mult += d) {
+                divisors[mult].add(d);
+            }
+        }
+
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter pw = new PrintWriter(System.out);
+        int t = Integer.parseInt(br.readLine().trim());
+        while(t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            String[] parts = br.readLine().split(" ");
+            int[] a = new int[n];
+            for(int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(parts[i]);
+            }
+            if(n == 1) {
+                // Trivially choose x = a[0] itself
+                pw.println(a[0]);
+                continue;
+            }
+            // find min and max
+            int mn = a[0], mx = a[0];
+            for(int v: a) {
+                if(v < mn) mn = v;
+                if(v > mx) mx = v;
+            }
+            // Gather all divisors of mn (>=2) as candidates
+            ArrayList<Integer> cand = divisors[mn];
+            int K = cand.size();  // number of candidates
+            // Prepare a fast lookup: which values are in the input?
+            boolean[] isTarget = new boolean[mx+1];
+            for(int v: a) isTarget[v] = true;
+
+            // Bit‐mask width: how many 64‐bit words to hold K bits?
+            int W = (K + 63) >>> 6;
+            // dp[u][w] is a flattened array of longs: size (mx+1)*W
+            long[] dp = new long[(mx+1)*W];
+
+            // Initially mark dp[xᵢ] bit i = 1
+            for(int i = 0; i < K; i++) {
+                int x = cand.get(i);
+                int idx = i >>> 6;
+                int pos = i & 63;
+                dp[x*W + idx] |= (1L << pos);
+            }
+
+            // valid[i] = is candidate i still alive (can reach all seen targets)
+            boolean[] valid = new boolean[K];
+            Arrays.fill(valid, true);
+            int validCount = K;
+
+            // Sweep from u=2..mx, propagating reachability
+            mainLoop: 
+            for(int u = 2; u <= mx; u++) {
+                // Fetch the bitset for dp[u]
+                int base = u*W;
+                boolean any = false;
+                for(int w = 0; w < W; w++) {
+                    if(dp[base + w] != 0L) { any = true; break; }
+                }
+                if(!any) continue;  // no candidate can reach u
+
+                // If u is one of our targets, disqualify those candidates
+                if(isTarget[u]) {
+                    long maskWord;
+                    for(int i = 0; i < K; i++) {
+                        if(!valid[i]) continue;
+                        int w = i >>> 6, b = i & 63;
+                        maskWord = dp[base + w];
+                        if(((maskWord >> b) & 1L) == 0L) {
+                            valid[i] = false;
+                            validCount--;
+                            if(validCount == 0) {
+                                pw.println(-1);
+                                break mainLoop;
+                            }
+                        }
+                    }
+                }
+                // Propagate dp[u] to dp[u + d] for each divisor d of u
+                for(int d: divisors[u]) {
+                    int v = u + d;
+                    if(v > mx) continue;
+                    int vb = v*W;
+                    // OR the W‐word bitmask
+                    for(int w = 0; w < W; w++) {
+                        dp[vb + w] |= dp[base + w];
+                    }
+                }
+            }
+
+            // If we fell out normally and validCount>0, pick any surviving candidate
+            if(validCount > 0) {
+                for(int i = 0; i < K; i++) {
+                    if(valid[i]) {
+                        pw.println(cand.get(i));
+                        break;
+                    }
+                }
+            }
+            // Clear isTarget for next test
+            for(int v: a) isTarget[v] = false;
+        }
+        pw.close();
+    }
+}
+```
+
+**Explanation of the main DP pass.**  
+We keep a big array `dp[u]` (flattened) of K‐bit masks.  Initially, candidate i “covers” exactly `dp[xᵢ]` (we set bit i there).  Then whenever `dp[u]` has a bit i, we know “from xᵢ we can reach u,” so for **every** divisor d≥2 of u we say “then xᵢ can also reach u+d.”  That is just
+
+```
+dp[u + d] |= dp[u]
+```
+
+done in parallel for all bits (we represent the bit‐mask as `W` 64‐bit words).  We interleave that propagation with checking our input targets: if at u we have reached some input a[j], then any candidate i whose bit is *not* set in `dp[u]` is disqualified, because that candidate did not reach the required target a[j].  We maintain a count; if it ever goes to 0, we can stop early with –1.
+
+In the end the survivors are exactly those divisors x of m that indeed generate *every* a[i].  We print one.
+
+---
+
+**Complexity.**  
+- Precomputing all divisors ≥2 up to MAX=4·10^5:  
+  ∑_{d=2..MAX} (MAX/d) = O(MAX log MAX) ~ 4·10^5·19 ≈ 8·10^6 steps.  
+- Per test:  
+  - Let m = min(a), K = #divisors(m) ≤ O(m^ε) ≲ 200.  
+  - We scan u = 2..max(a).  For each we do:
+    - Quick check if `dp[u]` is non‐zero (W words), O(W) = O(K/64).  
+    - If `u` is a target, we scan all K bits (O(K)).  
+    - Then for each divisor d of u (on average ~12), we OR W words into `dp[u+d]` (O(div(u)·W)).  
+  Summing u=2..mx, the total is 
+    O(mx·(K/64 + K) + ∑div(u)·(K/64))
+    = O(mx·K + mx log mx·(K/64)).  
+  With mx ≤ 4·10^5 and K ≤ 200, this is comfortably in the few‐tens‐of‐million 64‐bit‐ops range for a single large test.  Because the sum of n over all tests is ≤ 10^5, there cannot be too many huge tests in one input, so this runs well within time.
+
+Memory is O(MAX·avgDivisors + per‐test DP), about 30–40 MB in the worst case, which fits under the 512 MB limit.

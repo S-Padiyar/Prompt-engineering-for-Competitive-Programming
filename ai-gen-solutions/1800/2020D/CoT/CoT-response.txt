@@ -1,0 +1,241 @@
+**Analysis**
+
+We have \(n\) points labeled \(1,2,\dots,n\), initially all isolated.  Then we perform \(m\) operations; the \(i\)-th operation is specified by three integers \((a_i,d_i,k_i)\).  It picks the arithmetic progression
+
+\[
+a_i,\; a_i + d_i,\; a_i + 2d_i,\;\dots,\;a_i + k_i d_i
+\]
+
+and “connects every pair of these points by an arc.”  In graph‐theoretic (or DSU) terms, that means all those \(k_i+1\) points become part of the same connected component.  To union them in a Disjoint Set Union (DSU), it suffices to union them in a chain:
+\[
+(a_i)\sim(a_i + d_i),\quad
+(a_i + d_i)\sim(a_i + 2d_i),\quad\ldots,\quad
+\bigl(a_i + (k_i-1)d_i\bigr)\sim\bigl(a_i + k_i d_i\bigr),
+\]
+so that all of them get merged together.
+
+The challenge is that \(k_i\) can be large—up to \(\lfloor (n - a_i)/d_i\rfloor\)—so a naive “for each operation do \(k_i\) unions” could be \(O(n)\) per operation, yielding up to \(O(nm)\) in the worst case, far too big.
+
+However, notice that \(d_i\le10\).  Group operations by their common \(d\)-value.  Fix some \(d\in\{1,2,\dots,10\}\).  Then any operation with that \(d\) works only on points whose indices are all congruent to the same residue \(r\pmod d\).  Indeed, if
+\[
+a,\,a+d,\,a+2d,\dots
+\]
+are the selected points, then
+\[
+(a-1)\bmod d\;=\;((a+d)-1)\bmod d\;=\;\dots
+\]
+is a constant residue \(r\in\{0,1,\dots,d-1\}\).  
+
+We can re‐index the points in that residue‐class by
+\[
+t=0\mapsto r+0\cdot d,\quad
+t=1\mapsto r+1\cdot d,\quad
+t=2\mapsto r+2\cdot d,\;\dots
+\]
+so an operation \((a,d,k)\) with \((a-1)\bmod d = r\) becomes “connect all \(t\) from
+\[
+t_0=\frac{a-1-r}{d}\quad\text{through}\quad t_0+k.
+\]
+Equivalently, one must union \((r + t\,d)\) with \((r+(t+1)d)\) for each 
+\[t=t_0,\,t_0+1,\,\dots,\,t_0+k-1.\]
+
+We now have a problem of “interval‐union on a one‐dimensional array”:  for each residue class \(r\) under \(d\), we have several intervals \([L_i,R_i]\) of \(t\)-values, and we want to union each adjacent pair \((t,t+1)\) whenever \(t\in[L_i,R_i-1]\).  If we were to do that naively for each interval separately, we might repeat union on the same adjacent pair many times.  Instead we:
+
+1.  Collect all intervals \([L_i,R_i]\).
+2.  Sort them by \(L_i\), and merge overlapping or touching ones into a minimal set of disjoint intervals.
+3.  For each merged interval \([L,R]\), we only do unions for \(t=L,L+1,\dots,R-1\) once.
+
+Since each residue‐class of size about \(\lfloor n/d\rfloor\) can have at most \(\lfloor n/d\rfloor-1\) distinct adjacent pairs, over all \(d\le10\) the total number of distinct unions is
+\[
+\sum_{d=1}^{10}d\cdot\bigl(\lfloor n/d\rfloor-1\bigr)\;=\;O\bigl(n\sum_{d=1}^{10}\tfrac1d\bigr)=O(n).
+\]
+Hence the algorithm runs in about \(O\bigl((n+m)\log m + n\alpha(n)\bigr)\) time overall, which is fine up to \(n,m\le2\cdot10^5\).
+
+----
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        // Fast input
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+ 
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            
+            // Prepare to bucket operations by their d-value (1..10)
+            @SuppressWarnings("unchecked")
+            ArrayList<Op>[] opsByD = new ArrayList[11];
+            for (int d = 1; d <= 10; d++) {
+                opsByD[d] = new ArrayList<>();
+            }
+            
+            // Read operations
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                int a = Integer.parseInt(st.nextToken());
+                int d = Integer.parseInt(st.nextToken());
+                int k = Integer.parseInt(st.nextToken());
+                opsByD[d].add(new Op(a, d, k));
+            }
+ 
+            // Initialize DSU for 0..n-1
+            DSU dsu = new DSU(n);
+ 
+            // Process each d = 1..10 separately
+            for (int d = 1; d <= 10; d++) {
+                if (opsByD[d].isEmpty()) continue;
+                
+                // intervals[r] will collect (t_start, t_end) for residue r mod d
+                @SuppressWarnings("unchecked")
+                ArrayList<Interval>[] intervals = new ArrayList[d];
+                for (int r = 0; r < d; r++) {
+                    intervals[r] = new ArrayList<>();
+                }
+                
+                // Bucket each operation into its residue class
+                for (Op op : opsByD[d]) {
+                    int a0 = op.a - 1;        // zero-based
+                    int r = a0 % d;           // residue
+                    int t0 = a0 / d;          // starting index in that residue-class
+                    intervals[r].add(new Interval(t0, t0 + op.k));
+                }
+                
+                // For each residue, merge intervals and do the needed unions
+                for (int r = 0; r < d; r++) {
+                    ArrayList<Interval> lst = intervals[r];
+                    if (lst.isEmpty()) continue;
+                    
+                    lst.sort(Comparator.comparingInt(x -> x.l));
+                    
+                    int cl = -1, cr = -1;   // current merged interval
+                    for (Interval iv : lst) {
+                        if (cl < 0) {
+                            cl = iv.l; 
+                            cr = iv.r;
+                        } else if (iv.l <= cr + 1) {
+                            // overlap or touching
+                            cr = Math.max(cr, iv.r);
+                        } else {
+                            // push the previous block [cl,cr]
+                            applyUnions(dsu, r, d, cl, cr);
+                            cl = iv.l;
+                            cr = iv.r;
+                        }
+                    }
+                    // final flush
+                    if (cl >= 0) {
+                        applyUnions(dsu, r, d, cl, cr);
+                    }
+                }
+            }
+ 
+            // Count connected components
+            int comps = 0;
+            for (int i = 0; i < n; i++) {
+                if (dsu.find(i) == i) comps++;
+            }
+            sb.append(comps).append('\n');
+        }
+        
+        // Output all answers
+        System.out.print(sb);
+    }
+    
+    /** For a merged interval [L,R] in one residue-class,
+        union (r + t*d) with (r + (t+1)*d) for t=L..R-1. */
+    static void applyUnions(DSU dsu, int r, int d, int L, int R) {
+        for (int t = L; t < R; t++) {
+            int v1 = r + t * d;
+            int v2 = r + (t + 1) * d;
+            dsu.union(v1, v2);
+        }
+    }
+    
+    // A single operation (a, d, k)
+    static class Op {
+        int a, d, k;
+        Op(int a, int d, int k) { this.a = a; this.d = d; this.k = k; }
+    }
+    
+    // Interval on the t-axis
+    static class Interval {
+        int l, r;
+        Interval(int l, int r) { this.l = l; this.r = r; }
+    }
+    
+    // Standard DSU with path‐compression and union by rank
+    static class DSU {
+        int[] parent, rank;
+        DSU(int n) {
+            parent = new int[n];
+            rank = new int[n];
+            for (int i = 0; i < n; i++) {
+                parent[i] = i;
+                rank[i] = 0;
+            }
+        }
+        int find(int x) {
+            // iterative path‐compression
+            int root = x;
+            while (parent[root] != root) {
+                root = parent[root];
+            }
+            while (x != root) {
+                int p = parent[x];
+                parent[x] = root;
+                x = p;
+            }
+            return root;
+        }
+        void union(int x, int y) {
+            int rx = find(x), ry = find(y);
+            if (rx == ry) return;
+            if (rank[rx] < rank[ry]) {
+                parent[rx] = ry;
+            } else if (rank[rx] > rank[ry]) {
+                parent[ry] = rx;
+            } else {
+                parent[ry] = rx;
+                rank[rx]++;
+            }
+        }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1.  **Bucket by** \(d\): since \(d_i\le10\), we make an array of 11 lists `opsByD[1..10]`, each storing all operations with that particular \(d\).
+
+2.  **Residue classes**: for a fixed \(d\), points used in any operation form an arithmetic progression
+   \[
+      a,\;a+d,\;a+2d,\dots 
+   \]
+   They all share the same residue \((a-1)\bmod d\).  We call that residue `r`, and we re‐index them by
+   \[
+      t=0,1,2,\dots\quad\longmapsto\quad r+td\quad\text{(zero‐based vertex)}.
+   \]
+
+3.  **Intervals on** \(t\): an operation \((a,d,k)\) with zero‐based \(a_0=a-1\) gives
+   \[
+       t_0 = \lfloor (a_0-r)/d\rfloor,\quad
+       \text{covering }t_0,\,t_0+1,\dots,t_0+k.
+   \]
+   We store the interval \([t_0,\,t_0+k]\) in the bucket for residue `r`.
+
+4.  **Merging intervals**: within each residue‐class, we may have many overlapping intervals.  We sort by left endpoint, then do a standard “merge overlapping intervals” sweep.  We end up with disjoint intervals \([L,R]\).
+
+5.  **Making the necessary unions**: to connect all points in \([L,R]\), we only need to union adjacent pairs \((t,t+1)\) for \(t=L,\dots,R-1\).  Crucially, this guarantees we do each adjacent‐pair union at most once per residue‐class.  Since each residue‐class has length \(\lfloor n/d\rfloor\), there are at most \(\lfloor n/d\rfloor-1\) distinct adjacent pairs—and summing \(d=1\) to \(10\) gives \(O(n)\) total unions.
+
+6.  **Count components**: after processing all \(d\) and all residues, we simply count how many elements are their own parent in the DSU.
+
+This runs in \(O((n+m)\log m + n\alpha(n))\), which is efficient for total \(n,m\) up to \(2\cdot10^5\).

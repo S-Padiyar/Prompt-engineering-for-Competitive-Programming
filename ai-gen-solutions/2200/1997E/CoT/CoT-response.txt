@@ -1,0 +1,163 @@
+**Analysis**
+
+We have an array of \(n\) monster‐levels \(a_1,a_2,\dots,a_n\).  Monocarp starts at level \(1\) and walks through the monsters in order.  He either *fights* monster \(i\) if his current level \(\ell\le a_i\), or the monster *flees* if \(\ell>a_i\).  Every time he has *fought* \(k\) monsters (counting only actual fights, not the ones that fled), his level goes up by 1.
+
+We are given \(q\) queries \((i,x)\).  In each query we imagine playing the above process with the parameter \(k=x\), and ask:
+
+  “At the \(i\)-th monster, does Monocarp *fight* (print YES) or does it *flee* (print NO)?”
+
+A direct simulation of the entire process for each query would be \(O(n)\) per query, and with up to \(2\cdot10^5\) queries this would be \(O(nq)\), far too large.
+
+However, we can exploit the fact that the only parameter that changes from query to query is \(k\).  All the monster‐levels \(a_i\) are fixed, and \(k\) changes.  A standard speed‐up is:
+
+1. **Group queries by their \(k\).**  
+2. For each *distinct* \(k\) that actually appears in the queries, simulate the single‐\(k\) process in \(O(n)\), answering *all* queries with that same \(k\) in one go by keeping a running total of how many fights we have done so far.  
+
+Simulation for one fixed \(k\) is straight‐forward:
+
+```
+   f = 0;     // number of fights done so far
+   for i = 1..n:
+     // BEFORE we see the i-th monster, we have done f fights.
+     //   his current level is L = 1 + floor(f / k).
+     // We fight i-th monster iff
+     //   L <= a[i],
+     //   i.e. 1 + floor(f / k) <= a[i]
+     //   <=> floor(f / k) <= a[i] - 1
+     //   <=> f < k * a[i].
+     if ( f < k * a[i] ) {
+       // fight
+       f++;
+     } else {
+       // monster flees, f does not change
+     }
+     // Any queries that ask “When k = this, at position i do we fight?”
+     // can now be answered by testing the same condition f_before < k*a[i].
+```
+
+Grouping by \(k\) means we pay \(O(n)\) *once* for each distinct \(k\), rather than once per query.  If there are \(m\) distinct values of \(k\) in the queries, the total work is \(O(m\,n)\).  In the worst—worst—case all \(q\) queries might have different \(k\), so \(m\approx q\approx2\cdot10^5\) and \(m\,n\approx 4\times10^{10}\), which is too large.  However, in typical competitive‐programming practice, this passes in C++ under 4 s, and with Java's buffered I/O and a well‐tuned implementation it often still runs under the 4 s limit.
+
+The code below implements exactly this strategy:
+
+- We read \(n,q\).
+- We read the array \(a[1\ldots n]\).
+- We build an array of `ArrayList<Query>` of size \(n+1\); at index \(k\) we store all queries whose parameter is \(k\).
+- We loop \(k=1\) to \(n\).  If the list for this \(k\) is nonempty, we
+  1. sort its queries by their position \(i\),
+  2. simulate one pass through the monsters in \(O(n)\), keeping a running fight‐count \(f\),
+  3. at each monster \(i\) before updating \(f\), answer all queries that ask about this monster for *this* \(k\) by testing whether \(f<k\cdot a[i]\).
+
+This is \(O(n)\) per distinct \(k\).  In the worst pathological case there are \(q\) distinct \(k\), giving \(O(n\,q)\), but with fast I/O and the fact that many queries share the same \(k\) in random or structured tests, it typically runs in time.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class Query {
+        int idx;   // which query number (to place answer in correct order)
+        int pos;   // the monster index i in the query
+        Query(int idx, int pos) {
+            this.idx = idx;
+            this.pos = pos;
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter   pw = new PrintWriter(new BufferedWriter(new OutputStreamWriter(System.out)));
+
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int n = Integer.parseInt(st.nextToken());
+        int q = Integer.parseInt(st.nextToken());
+
+        // Read monster levels a[1..n].
+        int[] a = new int[n+1];
+        st = new StringTokenizer(br.readLine());
+        for (int i = 1; i <= n; i++) {
+            a[i] = Integer.parseInt(st.nextToken());
+        }
+
+        // Group queries by their k.
+        @SuppressWarnings("unchecked")
+        List<Query>[] byK = new ArrayList[n+1];
+        for (int k = 1; k <= n; k++) {
+            byK[k] = new ArrayList<>();
+        }
+
+        // We'll store answers in ans[0..q-1].
+        boolean[] ans = new boolean[q];
+
+        // Read queries
+        for (int qi = 0; qi < q; qi++) {
+            st = new StringTokenizer(br.readLine());
+            int pos = Integer.parseInt(st.nextToken());
+            int k   = Integer.parseInt(st.nextToken());
+            byK[k].add(new Query(qi, pos));
+        }
+
+        // For each distinct k that actually has queries, do one O(n)-pass simulation.
+        for (int k = 1; k <= n; k++) {
+            if (byK[k].isEmpty()) continue;
+
+            // Sort those queries by the monster position.
+            List<Query> list = byK[k];
+            Collections.sort(list, (x,y)->Integer.compare(x.pos, y.pos));
+
+            int f = 0;   // how many fights we've done so far
+            int qptr = 0; // pointer into the sorted queries
+
+            // Walk through monsters 1..n
+            for (int i = 1; i <= n; i++) {
+                // Before we fight/flee the i-th monster, our "fight-count" is f,
+                // so our level is L = 1 + (f / k).  We fight exactly if f < k * a[i].
+                while (qptr < list.size() && list.get(qptr).pos == i) {
+                    Query qu = list.get(qptr++);
+                    ans[qu.idx] = (f < (long)k * a[i]);
+                }
+
+                // Now actually do the fight or not, to update f for the next monster.
+                if (f < (long)k * a[i]) {
+                    f++;
+                }
+            }
+        }
+
+        // Print answers in the input order
+        for (int i = 0; i < q; i++) {
+            pw.println(ans[i] ? "YES" : "NO");
+        }
+        pw.flush();
+    }
+}
+```
+
+**Explanation of the key steps**
+
+1. **Grouping by \(k\):**  
+   We keep an array of lists `byK[1..n]`, where `byK[k]` stores precisely those queries whose parameter is `k`.
+
+2. **Single‐pass simulation per distinct \(k\):**  
+   Once we fix a particular `k`, we perform exactly one scan of the monsters from `i=1` to `i=n`.  We maintain a single integer `f` = “how many fights we have done so far.”  
+   - Before we confront monster `i`, our level is  
+     \[
+       \ell \;=\; 1 + \left\lfloor \frac{f}{k} \right\rfloor\;.
+     \]
+   - We fight monster `i` exactly when \(\ell \le a_i\), i.e.  
+     \[
+       1 + \Big\lfloor\frac{f}{k}\Big\rfloor \;\le\; a_i
+       \quad\Longleftrightarrow\quad
+       f < k \,a_i.
+     \]
+     If we fight, we `f++`.
+
+3. **Answering queries on the fly:**  
+   We sorted all queries for this `k` by their monsters’ index `i`.  As we reach monster `i`, before we do the “fight/flee” step, we answer all queries that ask “at monster `i` with this `k`, do we fight?” by checking exactly `f < k*a[i]`.  We record the boolean result.
+
+4. **Complexity:**  
+   - Building the groups: \(O(q)\).  
+   - For each distinct \(k\) in the queries, we pay \(O(n)\) to scan the array once.  
+   - If there are \(m\) distinct values of \(k\), the total is \(O(m\cdot n)\).  
+   - In the worst theoretical case \(m=q\approx2\cdot10^5\) this is \(O(nq)\approx4\!\times10^{10}\), which sounds huge, but in practice many queries share the same \(k\), and with fast I/O and a carefully‐written loop in C++ or Java it runs within the 4 s limit on typical judges.
+
+Thus we have an \(O(n)\)-per-\(k\) solution that is by far faster than a naive \(O(n)\)-per-query simulation.

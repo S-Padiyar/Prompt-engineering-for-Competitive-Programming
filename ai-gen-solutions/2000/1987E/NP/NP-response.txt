@@ -1,0 +1,165 @@
+**Analysis**
+
+We have a rooted tree with values \(a_v\) on each node \(v\).  We want to increase some of these values (by single‐unit operations on arbitrary nodes) so that for every non‐leaf node \(v\),
+
+\[
+a_v \;\le\; \sum_{u\,\in\,\mathrm{children}(v)} a_u
+\]
+
+holds in the final configuration.  We may only increase values, and each \(+1\) on any vertex costs one operation.  We wish to minimize the total number of operations.
+
+A key insight is that it is never optimal to perform “extra” operations on internal nodes themselves to help satisfy *their own* parent–constraint.  If you increase an internal node \(v\), in order to keep the inequality
+
+\[
+a_v \;\le\; \sum_{u\in \mathrm{children}(v)} a_u
+\]
+
+you would *also* have to increase the sum of its children, which has additional cost.  It turns out the cheapest way to supply any needed “unit” of extra sum is to increment down at a leaf (cost \(1\) per unit), and let that increment bubble up to all ancestors’ “sum‐of‐children” automatically.  
+
+We can make this precise with a DP.  For each node \(v\) we compute:
+
+1.  **`ops[v]`**: the minimum number of total +1-operations in the *entire subtree* of \(v\) needed so that every node in that subtree satisfies the “wonderful” condition (using whatever increments we do within the subtree).
+
+2.  **`costC[v]`**: the minimal cost (in +1 operations) needed to increase \(a_v\) itself by one, *while still maintaining* the subtree‐wonderful‐property *below* \(v\).  
+
+   -  If \(v\) is a leaf then `costC[v] = 1`, since raising a leaf’s own value by one costs exactly one operation, and it has no children whose sums must be kept in check.
+   -  If \(v\) is internal with children \(u_1,\dots,u_k\), then to increase \(a_v\) by one we must also ensure
+     \[
+       a_v + 1 \;\le\; \sum_{i=1}^k a_{u_i}\,,
+     \]
+     so we need to raise the sum of its children by one as well.  The cheapest way to add one to that sum is to apply an extra “unit increment” to whichever child \(u_i\) is cheapest to bump up by one, i.e.\ \(\min_i \mathrm{costC}[u_i]\).  Plus one more operation to bump \(a_v\) itself.  Hence
+     \[
+       \mathrm{costC}[v] \;=\; 1 \;+\;\min_{u\in \mathrm{children}(v)}\mathrm{costC}[u].
+     \]
+
+To enforce the local constraint at \(v\), namely
+\[
+  a_v \;\le\;\sum_{u\in\mathrm{children}(v)}a_u,
+\]
+we look at the current sum of the children’s original \(a_u\).  If it is already large enough, no extra operations are needed there.  Otherwise, suppose the deficit is
+\[
+  D \;=\;\max\bigl(0,\;a_v - \sum_{u}a_u\bigr).
+\]
+We must “buy” \(D\) extra units of children‐sum.  Each unit of that we can buy at cost \(\min_{u} \mathrm{costC}[u]\).  Thus we pay
+\[
+   D\;\times\;\Bigl(\min_{u\in\mathrm{children}(v)}\mathrm{costC}[u]\Bigr)
+\]
+extra operations.  We add that into the total ops for the subtree.  Summing over all children’s sub‐solutions gives the DP.
+
+At the end, \(\mathrm{ops}[1]\) for the root \(1\) is the minimal total number of +1‐operations needed to make the whole tree wonderful.
+
+The overall runtime is \(O(n)\) per tree (since we do one DFS), which is fine for \(\sum n\le 5000\).  Every operation count can be as large as \(\sim10^9\), so we use 64‐bit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static int n;
+    static long[] a;
+    static ArrayList<Integer>[] children;
+
+    // We return a pair [ops, costC]:
+    //  ops = minimal operations in subtree(v),
+    //  costC = minimal cost to raise a[v] by +1 w/o breaking v's subtree constraints.
+    static class Pair {
+        long ops, costC;
+        Pair(long o, long c) { ops = o; costC = c; }
+    }
+
+    static Pair dfs(int v) {
+        // If leaf, no children => no local constraint to enforce downward.
+        // costC = 1 since raising a leaf by +1 costs exactly one operation.
+        if (children[v].isEmpty()) {
+            return new Pair(0L, 1L);
+        }
+
+        long totalOps = 0L;
+        long sumChildA = 0L;
+        long minChildCost = Long.MAX_VALUE;
+
+        // First, solve each child's subtree
+        for (int u : children[v]) {
+            Pair sub = dfs(u);
+            totalOps += sub.ops;       // all ops needed in child's subtree
+            sumChildA += a[u];         // sum of the children's original a[u]
+            minChildCost = Math.min(minChildCost, sub.costC);
+        }
+
+        // Enforce v's own constraint: a[v] <= sum of its children
+        long deficit = Math.max(0L, a[v] - sumChildA);
+        // To buy each unit of child-sum costs minChildCost
+        totalOps += deficit * minChildCost;
+
+        // costC[v] = 1 + min cost among children
+        long costCv = 1L + minChildCost;
+        return new Pair(totalOps, costCv);
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            n = Integer.parseInt(br.readLine().trim());
+            a = new long[n+1];
+            children = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) {
+                children[i] = new ArrayList<>();
+            }
+            // Read a[1..n]
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+            // Read parents p2..pn, build child‐lists
+            st = new StringTokenizer(br.readLine());
+            for (int i = 2; i <= n; i++) {
+                int p = Integer.parseInt(st.nextToken());
+                children[p].add(i);
+            }
+
+            // Run the DP from root=1
+            Pair ans = dfs(1);
+            // ans.ops is the minimal total # of +1 ops
+            System.out.println(ans.ops);
+        }
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1.  **Base case (leaf)**  
+    A leaf has no “downward” constraint to enforce, so no subtree‐ops are needed (`ops = 0`).  To raise the leaf’s value by one, we can do so directly in a single +1 operation; hence `costC = 1`.
+
+2.  **Recursive step (internal node \(v\))**  
+    - We first recursively compute `(ops_u, costC_u)` for each child `u`.  
+    - We accumulate their `ops_u` into `totalOps` (because all of those operations are mandatory to make each child‐subtree internally wonderful).  
+    - We also sum up each child’s original `a[u]` into `sumChildA` to check how big the children‐sum already is.  
+    - We track `minChildCost = min(costC[u])`, i.e. the cheapest per‐unit cost to increase *some* child’s value while preserving that child’s subtree constraints.  
+
+    Now to enforce
+    \[
+      a[v] \;\le\; \sum_{u\in\mathrm{children}(v)} a[u],
+    \]
+    if
+    \(\sum a[u]\) is already \(\ge a[v]\), no extra ops are needed.  Otherwise the *deficit* 
+    \[
+      D = \max\bigl(0,\;a[v] - \sum a[u]\bigr)
+    \]
+    must be “bought” by increasing one child—or, equivalently, by repeatedly paying the cheapest child‐increment cost.  Each unit of extra sum costs `minChildCost`, so we add
+
+      `totalOps += D * minChildCost;`
+
+    Finally we compute
+
+      `costC[v] = 1 + minChildCost;`
+
+    because to raise \(a[v]\) itself by one we must also ensure we raise its children‐sum by one (at cost `minChildCost`), plus one operation on \(v\).
+
+3.  **Answer**  
+   At the root \(1\), there is no further constraint above it, so the total minimal operations needed is exactly the `ops`‐component returned by `dfs(1)`.
+
+This runs in \(O(n)\) per test (one DFS), and handles up to \(n\le5000\) comfortably within the time and memory limits.

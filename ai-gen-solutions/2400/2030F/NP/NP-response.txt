@@ -1,0 +1,238 @@
+**Analysis**
+
+We have an array `a[1..n]` and many queries of the form “is the subarray `a[l..r]` *orangutan-approved*?”  A subarray is *orangutan-approved* if you can peel off all distinct values one by one in blocks of equal values, always removing an entire contiguous block of the same value `v`, and never getting “stuck” by a value whose occurrences are split across two sides of some other value’s block.
+
+A well‐known way to characterize exactly those subarrays that *aren’t* peelable is that there is a *crossing* of two values’ intervals.  Concretely, if in your subarray you have
+
+```
+ … v … u … v … u …
+```
+
+(with indices `i < k < j < l` and `a[i]=a[j]=v`, `a[k]=a[l]=u`), then you cannot ever remove all `u` or all `v` as a single contiguous block.  Conversely, *if* no two values’ occurrence‐intervals *partially overlap* in that way, then one can always peel off the intervals in a nested/disjoint order (always remove an innermost interval first).
+
+We must answer up to \(2\times10^5\) queries on total array‐length up to \(2\times10^5\), so \(O(nq)\) is too big.  Instead, we precompute for each possible start position \(`L`\) the *furthest* right endpoint \(`R[L]`\) such that **every** subarray \([L..x]\) with \(x \le R[L]\) is valid (i.e.\ *orangutan-approved*), and for any larger \(x\) it first becomes invalid.
+
+Then answering a query \([l..r]\) is simply checking
+
+```
+   R[l] ≥ r  ?  “YES” : “NO”
+```
+
+How do we build the array `R[1..n]` in about \(O(n\log n)\)?  One can show that the only “obstructions” come from pairs of *adjacent* occurrences of the same value in the *whole* array.  If a value \(v\) appears at positions
+\[
+   p_1 < p_2 < \dots < p_k,
+\]
+we look at the \(k-1\) “adjacent‐occurrence intervals”
+\[
+   [p_1,p_2],\; [p_2,p_3],\;\dots,\;[p_{k-1},p_k].
+\]
+Call each such an interval \(I_i = [\ell_i,r_i]\).
+
+Two such intervals \(I=[\ell,r]\) and \(J=[\ell',r']\) **conflict** (i.e.\ cause a forbidden pattern) exactly if
+\[
+    \ell < \ell' < r < r'.
+\]
+In that case, *any* subarray that contains \(\ell\) through \(r'\) becomes invalid.
+
+We proceed in two steps:
+
+1.  **List all the “base” intervals**  
+    For each position `i` we precompute `nxt[i] =` the index of the next occurrence of `a[i]` to the right (or 0 if none).  
+    Then every `i` with `nxt[i]>0` gives us one interval
+    \[
+      I = [\,i,\; \text{nxt}[i]\,].
+    \]
+
+2.  **For each interval \(I_1=[\ell,r]\) find the minimal \(r'\) of any conflicting \(I_2=[\ell',r']\).**  
+    We sort *all* intervals in **descending** order of their right endpoint.  Call that list `INTS[0..m-1]`.  
+    We will sweep through it to build an auxiliary segment tree.
+
+    -  We maintain a segment‐tree `st` over the *start*–coordinate \(\ell\in[1..n]\).  At any moment it holds *exactly* those intervals `J=[\ell',r']` whose `r'` is *strictly greater* than the current query‐interval's right endpoint.  We store in `st` at position `ell'` the value `r'`.
+
+    -  Then when we look at a given interval `I1 = [ℓ1,r1]`, we have already inserted into `st` all intervals with `r2>r1`.  We want to find among them those whose start `ℓ2` satisfies
+       \[
+         \ell_1 < \ell_2 < r_1,
+       \]
+      and we need the *minimal* `r2` among those.  If that minimal `r2` is, say, `bad`, then any subarray starting at `ℓ1` and going to ≥`bad` is invalid.  We record
+       ```
+       best[ℓ1] = min( best[ℓ1], bad ).
+       ```
+
+    By processing intervals in descending order of `r1`, we can keep a pointer `p2` walking through the same array (also descending in `r2`), inserting into the segment tree exactly those intervals whose `r2 > r1` just before we handle `I1`.
+
+    After we fill `best[1..n]`, we do one more pass from right to left building
+    ```
+      forbidR[L] = min( best[L], best[L+1], best[L+2], …, best[n] )
+    ```
+    and then set
+    ```
+      R[L] = (forbidR[L] == INF ? n : forbidR[L]–1).
+    ```
+
+That precomputation takes \(O(n\log n)\) for the sorts and \(O(n\log n)\) for the segment‐tree–insertions and queries.  Then each query just checks `R[l] >= r` in \(O(1)\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int INF = 1000000007;
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter   pw = new PrintWriter(new OutputStreamWriter(System.out));
+        int T = Integer.parseInt(br.readLine().trim());
+        while (T-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int q = Integer.parseInt(st.nextToken());
+            
+            // Read the array
+            int[] a = new int[n];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+            
+            // 1) Build next-occurrence array
+            int[] nxt  = new int[n];
+            int[] last = new int[n+1];      // values are 1..n
+            Arrays.fill(last, -1);
+            for (int i = n-1; i >= 0; i--) {
+                int v = a[i];
+                nxt[i] = last[v];
+                last[v] = i;
+            }
+            
+            // 2) Collect the "base" intervals [i, nxt[i]]
+            //    (only where nxt[i] != -1)
+            List<Interval> intervals = new ArrayList<>();
+            for (int i = 0; i < n; i++) {
+                if (nxt[i] != -1) {
+                    intervals.add(new Interval(i, nxt[i]));
+                }
+            }
+            
+            // Sort intervals in descending order of 'r'
+            intervals.sort((A,B) -> Integer.compare(B.r, A.r));
+            
+            // Build an iterative segment tree for range-min on starts;
+            // size = next power of two ≥ n
+            int size = 1;
+            while (size < n) size <<= 1;
+            int[] seg = new int[2*size];
+            Arrays.fill(seg, INF);
+            
+            // best[i] = minimal 'badR' for an interval that starts exactly at i
+            int[] best = new int[n];
+            Arrays.fill(best, INF);
+            
+            // We'll sweep intervals by descending r1, and
+            // maintain a pointer p2 into the same array (also descending r2).
+            int p2 = 0;
+            
+            for (Interval I1 : intervals) {
+                int l1 = I1.l, r1 = I1.r;
+                
+                // Insert into the seg-tree all intervals whose r2 > r1
+                while (p2 < intervals.size()
+                       && intervals.get(p2).r > r1)
+                {
+                    int L2 = intervals.get(p2).l;
+                    int R2 = intervals.get(p2).r;
+                    // point-update at L2 -> value = R2
+                    int pos = L2 + size;
+                    seg[pos] = R2;
+                    for (pos >>= 1; pos > 0; pos >>= 1) {
+                        seg[pos] = Math.min(seg[2*pos], seg[2*pos+1]);
+                    }
+                    p2++;
+                }
+                
+                // Query the segment-tree on (l1, r1) => [l1+1 .. r1-1] in 0-based
+                if (l1 + 1 <= r1 - 1) {
+                    int lo = l1+1 + size, hi = r1-1 + size;
+                    int v = INF;
+                    while (lo <= hi) {
+                        if ((lo & 1) == 1) { v = Math.min(v, seg[lo]); lo++; }
+                        if ((hi & 1) == 0) { v = Math.min(v, seg[hi]); hi--; }
+                        lo >>= 1;  hi >>= 1;
+                    }
+                    if (v < INF) {
+                        best[l1] = Math.min(best[l1], v);
+                    }
+                }
+            }
+            
+            // 3) Build forbidR[L] = min(best[L], best[L+1], …, best[n-1])
+            int[] forbidR = new int[n];
+            int running = INF;
+            for (int i = n-1; i >= 0; i--) {
+                running = Math.min(running, best[i]);
+                forbidR[i] = running;
+            }
+            
+            // 4) Finally R[L] = (forbidR[L] == INF ? n-1 : forbidR[L]-1)
+            int[] R = new int[n];
+            for (int i = 0; i < n; i++) {
+                if (forbidR[i] == INF) R[i] = n-1;
+                else                  R[i] = forbidR[i] - 1;
+            }
+            
+            // 5) Answer queries in O(1)
+            while (q-- > 0) {
+                st = new StringTokenizer(br.readLine());
+                int L = Integer.parseInt(st.nextToken()) - 1;
+                int Rq= Integer.parseInt(st.nextToken()) - 1;
+                pw.println(R[L] >= Rq ? "YES" : "NO");
+            }
+        }
+        pw.flush();
+    }
+    
+    static class Interval {
+        int l, r;
+        Interval(int _l, int _r) { l=_l;  r=_r; }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Next‐occurrence intervals**  
+   For each index `i`, we look at `nxt[i]`, the next index where `a[i]` reappears.  If it exists, that yields an “interval” \([\;i,\;nxt[i]\;]\).  These intervals capture *exactly* the potential “blocks” of equal values that must be removed in one go.
+
+2. **Detecting conflicts**  
+   Two such intervals \([\ell,r]\) and \([\ell',r']\) *partially overlap* (i.e.\ conflict) iff
+   \[
+     \ell < \ell' < r < r'\,.
+   \]
+   Any subarray containing \(\ell\) through \(r'\) is then *not* orangutan‐approved.
+
+3. **Precomputing earliest invalid endpoint**  
+   We sort *all* these intervals by descending \(r\).  Then we sweep through them in that order.  We keep a segment‐tree indexed by the *start*–coordinate \(\ell\).  At step when handling an interval \(I_1=[\ell_1,r_1]\) we insert **all** intervals whose right‐endpoint \(r_2\) is strictly greater than \(r_1\).  In the tree at position \(\ell_2\) we store \(r_2\).  Then to find the *tightest* conflict with \(I_1\) we query the segment‐tree on the range of starts
+   \[
+     (\ell_1,\,r_1)\quad\longrightarrow\quad[\ell_1+1,\;r_1-1]
+   \]
+   for the *minimum* stored \(r_2\).  If that minimum is, say, `badR`, it means `I2=[ℓ2,badR]` is the earliest conflict interval, so *any* superarray starting at `ℓ1` and ending at ≥ `badR` fails.  We record
+   ```java
+     best[ℓ1] = min(best[ℓ1], badR);
+   ```
+
+4. **From per-interval to per-start**  
+   Since multiple base‐intervals may share the same start `ℓ1`, we keep the minimum “badR” among them in `best[ℓ1]`.  
+   Finally we do a suffix‐minimum scan
+   ```
+     forbidR[L] = min( best[L], best[L+1], …, best[n-1] )
+   ```
+   and set
+   ```
+     R[L] = (forbidR[L] == INF ? n-1 : forbidR[L]-1).
+   ```
+   Thus *any* subarray `[L..x]` with `x ≤ R[L]` is valid, and if `x > R[L]` it first becomes invalid.
+
+5. **Answer queries**  
+   A query `[l..r]` is “YES” exactly when `R[l] ≥ r`.
+
+This runs in \(O(n\log n)\) per test case (sorting and segment‐tree updates/queries) and answers each query in \(O(1)\).

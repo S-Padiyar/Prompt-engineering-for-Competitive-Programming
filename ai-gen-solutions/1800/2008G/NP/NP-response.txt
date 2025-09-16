@@ -1,0 +1,213 @@
+**Analysis**
+
+We have an array \(a\) of length \(n\) (with \(a_i\ge1\)), and we are allowed the following operation any number of times:
+
+  Choose two distinct indices \(i\neq j\) with \(a_i\ge a_j\), and replace
+  either
+  1. \(a_i \leftarrow a_i - a_j\), or  
+  2. \(a_i \leftarrow a_i + a_j\).
+
+We want to make this final array have as large as possible a "k-th missing nonnegative integer" (\(\mathrm{mex}_k\)).  By definition,
+
+  - \(\mathrm{mex}_1\) is the smallest nonnegative integer not in the array.  
+  - \(\mathrm{mex}_2\) is the second smallest nonnegative integer not in the array,  
+  - and so on.
+
+A key invariant of these operations is the **gcd** of the entire multiset.  Indeed, both
+\[
+\gcd(a_i - a_j,\,a_j)\;=\;\gcd(a_i,a_j), 
+\quad
+\gcd(a_i + a_j,\,a_j)\;=\;\gcd(a_i,a_j),
+\]
+and one checks easily the gcd of the whole array never changes.
+
+1.  **If \(n=1\):**  
+   We cannot do *any* operation (no second index), so the array stays \(\{v\}\).  
+   The missing nonnegative integers are all \(x\neq v\).  One checks that
+   \[
+     \mathrm{mex}_k = 
+     \begin{cases}
+       k-1, & k\le v,\\
+       k,   & k>v.
+     \end{cases}
+   \]
+   (Equivalently: the first missing is \(0\) if \(v>0\); if \(k\) goes past \(v\) we skip over \(v\).)
+
+2.  **If \(n\ge2\):**  
+   Let \(d=\gcd(a_1,a_2,\dots,a_n)\).  It is (well known, and not hard to check) that by repeated Euclid‐steps and additions one can generate:
+   - a copy of \(d\),
+   - a copy of \(0\),
+   - and then from \(\{0,d\}\) one can (by sums) generate arbitrarily large multiples of \(d\).
+
+   Thus in the end we can choose our final multiset of \(n\) elements to be *any* \(n\) (not necessarily distinct) multiples of \(d\).  To maximize \(\mathrm{mex}_k\), we will choose them all **distinct** and exactly the smallest \(n\) multiples of \(d\):
+   \[
+     0,\;d,\;2d,\;\dots,\;(n-1)\,d\,.
+   \]
+   Then the elements **present** in the array are exactly
+   \[
+     \{\,0,d,2d,\dots,(n-1)d\}.
+   \]
+   Every *other* nonnegative integer is missing; in particular all the non-multiples of \(d\) are missing, and all multiples \(t\,d\) with \(t\ge n\) are missing.
+
+   We now count off missing numbers in increasing order:
+
+   - In each block \([t\,d,\;t\,d + (d-1)]\):
+
+     • If \(0\le t\le n-1\), then \(t\,d\) is *present*, but the other \(d-1\) values  
+       \(t\,d+1,\dots,t\,d+(d-1)\) are missing.  
+       → That gives exactly \(d-1\) missing in each of the first \(n\) blocks.
+
+     • If \(t\ge n\), then **all** \(d\) values \(t\,d,t\,d+1,\dots,t\,d+(d-1)\)  
+       are missing.
+
+   Let
+   \[
+     \text{block}_1 = \text{the first }n\text{ blocks} 
+                  = n\times (d-1)\quad\text{total missing so far.}
+   \]
+   - If \(k\le n(d-1)\), the \(k\)-th missing lies in one of the first \(n\) blocks
+     (each block contributes \(d-1\) missing).  Say
+     \[
+       t=\bigl\lfloor (k-1)/(d-1)\bigr\rfloor,\quad
+       r=(k-1)\bmod(d-1).
+     \]
+     Then the block index is \(t\in[0,n-1]\), and the \(k\)-th missing is
+     \[
+       t\,d + (1 + r)\,.
+     \]
+   - Otherwise, \(k>n(d-1)\).  Set
+     \[
+       \text{rem} = k - n(d-1).
+     \]
+     Now we look into the blocks \(t=n,n+1,\dots\), each of size \(d\) missing.  Let
+     \[
+       t'=\bigl\lfloor(\mathrm{rem}-1)/d\bigr\rfloor,\quad
+       r'=(\mathrm{rem}-1)\bmod d.
+     \]
+     That block is \(t=n+t'\), and the \(k\)-th missing is
+     \[
+       (n+t')\,d\;+\;r'\,.
+     \]
+
+Putting it all together yields an \(O(n)\) scan per test (to compute the gcd, etc.), which is perfectly fast for \(\sum n\le2\times10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static BufferedReader in;
+    static PrintWriter out;
+    static StringTokenizer stok;
+
+    static String nextToken() throws IOException {
+        while (stok == null || !stok.hasMoreTokens()) {
+            String line = in.readLine();
+            if (line == null) return null;
+            stok = new StringTokenizer(line);
+        }
+        return stok.nextToken();
+    }
+
+    static long nextLong() throws IOException {
+        return Long.parseLong(nextToken());
+    }
+
+    static int nextInt() throws IOException {
+        return Integer.parseInt(nextToken());
+    }
+
+    // Standard gcd
+    static long gcd(long a, long b) {
+        while (b != 0) {
+            long t = a % b;
+            a = b;
+            b = t;
+        }
+        return a;
+    }
+
+    public static void main(String[] args) throws IOException {
+        in = new BufferedReader(new InputStreamReader(System.in));
+        out = new PrintWriter(System.out);
+
+        int t = nextInt();
+        while (t-- > 0) {
+            int n = nextInt();
+            long k = nextLong();
+            long[] a = new long[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = nextLong();
+            }
+
+            // Special case n = 1: no operations possible
+            if (n == 1) {
+                long v = a[0];
+                // missing are all x != v
+                // mex_k = (k <= v ? k-1 : k)
+                long ans = (k <= v ? k - 1 : k);
+                out.println(ans);
+                continue;
+            }
+
+            // n >= 2: we can generate 0, d, sums, etc.
+            long d = a[0];
+            for (int i = 1; i < n; i++) {
+                d = gcd(d, a[i]);
+            }
+
+            // total missing in the first n blocks, each of size (d-1)
+            //   block 0..n-1 each miss exactly d-1 (the non-multiples)
+            long totalFirst = (long)n * (d - 1);
+
+            if (k <= totalFirst) {
+                // the k-th missing is in [0..(n-1)*d + (d-1)]
+                long block = (k - 1) / (d - 1);  // which full block among 0..n-1
+                long r = (k - 1) % (d - 1);
+                // block*d is present, so the r-th missing in that block is + (r+1)
+                long ans = block * d + (r + 1);
+                out.println(ans);
+            } else {
+                // it lies in the tail blocks t >= n, each of size d
+                long rem = k - totalFirst; 
+                long blockTail = (rem - 1) / d;  // how many full tail-blocks
+                long r = (rem - 1) % d;
+                long ans = (n + blockTail) * d + r;
+                out.println(ans);
+            }
+        }
+
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1.  Compute \(\gcd\) of the entire array; call it \(d\).
+2.  If \(n=1\), no operation is possible, so the array stays \(\{v\}\).  We directly compute the \(k\)-th missing from the set \(\{v\}\).
+3.  If \(n\ge2\), one can show by repeated subtract/add operations that one can eventually:
+    - produce two copies of \(d\),  
+    - subtract one from the other to get 0,  
+    - and then by summing \(d+0\to d\), \(d+d\to2d\), etc., generate *any* multiple of \(d\).
+
+   Since we have \(n\) positions in the array, we can place exactly \(n\) distinct multiples of \(d\).  The best choice (to push all missing numbers as far right as possible) is to place
+
+       0, d, 2d, …, (n−1)d
+
+   in the final array (these are present).  **Every** other nonnegative integer is missing:
+   - any integer not a multiple of \(d\) is obviously missing,  
+   - multiples \(\ge n\) (i.e.\ \(n\,d,n\,d+1,\dots\)) are missing.
+
+   We then enumerate the missing integers in increasing order in two phases:
+
+   a)  The “covered” blocks \(t=0,1,\dots,n-1\), each block \([t\,d,(t+1)\,d-1]\) has exactly \((d-1)\) missing numbers  
+       (all those that are not exactly the multiple \(t\,d\)).
+
+   b)  The “tail” blocks \(t=n,n+1,\dots\), each of size \(d\), all missing.
+
+   From simple arithmetic we deduce formulas for the \(k\)-th missing in either the first \(n\) blocks or in the tail.  
+
+This solves the problem in \(O(n)\) per test (for the gcd & a few constant-time arithmetic steps), well within the \(2\) s/256 MB limits.

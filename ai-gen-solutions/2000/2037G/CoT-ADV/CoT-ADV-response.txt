@@ -1,0 +1,218 @@
+**Problem Restatement**
+
+We have \(n\) cities in a line (numbered \(1\) through \(n\)), each city \(i\) has an attractiveness \(a_i\ge2\).  There is a directed edge from city \(i\) to city \(j\) (\(i<j\)) if and only if
+\[
+  \gcd(a_i,a_j)>1.
+\]
+We start at city \(1\) (one “path” of length zero already) and want to count the total number of distinct paths ending at city \(n\).  Two paths are different if they visit different sets of cities, and since all edges go forward, there are no cycles; it’s a DAG.  We must report the answer modulo \(\;998244353\).
+
+---
+
+**Input**
+
+- Integer \(n\), \(2\le n\le2\cdot10^5\).
+- Sequence of integers \(a_1,a_2,\dots,a_n\), each \(2\le a_i\le10^6\).
+
+**Output**
+
+- A single integer: the number of distinct paths from city \(1\) to city \(n\), modulo \(998244353\).
+
+---
+
+**Key Observations and Algorithm**
+
+1. **DAG & DP**  
+   Because edges only go from smaller to larger indices, the graph is a DAG.  A standard way to count paths in a DAG is:
+
+   \[
+     \text{dp}[i] \;=\;\sum_{j<i,\; \gcd(a_j,a_i)>1}\,\text{dp}[j],
+     \quad
+     \text{dp}[1]=1.
+   \]
+
+   Naively this is \(O(n^2)\), too big for \(n\) up to \(2\times10^5\).
+
+2. **Inclusion–Exclusion via Square‐Free Divisors**  
+   For a fixed \(i\), we want
+   \[
+     \sum_{j<i,\;\gcd(a_j,a_i)>1}\dp[j].
+   \]
+   Equivalently,
+   \[
+     \sum_{j<i} \dp[j]\;-\;\sum_{\substack{j<i\\\gcd(a_j,a_i)=1}}\dp[j].
+   \]
+   But using the Möbius‐inversion principle, one shows:
+   \[
+     \sum_{\substack{j<i\\\gcd(a_j,a_i)=1}}\dp[j]
+     \;=\;
+     \sum_{d\mid a_i}\mu(d)\,\Bigl(\sum_{\substack{j<i\\d\mid a_j}}\dp[j]\Bigr).
+   \]
+   Hence
+   \[
+     \dp[i]
+     \;=\;\sum_{j<i}\dp[j]\;-\;\sum_{d\mid a_i}\mu(d)\,\Bigl(\sum_{j<i,d\mid a_j}\dp[j]\Bigr).
+   \]
+   One sees the term for \(d=1\) is \(\sum_{j<i}\dp[j]\), so it cancels, and we get
+   \[
+     \dp[i]
+     \;=\;
+     -\,\sum_{\substack{d\mid a_i\\d>1}} \mu(d)\;G[d],
+     \quad
+     G[d]\;=\;\sum_{\substack{j<i\\d\mid a_j}}\dp[j].
+   \]
+
+   Since \(\mu(d)\ne0\) only when \(d\) is square‐free, we only care about *square‐free* divisors of \(a_i\).  If \(a_i\) has \(k\) distinct prime factors, there are \(2^k\) square‐free divisors (all subsets of those primes).  But \(k\le7\) if \(a_i\le10^6\), so \(2^k\le128\).
+
+3. **Implementation Sketch**
+
+   - **Sieve** up to \(10^6\) to compute the smallest prime factor (`spf[]`).
+   - Maintain an array `G[d]` = sum of dp’s of all processed cities whose attractiveness was divisible by \(d\).  Initially all zero.
+   - Process cities in order \(i=1,2,\dots,n\).
+     - Factor \(a_i\) via `spf[]`, keep *distinct* prime factors in an array `pr[]`.
+     - Enumerate all nonempty subsets of `pr[]`.  For each subset:
+       - Let \(d\) = product of primes in the subset, let \(\ell\) = size of the subset.
+       - Add to a running sum \( \dp[i] \;\;+=\; (-1)^{\ell+1}\,G[d]\).
+     - If \(i=1\), override \(\dp[1]=1\) (we start with one path at city 1).
+     - Reduce \(\dp[i]\) modulo \(998244353\), making it nonnegative.
+     - **Update**: for each nonempty subset \(d\), do `G[d] = (G[d] + dp[i]) mod M`.
+   - Answer is `dp[n]`.
+
+   Each city takes \(O(\log a_i)\) to factor plus \(O(2^k)\le128\) for the subset‐sums and updates.  Total \(\sim2\cdot10^5\cdot128\approx2.5\times10^7\) operations: perfectly fine in optimized Java with a 4-second limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 998244353;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int n = Integer.parseInt(br.readLine().trim());
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int[] a = new int[n];
+        int maxA = 0;
+        for (int i = 0; i < n; i++) {
+            a[i] = Integer.parseInt(st.nextToken());
+            if (a[i] > maxA) maxA = a[i];
+        }
+
+        // 1) Build smallest-prime-factor sieve up to maxA
+        int[] spf = new int[maxA + 1];
+        for (int i = 2; i <= maxA; i++) {
+            if (spf[i] == 0) {
+                for (int j = i; j <= maxA; j += i) {
+                    if (spf[j] == 0) spf[j] = i;
+                }
+            }
+        }
+
+        // 2) G[d] will store sum of dp[j] so far for all j whose a[j] % d == 0
+        int[] G = new int[maxA + 1];
+
+        // dp_i will be computed on the fly; only dp[n-1] is needed at the end.
+        int dp_i = 0;
+        // Temporary arrays for divisor enumeration
+        int[] primes = new int[7];
+        int[] d    = new int[1 << 7];
+        int[] sz   = new int[1 << 7];
+
+        for (int i = 0; i < n; i++) {
+            // 3) Factor a[i] into distinct primes
+            int x = a[i], k = 0;
+            while (x > 1) {
+                int p = spf[x];
+                primes[k++] = p;
+                while (x % p == 0) x /= p;
+            }
+
+            // 4) Enumerate all nonempty subsets of these k primes
+            int subsets = 1 << k;
+            d[0] = 1; 
+            sz[0] = 0;
+            for (int mask = 1; mask < subsets; mask++) {
+                int lsb = mask & -mask;
+                int prev = mask ^ lsb;
+                int bitIdx = Integer.numberOfTrailingZeros(lsb);
+                d[mask] = d[prev] * primes[bitIdx];
+                sz[mask] = sz[prev] + 1;
+            }
+
+            // 5) Compute dp[i] by inclusion–exclusion:
+            //    sum_{nonempty subset S} (-1)^{|S|+1} * G[product(S)]
+            dp_i = 0;
+            if (i == 0) {
+                // by definition there's exactly one path starting at city 1
+                dp_i = 1;
+            } else {
+                for (int mask = 1; mask < subsets; mask++) {
+                    int div = d[mask];
+                    int sign = (sz[mask] % 2 == 1) ? 1 : -1;
+                    int val = G[div];
+                    dp_i = (dp_i + sign * val) % MOD;
+                }
+                if (dp_i < 0) dp_i += MOD;
+            }
+
+            // 6) Update G[div] += dp_i for all those square-free divisors div
+            for (int mask = 1; mask < subsets; mask++) {
+                int div = d[mask];
+                int nv = G[div] + dp_i;
+                if (nv >= MOD) nv -= MOD;
+                G[div] = nv;
+            }
+        }
+
+        // dp[n-1] is our answer
+        System.out.println(dp_i);
+    }
+}
+```
+
+---
+
+**How It Works on a Small Example**
+
+Take the first sample:
+```
+n = 5
+a = [2, 6, 3, 4, 6]
+```
+- City 1: `2` → primes = `[2]`.  Only subset `{2}` gives divisor `2`.  
+  \(\dp[1]=1\).  Update \(G[2]+=1\).
+
+- City 2: `6=2·3` → primes=`[2,3]`.  
+  Subsets: 
+    `{2}`→d=2 (sz=1→+1),  
+    `{3}`→d=3 (sz=1→+1),  
+    `{2,3}`→d=6 (sz=2→−1).  
+  ∆ = \(+G[2]+G[3]-G[6]=1+0-0=1\).  So \(\dp[2]=1\).  
+  Update `G[2]+=1→2`, `G[3]+=1→1`, `G[6]+=1→1`.
+
+- City 3: `3` → primes=`[3]`.  
+  Only subset `{3}`: +G[3]=1 → \(\dp[3]=1\).  
+  Update `G[3]+=1→2`.
+
+- City 4: `4=2^2` → primes=`[2]`.  
+  Only `{2}`: +G[2]=2 → \(\dp[4]=2\).  
+  Update `G[2]+=2→4`.
+
+- City 5: `6=2·3` → same subsets as city2.  
+  \(\dp[5]= +G[2]+G[3]-G[6] = 4+2-1 = 5.\)
+
+Answer = \(5\).
+
+---
+
+**Complexity**
+
+- Sieve up to \(10^6\): \(O(\max A\log\log\max A)\).
+- For each of the \(n\le2\cdot10^5\) cities:
+  - Factorization by repeated `spf[]` & dedupe:  \(O(\log a_i)\).
+  - At most \(k\le7\) primes \(\implies\) \(2^k\le128\) subsets.
+  - Summation and updates cost \(O(2^k)\).
+- Total work ~ \(2\times10^5\times128\approx2.56\times10^7\) “simple” steps, which runs comfortably within a 4-second Java limit on typical judges.
+
+Memory is \(O(\max A+n)\), dominated by two arrays of size ~\(10^6\).

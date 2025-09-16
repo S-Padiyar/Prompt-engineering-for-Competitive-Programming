@@ -1,0 +1,140 @@
+**Problem Restatement**
+
+We have a cycle of n houses numbered 1…n, with roads (edges) between consecutive houses and also between n and 1. We must choose a subset of these roads to _maintain_ so that, for each friendship pair (a,b), there is still a path (in the maintained subgraph) connecting house a to house b. We want to _minimize_ the number of maintained roads.
+
+Equivalently, if we let  
+– F = set of edges we **maintain**,  
+– R = set of edges we **remove** (so |F|+|R|=n),  
+
+then connectivity requires that for every friendship pair (a,b), **at least one** of the two arcs on the original cycle between a and b has _no removed edges_ (so that arc is entirely in F). We want to **maximize** the number of removed edges, |R|, and then the answer is n−|R|.
+
+---
+
+**Key Insight**
+
+Label the edges of the cycle by numbers 1…n, where edge i connects house i→i+1 (mod n).  For each friendship pair (u,v) with u<v, the “clockwise” arc is edges `[u, u+1, …, v−1]` and the “counter-clockwise” (complement) arc is the rest.  If we remove a set R of edges, then a friendship remains connected iff **at least one** of those two arcs contains _no_ removed edges.  
+
+It turns out that the _optimal_ choice of removed edges R is exactly a _largest_ subset of edges that all lie _together_ on one side of every chord (friendship) on the cycle.  In fact, you can show that removed edges must lie entirely inside whichever of the two arcs we “choose” for each friendship, and to maximize |R| we will choose, for _each_ friendship, the arc that _contains_ our candidate removed‐edge positions.  Hence each friendship i induces a bit‐mask on edges: for each edge position x, bit i tells us “does x lie in that friendship’s clockwise‐arc?”  Edges with the **same** m‐bit signature (across all friendships) form a candidate set R that simultaneously lies in one chosen arc per friendship.  We then pick the signature class of maximum size.  Finally the answer is:
+
+  **minimum maintained edges** = n – (size of largest signature‐class).
+
+---
+
+**Algorithm Outline**
+
+1. **Map each friendship to a “clockwise” interval** of edge‐indices.  
+   If the friendship is (u,v) with u<v, then the clockwise‐arc is edges `[u, u+1, …, v−1]` (possibly wrapping if u>v−1 in modulo n).  
+
+2. **Build a difference array of “hash deltas”** over edge positions 1…n.  
+   - Assign each friendship i a random 64‐bit weight wᵢ.  
+   - Whenever an edge x enters a clockwise‐interval of friendship i, we add +wᵢ “from that point on” in the difference array.  
+   - Whenever x leaves that interval, we add −wᵢ to mark its end.  
+
+3. **Sweep from edge 1…n**, accumulating the running hash H(x).  Every edge x then gets a 64‐bit “signature” H(x) = XOR or sum of the weights of those friendships whose clockwise‐interval covers x.  
+
+4. **Count frequencies** of each hash H(x).  The maximum frequency is the size of the largest class of edges sharing the same signature.  That class can all be removed together without violating any friendship connectivity.
+
+5. **Output** n – (that maximum frequency).
+
+This is O(n + m) per test (building the difference array and one sweep), with total sum of n+m ≤ 2·10⁵.  
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        int t = Integer.parseInt(in.readLine().trim());
+
+        // We'll use a single Random for all weights.
+        Random rnd = new Random();
+
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+
+            // Difference array on positions 1..n+1
+            long[] diff = new long[n + 2];
+
+            // For each friendship, pick a random 64-bit weight
+            long[] w = new long[m];
+            for (int i = 0; i < m; i++) {
+                w[i] = rnd.nextLong();
+            }
+
+            // Read and register each friendship's "clockwise" interval
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(in.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                
+                // The edges of the clockwise arc are [u, u+1, …, v-1] mod n
+                // Compute r = v-1 in 1..n
+                int r = v - 1;
+                if (r == 0) r = n;
+
+                if (u <= r) {
+                    // Non-wrapping case
+                    diff[u] += w[i];
+                    if (r + 1 <= n) diff[r + 1] -= w[i];
+                } else {
+                    // Wrapping: interval [u..n] and [1..r]
+                    diff[u] += w[i];
+                    diff[n + 1] -= w[i];
+                    diff[1] += w[i];
+                    if (r + 1 <= n) diff[r + 1] -= w[i];
+                }
+            }
+
+            // Sweep from edge=1..n, build the signature hash and count occurrences
+            Map<Long, Integer> freq = new HashMap<>();
+            long hash = 0;
+            int best = 0;
+
+            for (int edge = 1; edge <= n; edge++) {
+                hash += diff[edge];
+                // Count this hash
+                int f = freq.getOrDefault(hash, 0) + 1;
+                freq.put(hash, f);
+                if (f > best) {
+                    best = f;
+                }
+            }
+
+            // The answer is n - (maximum number of edges sharing one signature)
+            sb.append((n - best)).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+---
+
+**Explanation of Key Steps**
+
+1. **Difference array (`diff[]`)**  
+   We want to mark, for each friendship’s clockwise‐interval, where its hash‐weight `w[i]` “turns on” and “turns off.”  
+   - If the interval is contiguous `[L..R]` (no wrap), we `diff[L] += w[i]` and `diff[R+1] -= w[i]`.  
+   - If it wraps around (say `[L..n]` and `[1..R]`), we break it into two segments:  
+        - `diff[L] += w[i]`, `diff[n+1] -= w[i]`  
+        - `diff[1] += w[i]`, `diff[R+1] -= w[i]`  
+   Then a single pass `hash += diff[pos]` gives us, at each position, the XOR‐style (or sum‐style) signature of which intervals currently cover that edge.
+
+2. **Why the signature trick works**  
+   All edges that end up with the same 64‐bit signature share identical “in‐which‐friendship‐clockwise‐arcs” bit‐pattern.  If you remove exactly those edges from the cycle, then for every friendship you are consistently removing only from one side of the chord—and thus _keeping_ the other side intact—guaranteeing connectivity for that friendship.  Maximizing the number of removable edges is therefore just picking the signature that occurs most often.
+
+---
+
+**Complexity Analysis**
+
+- Building the difference array: O(m).  
+- Sweeping edges and counting in a `HashMap`: O(n) expected.  
+- Total over all test cases: O(Σ(n+m)) = O(2·10⁵).  
+- Space: O(n + m) for the difference array and hashing structures.

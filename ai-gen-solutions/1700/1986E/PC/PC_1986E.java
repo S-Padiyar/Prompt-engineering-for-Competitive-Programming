@@ -1,0 +1,91 @@
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(br.readLine());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+
+            // Group quotients by residue r = a_i % k
+            HashMap<Long, ArrayList<Long>> groups = new HashMap<>();
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                long a = Long.parseLong(st.nextToken());
+                long r = a % k;
+                long q = a / k;
+                groups.computeIfAbsent(r, __ -> new ArrayList<>()).add(q);
+            }
+
+            // Count how many groups have odd size
+            int oddCount = 0;
+            for (ArrayList<Long> lst : groups.values()) {
+                if ((lst.size() & 1) == 1) {
+                    oddCount++;
+                }
+            }
+            // If n even → no odd‐sized group allowed
+            // If n odd  → exactly one odd‐sized group required
+            if ((n % 2 == 0 && oddCount > 0) ||
+                (n % 2 == 1 && oddCount != 1)) {
+                out.println(-1);
+                continue;
+            }
+
+            long answer = 0;
+            // Process each residue‐group
+            for (ArrayList<Long> lst : groups.values()) {
+                Collections.sort(lst);
+                int m = lst.size();
+
+                // Build the "diff" array: diff[i] = lst[i] - lst[i-1], 1-based indexing
+                // We'll store it in diff[1..m], with diff[1]=0 for convenience
+                long[] diff = new long[m+1];
+                diff[1] = 0;
+                for (int i = 2; i <= m; i++) {
+                    diff[i] = lst.get(i-1) - lst.get(i-2);
+                }
+
+                // Build prefix sums of diffs at even indices and at odd indices
+                long[] preEven = new long[m+1];
+                long[] preOdd  = new long[m+1];
+                preEven[0] = 0;
+                preOdd[0]  = 0;
+                for (int i = 1; i <= m; i++) {
+                    preEven[i] = preEven[i-1] + ((i % 2 == 0) ? diff[i] : 0);
+                    preOdd[i]  = preOdd[i-1]  + ((i % 2 == 1) ? diff[i] : 0);
+                }
+
+                if ((m & 1) == 0) {
+                    // Even size: we just pair (1,2),(3,4),... => pick all even‐index diffs
+                    answer += preEven[m];
+                } else {
+                    // Odd size: pick the best center c (must be odd index)
+                    long best = Long.MAX_VALUE;
+                    for (int c = 1; c <= m; c += 2) {
+                        // cost of pairing left portion [1..c-1]: sum diffs at even i <= c-1
+                        long costLeft  = preEven[c-1];
+                        // cost of pairing right portion [c+1..m]: sum diffs at odd i >= c+2
+                        long costRight = 0;
+                        if (c + 1 <= m) {
+                            // sum over odd i in [c+2..m] = preOdd[m] - preOdd[c+1]
+                            costRight = preOdd[m] - preOdd[c+1];
+                        }
+                        best = Math.min(best, costLeft + costRight);
+                    }
+                    // add the minimal cost for this odd‐sized group
+                    answer += best;
+                }
+            }
+
+            out.println(answer);
+        }
+
+        out.flush();
+    }
+}

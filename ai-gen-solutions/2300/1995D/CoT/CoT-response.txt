@@ -1,0 +1,184 @@
+**Analysis**
+
+We are given a long string `S` of length `n`, over an alphabet of size `c` (letters `'A'..`), and a maximum word‐length `k`.  We wish to “cut” the string into words of length at most `k` so that each word ends in one of a chosen subset of letters `E ⊆ {A,…}` (these letters are the “cases” of the language).  Any letter not in `E` may not be the last letter of any word.  We must cover the entire string, i.e. the last word must end exactly at position `n`.  We want to choose `E` of minimum size so that such a segmentation exists.
+
+A well–known equivalent condition is:
+
+  “ You can segment the string into blocks of length ≤ `k`, each block ending at a position whose letter lies in `E`, if and only if
+
+  1) the final letter `S[n]` is in `E`, and  
+  2) in every length‐`k` window of the string, there is at least one position whose letter lies in `E`. ”
+
+Indeed, if any length‐`k` window had no allowed‐end letter, one would be forced to make a word longer than `k` to cross that window, which is illegal.  And clearly you must be able to end at `n`, so `S[n] ∈ E`.
+
+Hence the problem reduces to a small‐universe hitting‐set problem.  There are `m = n−k+1` windows (if `n≥k`, otherwise there are zero windows).  For each window `i = 1..(n−k+1)`, let
+
+  Lᵢ = the set of *distinct* letters appearing in `S[i..i+k−1]`.
+
+We must choose `E` (a subset of the `c` letters) so that
+
+  – for every window `i`, `E ∩ Lᵢ ≠ ∅`, and  
+  – `S[n] ∈ E`.
+
+We want `|E|` minimal.
+
+Since `c ≤ 18`, we can represent any subset of letters by a bit‐mask `0..(1<<c)-1`.  We form an array
+
+    have[mask] = 1  if  there exists some window `i` with exactly `mask` as its distinct‐letter mask.
+
+(We only need existence, so repeatedly setting `have[mask]=1` is fine.)
+
+Then a candidate mask `M` is **invalid** if there is at least one window whose letter‐mask `Lᵢ` has no intersection with `M`, i.e.
+
+    `Lᵢ & M == 0`.
+
+Equivalently, writing `U = (1<<c)-1`, the set of “bad” windows for `M` are those `Lᵢ ⊆ (U ^ M)`.  Hence `M` is invalid if and only if *some* mask `Lᵢ` is a submask of `(U^M)`.  
+
+We precompute via a standard SOS (subset‐sum) DP an array
+
+```
+G[X] = number of window‐masks Lᵢ that are submasks of X.
+```
+
+(We only need to test `G[X]>0` or not.)  Then for each candidate `M` (such that `(M & (1<<a_n))!=0`, i.e. `M` contains the last letter), we check
+
+   if `G[ U^M ] == 0`  
+then `M` hits every window and contains the last letter, hence is valid.
+
+We pick among those valid `M` the one of minimum popcount.  Its popcount is our answer.
+
+Edge cases:
+
+- If `n ≤ k` then *any* single‐letter ending that matches `S[n]` will do (there are no length‐`k` windows), so the answer is `1`.
+- We must also remember to include `S[n]` in the chosen set, so we filter only those masks that have that bit set.
+
+The overall time per test is
+
+- O(n) to build the sliding‐window masks and mark `have[mask]`.
+- O(c·2ᶜ) for the SOS‐DP.
+- O(2ᶜ) to scan all masks and pick the minimum popcount.
+
+Since ∑ n ≤ 2¹⁸ and ∑ 2ᶜ ≤ 2¹⁸ over all test cases, this easily fits under the time limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter  pw = new PrintWriter(new OutputStreamWriter(System.out));
+
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int c = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+            String s = br.readLine().trim();
+
+            // If the entire string is length <= k, we only need the last letter
+            if (n <= k) {
+                pw.println(1);
+                continue;
+            }
+
+            // Map letters 'A'.. to 0..c-1
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = s.charAt(i) - 'A';
+            }
+            int lastLetter = a[n-1];
+
+            int FULL = (1 << c) - 1;
+            int LIM  = 1 << c;
+
+            // have[mask] = 1 if some window has exactly this set of distinct letters
+            int[] have = new int[LIM];
+
+            // Sliding window of size k, track counts + bitmask
+            int[] cnt = new int[c];
+            int winMask = 0;
+
+            // Initialize first window [0..k-1]
+            for (int i = 0; i < k; i++) {
+                int x = a[i];
+                if (cnt[x]++ == 0) {
+                    winMask |= (1 << x);
+                }
+            }
+            have[winMask] = 1;
+
+            // Slide window over positions 1..(n-k)
+            for (int i = 1; i <= n - k; i++) {
+                int out = a[i-1];
+                if (--cnt[out] == 0) {
+                    winMask ^= (1 << out);
+                }
+                int in = a[i + k - 1];
+                if (cnt[in]++ == 0) {
+                    winMask |= (1 << in);
+                }
+                have[winMask] = 1;
+            }
+
+            // SOS DP: G[mask] = sum of have[submask] over all submasks of mask
+            // so G[mask] > 0 means there is some window L_i with L_i ⊆ mask.
+            int[] G = new int[LIM];
+            System.arraycopy(have, 0, G, 0, LIM);
+
+            for (int bit = 0; bit < c; bit++) {
+                for (int mask = 0; mask < LIM; mask++) {
+                    if ((mask & (1 << bit)) != 0) {
+                        G[mask] += G[mask ^ (1 << bit)];
+                    }
+                }
+            }
+
+            // Among masks M that contain the last letter, we need G[FULL^M] == 0
+            // i.e. no "bad" window.  We pick the minimum popcount.
+            int answer = c;
+            int neededBit = 1 << lastLetter;
+            for (int M = 0; M < LIM; M++) {
+                if ((M & neededBit) == 0) continue;    // must contain lastLetter
+                int comp = FULL ^ M;
+                if (G[comp] == 0) {
+                    // M is valid: it hits every window and includes S[n]
+                    int pc = Integer.bitCount(M);
+                    if (pc < answer) answer = pc;
+                }
+            }
+
+            pw.println(answer);
+        }
+
+        pw.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Reduction to a Hitting‐Set on Windows**  
+   Every word has length ≤ `k` and must end in a letter from `E`.  To cross any stretch of `k` consecutive characters without an allowed‐end letter would force a word longer than `k`.  Thus every length‐`k` window must contain at least one letter from `E`.  Also the last character `S[n]` must be in `E` so as to end the final word exactly at `n`.
+
+2. **Masking the Windows**  
+   We slide a window of length `k` over `S` in O(n) time.  We maintain a count of each letter and a bit‐mask `winMask` of which letters are present.  We mark `have[winMask] = 1` for each window.  This records *which* subsets of letters appear in *some* window.
+
+3. **SOS‐DP for Fast Validation**  
+   We build an array
+     
+     G[mask] = ∑_{sub ⊆ mask} have[sub].
+
+   After this “subset‐sum” (SOS) DP, `G[mask]` is simply the number of windows whose letter‐mask is a submask of `mask`.  In particular, `G[mask] > 0` means “there is at least one window `Lᵢ` with `Lᵢ ⊆ mask`.”
+
+4. **Checking Candidate Cases**  
+   A candidate set of cases is a mask `M`.  It is **invalid** iff there exists a window `Lᵢ` disjoint from `M`, i.e. `Lᵢ ⊆ (U ^ M)`, where `U=(1<<c)-1` is the full bit‐mask.  That condition is exactly `G[U^M] > 0`.  
+   Hence `M` is valid iff `(M & (1<<lastLetter))≠0` (it contains the final letter) and `G[U^M] == 0` (it intersects every window).  
+
+5. **Answer**  
+   We scan all `M` in `0..(1<<c)-1`, keep those that pass the test, and take the minimum `popcount(M)`.  That is the minimum number of cases needed.
+
+This runs in O(n + c·2^c) time per test, which is safe for the given constraints.

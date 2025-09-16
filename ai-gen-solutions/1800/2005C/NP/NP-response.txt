@@ -1,0 +1,187 @@
+**Analysis**
+
+We have \(n\) strings (all of the same length \(m\)), and we may pick any subset of them (in their original relative order) to concatenate into one big string \(S\).  Over \(S\), two players score:
+
+- **Narek** looks for disjoint (non‐overlapping) subsequences spelling “n-a-r-e-k” in order, each full subsequence giving him 5 points.  He proceeds greedily (left to right), resets to looking for ‘n’ after completing “narek”.
+- **ChatGPT** scores 1 point for every letter among \(\{n,a,r,e,k\}\) that Narek *did not* end up using in completed “narek” subsequences.  (Letters that go into an incomplete “narek” at the very end also all revert to ChatGPT’s score.)
+
+Let
+\[
+f = \text{the total number of completed “narek” subsequences in }S,
+\quad
+T = \text{total number of letters in }S\text{ that are in }\{n,a,r,e,k\}.
+\]
+Then
+\[
+\text{Narek’s score} \;=\; 5f,
+\quad
+\text{ChatGPT’s score} \;=\; T - 5f,
+\]
+so the difference is
+\[
+5f - \bigl(T - 5f\bigr)\;=\;10\,f\;-\;T.
+\]
+We want to choose a subset of the \(n\) strings (in order) so as to **maximize** \(10f - T\).
+
+A standard way to handle “subsequence‐automaton” problems with string concatenation in fixed order is to build a small DP over the automaton‐state we are in (i.e.\ how many characters of “narek” have already been matched).  Here the pattern \(P=\text{"narek"}\) has length 5, so our state is an integer \(0\le s\le 4\), meaning we have matched \(P[0..s-1]\) and are waiting to match \(P[s]\).
+
+For each input string \(str_i\) of length \(m\), we precompute for each starting state \(s\in\{0,1,2,3,4\}\):
+
+1.  `endState[s]`: the final automaton state after feeding in `str_i` from starting state \(s\);
+2.  `fCount[s]`: how many *full passes* through “narek” we completed during that scan (including any that wrap across the end of `str_i` back to state 0);
+3.  `T_i`: the total count of letters in `str_i` that lie in \(\{n,a,r,e,k\}\) (this is the same regardless of the start state).
+
+Then we maintain a DP array
+```
+dp[s] = maximum value of (10*f – T) so far if we end in automaton state s.
+```
+We initialize
+
+```
+dp[0] = 0
+dp[1..4] = -∞
+```
+
+meaning that before picking any strings, we have matched 0 characters of “narek” and gained zero score.
+
+We process the \(n\) strings in order.  For each string we form a new array `dp2` initialized to a copy of `dp` (corresponding to *skipping* that string).  
+Then for each state \(s\) with `dp[s]` not \(-∞\), if we *take* the current string we transition to
+
+```
+newState = endState[s]
+gain     = dp[s] + 10 * fCount[s] - T_i
+dp2[newState] = max(dp2[newState], gain)
+```
+
+After processing that string, we copy `dp2` back into `dp`.  At the end of all \(n\) strings, the answer is
+
+```
+answer = max(dp[0], dp[1], dp[2], dp[3], dp[4])
+```
+
+Since we are allowed to pick *no* strings, \(dp[0]\) can always stay at 0 (by skipping every string), so the final answer is guaranteed \(\ge0\).
+
+The total cost of building the automaton‐transition for one string of length \(m\) and 5 start‐states is \(O(5m)\).  Summing over all strings gives \(O(5\sum m)\), and the DP per string costs only \(O(5)\) updates.  Since \(\sum n\,m\le10^6\), this runs comfortably in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int T = Integer.parseInt(in.readLine().trim());
+        // The pattern we seek as a subsequence:
+        char[] P = { 'n', 'a', 'r', 'e', 'k' };
+        // Quick lookup: is this character one of {n,a,r,e,k} ?
+        boolean[] isPatChar = new boolean[26];
+        for (char c : P) {
+            isPatChar[c - 'a'] = true;
+        }
+
+        StringBuilder sb = new StringBuilder();
+        final int NEG_INF = -1_000_000_000;
+
+        while (T-- > 0) {
+            // Read n and m
+            st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+
+            // dp[s] = best 10*f - T so far, ending in automaton state s
+            int[] dp = new int[5];
+            dp[0] = 0;
+            for (int i = 1; i < 5; i++) dp[i] = NEG_INF;
+
+            for (int i = 0; i < n; i++) {
+                String s = in.readLine().trim();
+
+                // Count T_i = how many chars in s are in {n,a,r,e,k}
+                int T_i = 0;
+                for (char c : s.toCharArray()) {
+                    if (isPatChar[c - 'a']) {
+                        T_i++;
+                    }
+                }
+
+                // Precompute for each start state:
+                //   endState[start], fCount[start]
+                int[] endState = new int[5];
+                int[] fCount   = new int[5];
+
+                for (int start = 0; start < 5; start++) {
+                    int curState = start;
+                    int fullPasses = 0;
+                    for (char c : s.toCharArray()) {
+                        if (c == P[curState]) {
+                            curState++;
+                            if (curState == 5) {
+                                // completed "narek"
+                                fullPasses++;
+                                curState = 0;
+                            }
+                        }
+                    }
+                    endState[start] = curState;
+                    fCount[start]   = fullPasses;
+                }
+
+                // Now do the DP update: either skip or take the string
+                int[] dp2 = dp.clone();
+                for (int stt = 0; stt < 5; stt++) {
+                    if (dp[stt] == NEG_INF) continue;
+                    int ns = endState[stt];
+                    int gain = dp[stt] + 10 * fCount[stt] - T_i;
+                    dp2[ns] = Math.max(dp2[ns], gain);
+                }
+                dp = dp2;
+            }
+
+            // Our answer is the maximum over all end‐states (we could leave a partial match)
+            int ans = dp[0];
+            for (int i = 1; i < 5; i++) {
+                ans = Math.max(ans, dp[i]);
+            }
+            sb.append(ans).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Automaton over "narek".**  
+   We keep a state \(s\in\{0,1,2,3,4\}\) meaning “so far we have matched positions \(0\ldots s-1\) of the pattern; next we look for \(P[s]\).”  
+   Whenever we see that character, we do `s++`; if `s` reaches 5, we increment our full‐match counter and reset `s=0`.
+
+2. **Per‐string precomputation.**  
+   For each input string `str`, and for each start‐state `s` in \(0\ldots4\), we simulate feeding `str` through the automaton to find:
+   - `endState[s]`: what state we end in,
+   - `fCount[s]`: how many full “narek” matches occur (including any that finish exactly at the end).
+
+3. **DP over subsets in order.**  
+   We maintain `dp[s] =` the best possible value of  
+   \[
+     10 \times (\text{#matches so far}) \;-\; (\text{# of letters in }\{n,a,r,e,k\}\text{ so far})
+   \]
+   when we end up in automaton state `s`.  Initially we are in state 0 with score 0; all other states are unreachable \(-\infty\).
+
+   For each string we can **skip** it (which leaves `dp[s]` unchanged), or **take** it, which transitions `dp[s]` to
+
+   ```
+   newState = endState[s],
+   newScore = dp[s] + 10 * fCount[s] - T_i
+   ```
+
+   where `T_i` is the total number of letters in `str` that are one of `{n,a,r,e,k}`.  We take the maximum of these two options.
+
+4. **Final answer.**  
+   After all \(n\) strings, we take the maximum over all states \(s=0\ldots4\).  Because skipping everything leaves us at `dp[0]=0`, the final answer is always \(\ge0\).
+
+This runs in \(O\bigl(\sum (5m + 5)\bigr)=O(5\sum m)\), and since \(\sum (n\cdot m)\le10^6\), it easily fits the time and memory limits.

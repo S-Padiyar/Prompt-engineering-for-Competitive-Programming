@@ -1,0 +1,125 @@
+E. Computing Machine
+time limit per test2 seconds
+memory limit per test256 megabytes
+Sasha has two binary strings s
+ and t
+ of the same length n
+, consisting of the characters 0 and 1.
+
+There is also a computing machine that can perform two types of operations on binary strings a
+ and b
+ of the same length k
+:
+
+If ai=ai+2=
+ 0, then you can assign bi+1:=
+ 1 (1≤i≤k−2
+).
+If bi=bi+2=
+ 1, then you can assign ai+1:=
+ 1 (1≤i≤k−2
+).
+Sasha became interested in the following: if we consider the string a=slsl+1…sr
+ and the string b=tltl+1…tr
+, what is the maximum number of 1 characters in the string a
+ that can be obtained using the computing machine. Since Sasha is very curious but lazy, it is up to you to answer this question for several pairs (li,ri)
+ that interest him.
+
+Input
+Each test consists of multiple test cases. The first line contains a single integer t
+ (1≤t≤104
+) — the number of test cases. The description of the test cases follows.
+
+The first line of each test case contains a single integer n
+ (1≤n≤2⋅105
+) — the length of the strings s
+ and t
+.
+
+The second line of each test case contains a binary string s
+ of length n
+, consisting of the characters 0 and 1.
+
+The third line of each test case contains a binary string t
+ of length n
+, consisting of the characters 0 and 1.
+
+The fourth line of each test case contains a single integer q
+ (1≤q≤2⋅105
+) — the number of queries.
+
+The i
+-th of the following lines contains two integers li
+ and ri
+ (1≤li≤ri≤n
+) — the boundaries of the i
+-th pair of substrings that interest Sasha.
+
+It is guaranteed that the sum of n
+ over all test cases does not exceed 2⋅105
+ and the sum of q
+ over all test cases does not exceed 2⋅105
+.
+
+Output
+For each test case, output q
+ integers — the answers to all queries.
+
+Example
+InputCopy
+3
+4
+1111
+0000
+2
+1 2
+2 4
+4
+1010
+1101
+2
+1 3
+1 4
+6
+010101
+011010
+5
+2 3
+1 6
+2 5
+4 4
+3 6
+OutputCopy
+2
+3
+2
+3
+1
+4
+3
+1
+2
+Note
+In the first test case:
+
+In the first query, a=
+ 11, so the maximum number of 1 characters is 2
+.
+In the second query, a=
+ 111, so the maximum number of 1 characters is 3
+.
+In the second test case:
+
+In the first query, a=
+ 101 and b=
+ 110. No operations can be performed, so the maximum number of 1 characters is 2
+.
+In the second query, a=
+ 1010 and b=
+ 1101. Since a2=a4=
+ 0, we can assign b3:=
+ 1. Now b1=b3=
+ 1, so we can assign a2:=
+ 1. The string a
+ becomes 1110, so the maximum number of 1 characters is 3
+.

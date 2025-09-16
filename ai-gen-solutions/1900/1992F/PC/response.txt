@@ -1,0 +1,111 @@
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class DivInfo {
+        int m;                    // number of divisors
+        int[] divs;               // the list of divisors
+        int idxX;                 // index of divisor x itself
+        Map<Integer,Integer> indexOf;    // maps divisor -> its index in divs[]
+        @SuppressWarnings("unchecked")
+        ArrayList<int[]>[] mapping = new ArrayList[0]; // for each gi, list of (oldIdx, newIdx)
+    }
+
+    // Precompute divisors of x, their indices, and the transition mapping.
+    static DivInfo build(int x) {
+        DivInfo D = new DivInfo();
+        // 1) gather divisors
+        List<Integer> tmp = new ArrayList<>();
+        for (int d = 1; d * d <= x; d++) {
+            if (x % d == 0) {
+                tmp.add(d);
+                if (d * d != x) tmp.add(x / d);
+            }
+        }
+        Collections.sort(tmp);
+        D.m = tmp.size();
+        D.divs = new int[D.m];
+        D.indexOf = new HashMap<>(D.m * 2);
+        for (int i = 0; i < D.m; i++) {
+            D.divs[i] = tmp.get(i);
+            D.indexOf.put(D.divs[i], i);
+        }
+        D.idxX = D.indexOf.get(x);
+
+        // 2) build mapping: for each divisor g = divs[gi],
+        //    for each old divisor d_j, see if d_j*g divides x
+        @SuppressWarnings("unchecked")
+        ArrayList<int[]>[] map = new ArrayList[D.m];
+        for (int gi = 0; gi < D.m; gi++) {
+            int gval = D.divs[gi];
+            map[gi] = new ArrayList<>();
+            for (int j = 0; j < D.m; j++) {
+                long prod = 1L * D.divs[j] * gval;
+                if (prod <= x && x % (int)prod == 0) {
+                    int nxt = D.indexOf.get((int)prod);
+                    map[gi].add(new int[]{j, nxt});
+                }
+            }
+        }
+        D.mapping = map;
+        return D;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(in.readLine().trim());
+        StringBuilder out = new StringBuilder();
+
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int x = Integer.parseInt(st.nextToken());
+            int[] a = new int[n];
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            DivInfo D = build(x);
+
+            int segments = 1;
+            BitSet dp = new BitSet(D.m);
+            dp.set(D.indexOf.get(1));  // start: we can form product=1 with empty subset
+
+            for (int val : a) {
+                if (x % val != 0) {
+                    // this card never contributes to reaching exactly x
+                    continue;
+                }
+                int gi = D.indexOf.get(val);
+                // 1) try to incorporate val into current segment
+                BitSet nextDp = (BitSet) dp.clone();
+                for (int[] pr : D.mapping[gi]) {
+                    if (dp.get(pr[0])) {
+                        nextDp.set(pr[1]);
+                    }
+                }
+                dp = nextDp;
+
+                // 2) if we can now form x, segment turned "good" => we must cut
+                if (dp.get(D.idxX)) {
+                    segments++;
+                    // reset dp for new segment
+                    dp.clear();
+                    dp.set(D.indexOf.get(1));
+                    // re-apply this card into the new segment
+                    nextDp = (BitSet) dp.clone();
+                    for (int[] pr : D.mapping[gi]) {
+                        if (dp.get(pr[0])) {
+                            nextDp.set(pr[1]);
+                        }
+                    }
+                    dp = nextDp;
+                }
+            }
+            out.append(segments).append('\n');
+        }
+
+        System.out.print(out);
+    }
+}

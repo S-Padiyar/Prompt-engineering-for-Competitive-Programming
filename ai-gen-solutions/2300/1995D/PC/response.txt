@@ -1,0 +1,156 @@
+**Analysis**
+
+We are given
+
+- A text string \(s\) of length \(n\), consisting of the first \(c\) letters of the Latin alphabet (so letters \(\mathrm{A},\dots,\mathrm{A}+c-1\)).
+- In the unknown language each word has length at most \(k\) and ends in exactly one special "case" letter; different letters are different cases, and a word cannot end in a letter for which the language has no case.
+- The text is written *without* spaces, so we must chop the string \(s\) into blocks (words) of length \(\le k\), each block ending in a letter chosen from some subset \(S\subseteq\{\text{A},\dots\}\).  We want to find the smallest possible size of that subset \(S\).
+
+Equivalently, if we think of \(S\) as the set of letters that *are* valid word‐endings, then to be able to chop \(s\) into pieces of length \(\le k\) each ending in one of the letters of \(S\), it is necessary and sufficient that
+
+1. **Every length‐\(k\) window of the text must contain at least one letter from \(S\).**  
+   Indeed, if you ever had \(k\) consecutive letters none of which is in \(S\), you would be forced to end a word only *after* those \(k\) letters (or before), and that would create a word of length \(>k\) or leave the string uncovered.
+2. **The very last character \(s_{n}\) must itself be in \(S\),** because the last word must end exactly at position \(n\).
+
+Thus the problem becomes:
+
+  - We form all length‐\(k\) substrings ("windows") of \(s\).  Record for each window the set \(U\) of distinct letters that appear in that window.
+  - We want to choose a set \(S\) of letters so that
+    1. \(S\cap U\neq\emptyset\) for *every* window \(U\).
+    2. \(s_n\in S\).
+  - Among all \(S\) satisfying these two conditions, we want \(\lvert S\rvert\) as small as possible.
+
+That is a classic *hitting‐set* condition: each window \(U\) demands "hit" by \(S\).  The universe of letters has size \(c\le18\), so we can afford a \(2^c\)‐style DP.  Let us index letters by \(0,1,\dots,c-1\).  We will represent any subset of letters by a bitmask of up to \(c\) bits.
+
+**Step 1.  Build the frequency table of window‐masks.**
+
+- If \(k\ge n\), there are no length‐\(k\) windows (or you can think of it as a single window of length \(n<k\)), and the only requirement is that \(s_n\in S\).  Hence the answer is 1.
+- Otherwise, we slide a window of length \(k\) over all positions \(i=0,1,\dots,n-k\).  We maintain a letter‐count array `cnt[0..c-1]` and a bitmask `wmask` recording which letters have positive counts.  Each time we slide, we decrement the count of the letter leaving the window, increment the count of the letter entering, update `wmask`, and then do `g[wmask]++`.  Here `g[mask]` will count how many windows have *exactly* that letter‐set `mask`.
+
+**Step 2.  Do a subset‐sum (SOS) DP to detect which masks of letters fail to hit some window.**
+
+A mask \(S\) *fails* if there is *some* window whose letter‐set \(U\) is disjoint from \(S\).  Equivalently, \(U\subseteq \overline S\).  Let
+
+- `g[u]` = number of windows whose set of letters is exactly `u`.
+- We define `h[t] = sum_{s ⊆ t} g[s]`.  
+
+Then if we take `t = (allLettersMask) ^ S` (the complement of `S`), `h[t]` counts how many windows have letter‐set disjoint from `S`.  We only accept `S` if `h[complement_of_S] == 0`.
+
+The SOS DP to compute all `h[t]` from `g` is standard and takes \(O(c\cdot 2^c)\).
+
+**Step 3.  Scan all masks \(S\) that contain the final letter \(s_n\) and pick the one of minimum popcount for which `h[comp] == 0`.**
+
+Because \(\sum 2^c\le2\cdot10^5\) over all test cases and \(\sum n\le2\cdot10^5\), the total cost
+\[
+  \sum_{\text{tests}}\bigl(O(n) + O(c\,2^c)\bigr)
+\]
+is perfectly safe within a 2‐second limit.
+
+Below is a complete Java implementation.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(in.readLine().trim());
+        StringBuilder out = new StringBuilder();
+
+        while (t-- > 0) {
+            String[] line = in.readLine().split(" ");
+            int n = Integer.parseInt(line[0]);
+            int c = Integer.parseInt(line[1]);
+            int k = Integer.parseInt(line[2]);
+            String s = in.readLine().trim();
+
+            // Convert letters to 0-based indices
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = s.charAt(i) - 'A';
+            }
+
+            // If k >= n, there are no length-k windows.
+            // We only need S to contain the last letter.
+            if (k >= n) {
+                out.append(1).append('\n');
+                continue;
+            }
+
+            // Build g[mask] = number of windows of length k whose letter-set = mask.
+            int maxMask = 1 << c;
+            int[] g = new int[maxMask];
+
+            int[] cnt = new int[c];
+            int wmask = 0;
+            // Initialize first window [0..k-1]
+            for (int i = 0; i < k; i++) {
+                if (cnt[a[i]]++ == 0) {
+                    wmask |= (1 << a[i]);
+                }
+            }
+            g[wmask]++;
+
+            // Slide window from i=1..n-k
+            for (int i = 1; i + k - 1 < n; i++) {
+                int outLetter = a[i - 1];
+                if (--cnt[outLetter] == 0) {
+                    wmask &= ~(1 << outLetter);
+                }
+                int inLetter = a[i + k - 1];
+                if (cnt[inLetter]++ == 0) {
+                    wmask |= (1 << inLetter);
+                }
+                g[wmask]++;
+            }
+
+            // SOS DP: h[mask] = sum_{sub ⊆ mask} g[sub]
+            int[] h = Arrays.copyOf(g, maxMask);
+            for (int b = 0; b < c; b++) {
+                int bit = 1 << b;
+                for (int m = 0; m < maxMask; m++) {
+                    if ((m & bit) != 0) {
+                        h[m] += h[m ^ bit];
+                    }
+                }
+            }
+
+            int allMask = maxMask - 1;
+            int lastLetterMask = 1 << a[n - 1];
+            int ans = c;  // worst‐case we might need all c letters
+
+            // Try all S that contain the last letter
+            for (int S = 0; S < maxMask; S++) {
+                if ((S & lastLetterMask) == 0) continue;  // must include final letter
+                int comp = allMask ^ S;
+                // h[comp] > 0 means there is some window U with U ⊆ comp
+                // i.e. U ∩ S = ∅, so S fails.  We need h[comp]==0.
+                if (h[comp] == 0) {
+                    int pc = Integer.bitCount(S);
+                    if (pc < ans) {
+                        ans = pc;
+                    }
+                }
+            }
+
+            out.append(ans).append('\n');
+        }
+
+        System.out.print(out);
+    }
+}
+```
+
+**Explanation of key steps**
+
+1.  **Sliding‐window mask construction**  
+    We maintain `cnt[letter]` = how many times `letter` appears in the current window of length `k`.  Whenever `cnt[x]` goes from 0→1 we set the bit for `x`; whenever it goes from 1→0 we clear that bit.  In `g[mask]` we count how many windows have *exactly* that mask of letters.
+
+2.  **SOS (subset‐sum) transform**  
+    We build `h[mask] = sum_{sub ⊆ mask} g[sub]`.  Then for any chosen set of cases `S`, let `comp = (~S) & ((1<<c)-1)`.  If `h[comp] > 0`, that means there was a window whose letter‐set `U` was a subset of `comp`, i.e.\ disjoint from `S`, so `S` fails.  We keep only those `S` with `h[comp] == 0`.
+
+3.  **Minimal popcount**  
+    Among all valid `S` that also include the final letter `s[n-1]`, we take the one with smallest bit‐count.  That is the answer.
+
+This runs in \(O(n + c\,2^c)\) per test, and the constraints guarantee \(\sum n\le2\cdot10^5\), \(\sum2^c\le2\cdot10^5\), so we stay within time and memory limits.

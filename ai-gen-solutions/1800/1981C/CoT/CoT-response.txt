@@ -1,0 +1,281 @@
+**Analysis**
+
+We have an (infinite‐)graph whose vertices are the positive integers \(1,2,3,\dots\).  From any integer \(x\ge2\) you may move “up” to its parent 
+\[
+\lfloor x/2\rfloor,
+\]
+and from *any* integer \(x\ge1\) you may move “down” to one of its two children
+\[
+2x\quad\text{or}\quad 2x+1.
+\]
+(In the statement these two moves are exactly the two allowed relations
+\[
+b_i=\lfloor b_{i+1}/2\rfloor
+\quad\hbox{or}\quad
+b_{i+1}=\lfloor b_i/2\rfloor,
+\]
+depending on which direction we look at them.)
+
+A standard fact about an infinite rooted binary tree like this is:  
+–  The *minimal* distance (number of edges) between two nodes \(x\) and \(y\) is
+\[
+d_{\min}(x,y)
+=\bigl(\text{depth}(x)+\text{depth}(y)-2\,\text{depth}(\mathrm{LCA}(x,y))\bigr).
+\]
+–  If you want to walk from \(x\) to \(y\) in *exactly* \(k\) steps, a necessary and sufficient condition is
+\[
+k\ge d_{\min}(x,y)
+\quad\text{and}\quad
+k\equiv d_{\min}(x,y)\pmod2
+\]
+because one can always waste extra moves by doing a “down‐then‐up” or “up‐then‐down” 2‐cycle somewhere.
+
+Hence we reduce each maximal segment of the array between two *known* values to checking whether those two known values can be connected in exactly the required number of steps, and if so we explicitly build such a path.  Likewise for a segment with only one known end, there is no parity or minimal‐length obstruction: we can always fill in by doing “append‐0, then half, append‐0, then half, …” or the symmetric pattern if the lone known is on the right end.
+
+Putting all the segments together in linear time (total length of all test‐cases \(\le2\cdot10^5\)) yields an \(O(n)\) solution per test with very simple integer operations.
+
+---
+
+```java
+import java.io.*;
+
+public class Main {
+    static final int MAXVAL = 1_000_000_000;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder out = new StringBuilder();
+
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine().trim());
+            String[] sa = in.readLine().split(" ");
+            int[] a = new int[n+1]; // 1-based; -1 means unknown
+            for (int i = 1; i <= n; i++) {
+                a[i] = Integer.parseInt(sa[i-1]);
+            }
+
+            // collect positions of known values
+            java.util.List<Integer> known = new java.util.ArrayList<>();
+            for (int i = 1; i <= n; i++) {
+                if (a[i] != -1) known.add(i);
+            }
+
+            int[] b = new int[n+1]; // our answer
+            boolean ok = true;
+
+            // if no known entries, just do 1,2,1,2,... this always works
+            if (known.isEmpty()) {
+                for (int i = 1; i <= n; i++) {
+                    b[i] = (i % 2 == 1 ? 1 : 2);
+                }
+            } else {
+                // copy known entries
+                for (int p : known) {
+                    b[p] = a[p];
+                }
+
+                // 1) segment before the first known: only-right-known
+                int first = known.get(0);
+                if (first > 1) {
+                    if (!fillRightOnly(b, first)) {
+                        ok = false;
+                    }
+                }
+
+                // 2) segments between known[i] and known[i+1]
+                for (int i = 0; i + 1 < known.size() && ok; i++) {
+                    int lpos = known.get(i);
+                    int rpos = known.get(i+1);
+                    if (rpos == lpos + 1) continue; // no gap
+                    if (!fillBothKnown(b, lpos, rpos)) {
+                        ok = false;
+                        break;
+                    }
+                }
+
+                // 3) segment after the last known: only-left-known
+                int last = known.get(known.size()-1);
+                if (last < n && ok) {
+                    if (!fillLeftOnly(b, last, n)) {
+                        ok = false;
+                    }
+                }
+            }
+
+            if (!ok) {
+                out.append("-1\n");
+            } else {
+                for (int i = 1; i <= n; i++) {
+                    out.append(b[i]).append(i == n ? "\n" : " ");
+                }
+            }
+        }
+
+        System.out.print(out);
+    }
+
+    // Fill backwards from b[r] to b[1..r-1].
+    // rBound = r, gap length = r-1
+    // We simply do the pattern: 2*x, x, 2*x, x, ... going leftwards.
+    static boolean fillRightOnly(int[] b, int rBound) {
+        int curr = b[rBound];
+        int len = rBound - 1;
+        for (int t = 1; t <= len; t++) {
+            int nxt;
+            if ((t & 1) == 1) {
+                // append 0 side
+                nxt = curr * 2;
+            } else {
+                // go up
+                nxt = curr / 2;
+            }
+            if (nxt < 1 || nxt > MAXVAL) return false;
+            b[rBound - t] = nxt;
+            curr = nxt;
+        }
+        return true;
+    }
+
+    // Fill forwards from b[l] to b[l+1..n]
+    // left-only known at lBound
+    static boolean fillLeftOnly(int[] b, int lBound, int n) {
+        int curr = b[lBound];
+        int len = n - lBound;
+        for (int t = 1; t <= len; t++) {
+            int nxt;
+            if ((t & 1) == 1) {
+                // append 0
+                nxt = curr * 2;
+            } else {
+                // go up
+                nxt = curr / 2;
+            }
+            if (nxt < 1 || nxt > MAXVAL) return false;
+            b[lBound + t] = nxt;
+            curr = nxt;
+        }
+        return true;
+    }
+
+    // Fill the gap between two known positions lBound < rBound
+    // b[lBound] and b[rBound] are known. We must make exactly
+    // (rBound - lBound) steps that connect them in the tree.
+    static boolean fillBothKnown(int[] b, int lBound, int rBound) {
+        int S0 = b[lBound];
+        int S1 = b[rBound];
+        int len = rBound - lBound;
+
+        // get binary representations
+        String bs0 = Integer.toBinaryString(S0);
+        String bs1 = Integer.toBinaryString(S1);
+        int d0 = bs0.length();
+        int d1 = bs1.length();
+
+        // compute LCA depth = common prefix length
+        int cp = 0;
+        int mn = Math.min(d0, d1);
+        while (cp < mn && bs0.charAt(cp) == bs1.charAt(cp)) {
+            cp++;
+        }
+        // up moves from S0 to LCA
+        int up = d0 - cp;
+        // down moves from LCA to S1
+        int down = d1 - cp;
+        int distMin = up + down;
+
+        // feasibility check
+        if (len < distMin || ((len - distMin) & 1) != 0) {
+            return false;
+        }
+        int extra = (len - distMin) / 2;
+
+        // build the path of length = len+1 from S0 to S1
+        java.util.List<Integer> path = new java.util.ArrayList<>(len+1);
+        path.add(S0);
+        int curr = S0;
+
+        // first do 'extra' up-down loops: each loop is (append0, up)
+        for (int i = 0; i < extra; i++) {
+            // append 0
+            curr = curr * 2;
+            path.add(curr);
+            // go up
+            curr = curr / 2;
+            path.add(curr);
+        }
+        // now curr == S0 again
+
+        // do the minimal up-moves
+        for (int i = 0; i < up; i++) {
+            curr = curr / 2;
+            path.add(curr);
+        }
+        // now curr is LCA
+
+        // do the minimal down-moves by using the suffix of bs1 from cp..end
+        for (int i = cp; i < d1; i++) {
+            curr = curr * 2 + (bs1.charAt(i) - '0');
+            path.add(curr);
+        }
+
+        // path.size() must be len+1
+        if (path.size() != len+1) {
+            return false;
+        }
+        // and the last must be S1
+        if (path.get(len).intValue() != S1) {
+            return false;
+        }
+
+        // write into b[lBound+1 .. rBound-1]
+        for (int i = 1; i < len; i++) {
+            b[lBound + i] = path.get(i);
+        }
+        return true;
+    }
+}
+```
+
+**Explanation of the key steps**
+
+1. **Tree interpretation**  
+   We view the allowed relations 
+   \[
+     b_i = \lfloor b_{i+1}/2\rfloor
+     \quad\text{or}\quad
+     b_{i+1} = \lfloor b_i/2\rfloor
+   \]
+   as moves in the infinite *binary* tree whose node set is \(\{1,2,\dots\}\).  From any node \(x\ge2\) you can go *up* to \(\lfloor x/2\rfloor\), and from any node \(x\ge1\) you can go *down* to \(2x\) or \(2x+1\).  
+
+2. **Distance in the tree**  
+   The minimum number of moves to get from \(x\) to \(y\) is
+   \[
+     d_\min(x,y)
+     = (\text{depth}(x)+\text{depth}(y)-2\cdot \text{depth}(\mathrm{LCA}(x,y))).
+   \]
+   If you want *exactly* \(k\) moves, you need \(k\ge d_\min\) and \(k\equiv d_\min\pmod2\).  The extra parity‐budget can always be used up by 2‐cycles of the form “down→up” or “up→down” at any node.
+
+3. **Segmenting the array**  
+   - If there are no known entries, we may freely choose a simple valid sequence, e.g. \([1,2,1,2,\dots]\).  
+   - Otherwise we split the array into:
+     - A *prefix* before the first known entry (only the right end is known).
+     - Zero or more *intervals* between two known entries \(b[\ell]\) and \(b[r]\).
+     - A *suffix* after the last known entry (only the left end is known).
+
+4. **Filling a two‐known interval**  
+   Suppose we must connect \(b[\ell]=S_0\) to \(b[r]=S_1\) in exactly \(r-\ell\) steps.  We:
+   - Compute the binary strings of \(S_0\) and \(S_1\).
+   - Find their LCA by common prefix.
+   - Compute the minimal distance \(d_\min\).
+   - Check feasibility: \((r-\ell)\ge d_\min\) and parity matches.
+   - If feasible, we build the path by:
+     1. Doing \(\tfrac{(r-\ell)-d_\min}{2}\) cycles \((\text{down→up})\) to burn extra steps.
+     2. Doing the exact "up" moves from \(S_0\) to LCA,
+     3. Then the exact "down" moves along the binary‐suffix of \(S_1\).
+   - We write the intermediate values into positions \(\ell+1,\dots,r-1\).  
+
+5. **Filling a single‐known segment**  
+   If only the *left* end is given, we simply alternate “down→up” (or "up→down") to fill the desired length, which always exists and never violates the \(1\le b_i\le10^9\) bound.  Symmetrically if only the *right* end is given we fill backwards the same way.
+
+This runs in \(O(n)\) per test (where \(n\) is the length of the sequence) because each position is written exactly once, and each known‐to‐known gap only does \(O((r-\ell)+\text{bit‐length})\) work, summing overall to \(O(n+\sum \log a_i)\).  Since \(\sum n\le2\cdot10^5\), it easily fits in the time/memory limits.

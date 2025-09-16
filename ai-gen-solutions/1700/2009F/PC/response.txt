@@ -1,0 +1,147 @@
+**Analysis**
+
+We have an array \(a\) of length \(n\).  Define its cyclic shifts
+
+  \(c_1 = a_1,a_2,\dots,a_n\),  
+  \(c_2 = a_2,a_3,\dots,a_n,a_1\),  
+  \(\dots\)  
+  \(c_n = a_n,a_1,\dots,a_{n-1}\).  
+
+We then form a huge array \(b\) by concatenating all these shifts:
+
+\[
+  b = c_1 \;+\; c_2 \;+\;\cdots+\; c_n.
+\]
+Each \(c_i\) has length \(n\), so \(|b| = n^2\).  We must answer \(q\) queries, each asking for
+\[
+  \sum_{x=\ell}^{r} b_x
+\]
+(1-based indices).  Of course \(n^2\) can be as large as \((2\cdot10^5)^2=4\cdot10^{10}\), so we
+cannot build \(b\) explicitly nor precompute a prefix‐sum array of length \(n^2\).
+
+However, each block \(c_t\) (with \(t\) from \(1\) to \(n\)) has the same total sum, namely
+\[
+   \sum_{i=1}^n a_i \;=\; S_a.
+\]
+Thus if we want the prefix‐sum of \(b\) up to position \(x\) (0‐based), we can write
+\[
+  \text{Let }t = \lfloor x / n\rfloor,\quad p = x \bmod n.
+\]
+Then
+\[
+  \sum_{i=0}^{x} b_i 
+     = t \times S_a \;\;+\;\;
+       \bigl(\text{sum of the first }(p+1)\text{ entries of the }t\text{-th block}\bigr).
+\]
+In the \(t\)-th block (0‐based), the \(p\)-th element is
+\[
+  b_{\,t\cdot n + p} \;=\; a_{(t+p)\bmod n}.
+\]
+So we need the sum of 
+\[
+  a_{\,t\bmod n},\,a_{(t+1)\bmod n},\dots,a_{(t+p)\bmod n}.
+\]
+To handle that wrap‐around cleanly in \(O(1)\), we duplicate the array \(a\) end‐to‐end to form
+an array of length \(2n\), build its prefix sums, and then any interval of length \(\le n\)
+can be fetched in \(O(1)\).  Concretely:
+
+  1. Read \(a[0\dots n-1]\) and compute \(S_a = \sum_{i=0}^{n-1} a_i\).
+  2. Build `pre2[0..2n-1]` where  
+     \(\displaystyle \text{pre2}[i] = \sum_{j=0}^{i} a_{\,j \bmod n}.\)
+  3. Define a function
+     \[
+       \mathrm{prefixB}(x) = 
+          \begin{cases}
+            0, & x < 0,\\
+            t\cdot S_a \;+\; \bigl(\mathrm{pre2}[\,t+p\,] 
+                   - (\,t>0 ? \mathrm{pre2}[\,t-1\,]:0)\bigr),
+             & x \ge 0,
+          \end{cases}
+       \quad\text{where }t = \lfloor x / n\rfloor,\,p = x \bmod n.
+     \]
+  4. Then the answer to the query \(\ell,r\) (1‐based) is
+     \[
+       \mathrm{prefixB}(r-1)\;-\;\mathrm{prefixB}(\ell-1-1).
+     \]
+
+Each query is answered in \(O(1)\) time after \(O(n)\) preprocessing for one test case.  Since
+\(\sum n, \sum q\le 2\cdot 10^5\), the total time is \(O(\sum n + \sum q)\), which is efficient.
+
+---
+
+```java
+import java.io.*;
+import java.util.StringTokenizer;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader  br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter     out = new PrintWriter(new BufferedWriter(new OutputStreamWriter(System.out)));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int q = Integer.parseInt(st.nextToken());
+
+            // Read the array a[0..n-1]
+            int[] a = new int[n];
+            st = new StringTokenizer(br.readLine());
+            long sumA = 0;
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+                sumA += a[i];
+            }
+
+            // Build prefix sums of the "doubled" array to handle wrap-around
+            // pre2[i] = sum of a[0..i] in the infinite repetition sense, for i in [0..2n-1].
+            long[] pre2 = new long[2 * n];
+            for (int i = 0; i < 2 * n; i++) {
+                pre2[i] = (i == 0 ? 0 : pre2[i - 1]) + a[i % n];
+            }
+
+            // A helper to get sum of b[0..x] (0-based).  If x<0, returns 0.
+            // Otherwise, number of full blocks = t = x / n, remainder = p = x % n.
+            // Sum = t * sumA + sum of a[t..t+p] in the circular manner, 
+            // fetched via pre2.
+            java.util.function.LongUnaryOperator prefixB = (long x) -> {
+                if (x < 0) return 0L;
+                long tBlocks = x / n;
+                int p = (int)(x % n);
+                int start = (int)tBlocks;       // block start in the doubled array
+                int end   = start + p;          // end index in the doubled array
+                long partial = pre2[end] - (start > 0 ? pre2[start - 1] : 0L);
+                return tBlocks * sumA + partial;
+            };
+
+            // Answer queries
+            for (int i = 0; i < q; i++) {
+                st = new StringTokenizer(br.readLine());
+                long L = Long.parseLong(st.nextToken()) - 1;  // to 0-based
+                long R = Long.parseLong(st.nextToken()) - 1;
+                long answer = prefixB.applyAsLong(R)
+                                 - prefixB.applyAsLong(L - 1);
+                out.println(answer);
+            }
+        }
+        out.flush();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Avoid building** the \(n^2\)-length array \(b\).  We only need its *prefix‐sum function*.
+2. Any position \(x\) in \(b\) lies in block number \(t = \lfloor x/n\rfloor\) (0‐based), with
+   offset \(p = x \bmod n\) inside that block.
+3. Each block has total sum \(\sum a_i\).  Summing all full blocks is \(t\cdot\sum a_i\).
+4. The remainder is the first \(p+1\) elements of the \(t\)-th cyclic shift, i.e.\  
+   \(a_{t \bmod n},a_{(t+1)\bmod n},\dots,a_{(t+p)\bmod n}\).  
+   We handle that quickly by doubling \(a\) end‐to‐end, building a prefix array of length \(2n\),
+   and extracting any run of length \(\le n\) in \(O(1)\).
+5. Each query \([\ell,r]\) turns into
+   \[
+     \text{answer} = \PrefixB(r-1)\;-\;\PrefixB(\ell-1-1).
+   \]
+   All computations are \(O(1)\) per query, after an \(O(n)\) build per test case.

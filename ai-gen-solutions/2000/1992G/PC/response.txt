@@ -1,0 +1,154 @@
+**Analysis**
+
+We have an array `a` of length `n` consisting of the numbers 1,2,…,n (i.e. a permutation of 1…n).  We must sum, over *all* subsets `S` of {1,…,n}, the quantity
+
+  **MEX**(S,|S|+1)
+
+where “MEX(S,k)” means “the k-th positive integer (strictly > 0) that is *not* in the set S.”
+
+Since the input array is just a permutation of 1…n, all that matters is *which* subsets of {1,…,n} we take, not the order.  So define
+
+  S(n) =  Σ_{S ⊆ {1…n}}  MEX( S, |S|+1 ).
+
+We wish to compute S(n) modulo 1 000 000 007 for various n up to 5000, with the sum of n² over all test‐cases ≤ 2.5·10⁷.
+
+---
+
+**Key combinatorial insight**
+
+Let a subset `S` have size $m = |S|`.  Then among {1,…,n} exactly `r = n−m` elements are *missing* from `S`.  Beyond n, all integers `n+1, n+2, …` are also “missing.”  When we ask for the (m+1)-th missing positive integer:
+
+- If `r ≥ m+1` — i.e. there are at least m+1 missing numbers *inside* {1…n} — then the answer is the (m+1)-th smallest element in `{1…n} \ S`.
+- If `r < m+1`, i.e. `n−m < m+1` ⇔ `2m+1 > n`, then the first `r` missing integers are in 1…n, and we must go out to the integers > n to pick the (m+1)-th.  A short check shows it becomes `n + ( (m+1) − r ) = 2m+1`.
+
+Thus the contribution of *all* subsets of size m splits into two regimes:
+
+1. **Small m** (so that `2m+1 ≤ n`).  In this case each subset of size m` has a varying MEX equal to the (m+1)-th missing between 1…n.  One can show by standard “k-th one/zero” arguments on a 0–1 string of length n (where 1 = “missing,” 0 = “in S”) that the *sum* of these MEX‐values over all `C(n,m)` choices of S is
+     
+     Σ_{x=m+1 to 2m+1}  x · C(x−1, m) · C(n−x, (n−m)−(m+1))
+     
+   which simplifies to
+     
+     Σ_{x=m+1..2m+1}  x·C(x−1,m)·C(n−x, n−2m−1).
+
+2. **Large m** (so that `2m+1 > n`).  Then *every* subset of size m has `MEX = 2m+1`.  There are `C(n,m)` such subsets, so they contribute
+
+     (2m+1) · C(n,m).
+
+Hence
+
+  S(n)
+  =  Σ_{m=0..⌊(n−1)/2⌋}   Σ_{x=m+1..2m+1}  x·C(x−1,m)·C(n−x,n−2m−1)
+   + Σ_{m=⌈n/2⌉..n}        (2m+1)·C(n,m).
+
+We can compute this in O(n²) per test by precomputing factorials+inverse factorials up to n for binomial-coefficients in O(1).  Since the problem guarantees that the *sum* of n² over all testcases ≤ 2.5·10⁷, the total work of O(∑n²) ≤ 2.5·10⁷ is perfectly fine in Java with fast I/O.
+
+---
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(br.readLine().trim());
+        int[] ns = new int[t];
+        int maxn = 0;
+        for (int i = 0; i < t; i++) {
+            ns[i] = Integer.parseInt(br.readLine().trim());
+            if (ns[i] > maxn) maxn = ns[i];
+        }
+
+        // Precompute factorials and inverse factorials up to maxn
+        int N = maxn;
+        int[] fac = new int[N+1];
+        int[] ifac = new int[N+1];
+        fac[0] = 1;
+        for (int i = 1; i <= N; i++) {
+            fac[i] = (int)((long)fac[i-1] * i % MOD);
+        }
+        ifac[N] = modPow(fac[N], MOD-2);
+        for (int i = N; i > 0; i--) {
+            ifac[i-1] = (int)((long)ifac[i] * i % MOD);
+        }
+
+        StringBuilder sb = new StringBuilder();
+        // Process each test case
+        for (int n : ns) {
+            long ans = 0;
+
+            // Case 1: m <= floor((n-1)/2), use the double sum
+            int half = (n - 1) / 2;
+            for (int m = 0; m <= half; m++) {
+                int r = n - 2*m - 1;  // how many ones remain after the (m+1)-th
+                long sumM = 0;
+                // x runs from m+1 to 2m+1
+                int L = m + 1, R = 2*m + 1;
+                for (int x = L; x <= R; x++) {
+                    // term = x * C(x-1, m) * C(n-x, r)
+                    long t1 = fac[x-1];
+                    t1 = t1 * ifac[m] % MOD;
+                    t1 = t1 * ifac[(x-1)-m] % MOD;
+                    long t2 = fac[n-x];
+                    t2 = t2 * ifac[r] % MOD;
+                    t2 = t2 * ifac[(n-x)-r] % MOD;
+                    long term = ( (long)x * t1 % MOD ) * t2 % MOD;
+                    sumM = (sumM + term) % MOD;
+                }
+                ans = (ans + sumM) % MOD;
+            }
+
+            // Case 2: m >= ceil(n/2), MEX = 2m+1 always
+            int start = (n + 1) / 2; // ceil(n/2)
+            for (int m = start; m <= n; m++) {
+                // (2m+1)*C(n,m)
+                long comb = (long)fac[n] * ifac[m] % MOD * ifac[n-m] % MOD;
+                long term = comb * (2L*m + 1) % MOD;
+                ans = (ans + term) % MOD;
+            }
+
+            sb.append(ans).append('\n');
+        }
+
+        System.out.print(sb.toString());
+    }
+
+    // Fast exponentiation mod
+    static int modPow(long a, int p) {
+        long res = 1, x = a % MOD;
+        while (p > 0) {
+            if ((p & 1) != 0) res = (res * x) % MOD;
+            x = (x * x) % MOD;
+            p >>= 1;
+        }
+        return (int)res;
+    }
+}
+```
+
+**Explanation of Main Steps**
+
+1. **Reading input,** storing all `n`, tracking the maximum `n` needed.
+2. **Precompute** factorials `fac[i] = i! mod` and inverse factorials `ifac[i] = (i!)^{-1} mod` up to `n = maxn` in O(maxn) time.
+3. For each test `n`, we split the sum over subset‐sizes `m` into two parts:
+
+   a) **`m ≤ (n−1)/2`** (so `2m+1 ≤ n`).  We must sum the varying
+      MEX values.  A standard “k-th missing element in a bit‐string”
+      argument shows
+
+        Σ_{|S|=m}  MEX(S,m+1)
+        = Σ_{x=m+1..2m+1}  x·C(x−1,m)·C(n−x, (n−m)−(m+1))
+        = Σ_{x=m+1..2m+1}  x·C(x−1,m)·C(n−x,n−2m−1).
+
+   b) **`m ≥ ceil(n/2)`** (so `2m+1>n`).  Every subset of size `m` has
+      MEX = `2m+1`.  There are `C(n,m)` of them, contributing
+      `(2m+1)·C(n,m)`.
+
+4. Sum everything modulo 1 000 000 007 and print.  
+
+Because ∑ n² across all testcases ≤ 25·10⁶, our O(n²) per test is fast enough in 2.5 s.

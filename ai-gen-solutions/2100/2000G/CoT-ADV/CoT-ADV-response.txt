@@ -1,0 +1,225 @@
+**Problem Restatement**
+
+We have an undirected connected graph with \(n\) intersections (nodes) and \(m\) streets (edges).  Each street \((u,v)\) has two travel‐time weights:
+
+- \(l_1\): time by bus (\(1 \le l_1 < l_2 \le 10^9\)),  
+- \(l_2\): time by walking.
+
+You live at node \(1\), need to be at node \(n\) no later than **absolute** time \(t_0\).  You also have a phone call from time \(t_1\) to \(t_2\) (\(1 \le t_1 < t_2 < t_0 \le 10^9\)), *during which you cannot be riding any bus*.  You can walk or wait at intersections during that interval.
+
+You want to **delay** your departure from home (node 1) as long as possible (call that departure time \(S\ge0\)) and still reach node \(n\) by time \(t_0\).  Output the maximum \(S\), or \(-1\) if it’s impossible even when you leave at time 0.
+
+---
+
+**Key Observations and Algorithm**
+
+1. **Time‐Dependent Bus Availability**  
+   A bus‐ride of length \(l_1\) can only be scheduled if its entire travel segment does **not** overlap the forbidden interval \([t_1,t_2]\).  However:
+   - You may **wait** at an intersection before boarding the bus;  
+   - Walking (weight \(l_2\)) is always allowed at any time, including during \([t_1,t_2]\).
+
+2. **Dijkstra with Waiting**  
+   We can do a shortest‐time‐to‐reach‐node\(n\) calculation via a **modified Dijkstra** where:
+   - We keep a `dist[u] = earliest time we can arrive at u`.
+   - From \((u,\,\text{time}=d)\), walking to neighbor \(v\) updates `d + l2` unconditionally.
+   - For bus to \(v\) of length \(l1\):
+     - If starting now \(d\) and finishing by \(d+l1 \le t_1\), you can go immediately.
+     - Else if \(d \ge t_2\), you can also go immediately.
+     - Otherwise you must **wait** until exactly \(t_2\) and then ride.  
+     In code, that is:
+       ```
+       long depart = (d < t2 && d + l1 > t1) ? t2 : d;
+       long arrive = depart + l1;
+       ```
+     and we relax `dist[v]` with `arrive`.
+
+3. **Feasibility Check & Monotonicity**
+
+   Let \(f(S)\) = earliest‐arrival‐time at node \(n\) if we *start* at time \(S\).  We want the **largest** \(S\) so that \(f(S) \le t_0\).
+
+   - **Monotonic in \(S\)**: Leaving later can only delay or equal your arrival time (you never get to cheat time).
+   - **Binary Search**: We binary‐search on \(S\) over \([0,\;t_0]\).  For each candidate \(S\), we run the above Dijkstra (initializing `dist[1]=S`) and see if `dist[n] <= t0`.
+
+4. **Early Termination & Bound Tightening**  
+   - First compute \(f(0)\).  If \(f(0)>t_0\), even starting at 0 you’re too late ⇒ output \(-1\).
+   - Otherwise you know
+     \[
+       S + (\,\text{your travel time from start 0}\,)\;\le\;t_0
+       \quad\Longrightarrow\quad
+       S \le t_0 - f(0).
+     \]
+     So you can confine your binary search to \([0,\;t_0 - f(0)]\), often dramatically shrinking the range.
+   - As soon as the Dijkstra for a candidate \(S\) finds `dist[n] <= t0`, you know “it’s feasible at \(S\).”  We try to push higher.  Otherwise we lower \(S\).
+
+---
+
+**Complexity**
+
+- Each Dijkstra takes \(O((n + m)\log n)\).  
+- We do 1 Dijkstra for \(f(0)\) plus \(O(\log(t_0-f(0)))\) more.  Even in the worst case \(t_0\le10^9\), that's at most 31 more.
+- Overall per test: \(O\bigl((n+m)\log n\cdot\log t_0\bigr)\).  Since \(\sum n,\sum m\le10^5\), this runs comfortably under the 4s limit in Java.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class Edge {
+        int to;
+        int busTime, walkTime;
+        Edge(int v, int b, int w) { to = v; busTime = b; walkTime = w; }
+    }
+    static final long INF = Long.MAX_VALUE / 4;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int T = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (T-- > 0) {
+            // Read n, m
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+
+            // Read t0, t1, t2
+            st = new StringTokenizer(br.readLine());
+            long t0 = Long.parseLong(st.nextToken());
+            long t1 = Long.parseLong(st.nextToken());
+            long t2 = Long.parseLong(st.nextToken());
+
+            // Build graph
+            List<Edge>[] graph = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) graph[i] = new ArrayList<>();
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                int l1 = Integer.parseInt(st.nextToken());
+                int l2 = Integer.parseInt(st.nextToken());
+                graph[u].add(new Edge(v, l1, l2));
+                graph[v].add(new Edge(u, l1, l2));
+            }
+
+            // 1) Compute f(0): earliest arrival if start at time 0
+            long f0 = dijkstraArrivalTime(n, graph, t1, t2, t0, 0L);
+            if (f0 > t0) {
+                // Not possible even if we start at t=0
+                sb.append(-1).append('\n');
+                continue;
+            }
+
+            // We only need to search S in [0, t0 - f0]
+            long low = 0, high = t0 - f0, ans = 0;
+            while (low <= high) {
+                long mid = (low + high) / 2;
+                // If we start at mid and still can arrive by t0, it's feasible
+                long arrival = dijkstraArrivalTime(n, graph, t1, t2, t0, mid);
+                if (arrival <= t0) {
+                    ans = mid;          // feasible => try later departure
+                    low = mid + 1;
+                } else {
+                    high = mid - 1;     // not feasible => depart earlier
+                }
+            }
+            sb.append(ans).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+
+    /**
+     * Run a time‐aware Dijkstra from node 1 to node n.
+     * dist[u] = earliest time we can arrive at u.
+     * We start at dist[1] = startTime.
+     * walking edges (l2) always cost +l2.
+     * bus edges (l1) cost +l1, but if the bus would overlap
+     * [t1,t2], we wait until t2 first.
+     *
+     * Returns dist[n] (possibly INF).
+     */
+    static long dijkstraArrivalTime(int n, List<Edge>[] graph,
+                                    long t1, long t2, long t0,
+                                    long startTime) {
+        long[] dist = new long[n+1];
+        Arrays.fill(dist, INF);
+        dist[1] = startTime;
+
+        // Min‐heap on (current arrival time, node)
+        PriorityQueue<long[]> pq = new PriorityQueue<>(Comparator.comparingLong(a->a[0]));
+        pq.offer(new long[]{startTime, 1});
+
+        while (!pq.isEmpty()) {
+            long[] top = pq.poll();
+            long curT = top[0];
+            int u = (int)top[1];
+            if (curT > dist[u]) continue;
+            if (u == n) {
+                // once we pop node n, it's its final shortest time
+                return curT;
+            }
+            // If even the current time > t0, no need to expand further
+            if (curT > t0) continue;
+
+            for (Edge e: graph[u]) {
+                // 1) walking
+                long wtime = curT + e.walkTime;
+                if (wtime < dist[e.to]) {
+                    dist[e.to] = wtime;
+                    pq.offer(new long[]{wtime, e.to});
+                }
+                // 2) bus
+                // if we would start now and run into the call window [t1,t2],
+                // must wait until t2
+                long depart = (curT < t2 && curT + e.busTime > t1) ? t2 : curT;
+                long btime = depart + e.busTime;
+                if (btime < dist[e.to]) {
+                    dist[e.to] = btime;
+                    pq.offer(new long[]{btime, e.to});
+                }
+            }
+        }
+        return dist[n];
+    }
+}
+```
+
+**How It Works on a Sample**
+
+Take the 4th sample from the prompt:
+
+```
+n=3, m=3
+t0=100, t1=80, t2=90
+Edges:
+1–2  (bus=1, walk=10)
+2–3  (bus=10, walk=50)
+1–3  (bus=20, walk=21)
+```
+
+1. **Compute `f(0)`** (start at time 0):
+   - From node 1 at time 0:
+     - Bus 1→2 in 1 min finishes at 1 (before 80) ⇒ OK.
+     - From node 2 at time 1:
+       - Bus 2→3 in 10 min finishes at 11 (before 80) ⇒ arrives 3 at time 11.
+   - So `f(0)=11`. Since 11≤100, it’s feasible.
+   - We set `high = t0 – f(0) = 100 – 11 = 89`.
+
+2. **Binary Search** for the largest \(S \in [0,89]\) such that arrival ≤100.
+
+   - Try \(S=44\): Dijkstra shows arrival = 44+11=55 ≤100 ⇒ feasible → go higher.
+   - Eventually we test around \(S=80\):
+     - Start at time 80:
+       - **Walk** 1→2 in 10 min → arrive node 2 at 90 (walking allowed even during call).
+       - Now bus 2→3: at time 90≥t2, so no restriction: arrive at 100.
+     - Arrival = 100 ≤100 → feasible.
+   - Try \(S=81\): one sees final arrival >100 → not feasible.
+   - So the maximum feasible \(S\) is **80**, matching the sample output.
+
+---
+
+Time complexity is \(O\bigl([n+m]\log n \times \log t_0\bigr)\), comfortably within the limits for \(\sum n,\sum m\le10^5\), \(t_0\le10^9\).

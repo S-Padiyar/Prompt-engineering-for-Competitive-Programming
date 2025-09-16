@@ -1,0 +1,290 @@
+**Analysis**
+
+We have an array 
+```
+a[1..n]
+```
+of positive tastiness‐values, two parameters 
+```
+m
+v
+```
+(the number of hungry creatures and the minimum tastiness each creature demands), and Alice wants to cut the cake into exactly 
+```
+m+1
+```
+contiguous pieces so that
+
+1. exactly 
+   m
+   of the pieces have sum ≥v  (each given to a creature), and
+2. 1 remaining piece (possibly empty) is Alice’s, and she wants to **maximize** the sum of that piece.
+
+If it is impossible to ensure that every creature gets ≥v, we must print −1.
+
+---
+
+Key observation: the one piece that Alice keeps must be a single contiguous subarray, and the other m pieces (in order) fill up the rest of the cake to its left and right.  Concretely, if Alice’s piece is the subarray
+
+```
+[t .. s]
+```
+
+then the creatures’ pieces partition the prefix `[1..t−1]` into some number `k` of valid pieces (each ≥v), and partition the suffix `[s+1 .. n]` into the remaining `m−k` valid pieces (each ≥v).  We only need **at least** `m` such pieces total, and then we can discard any extra.  Thus the condition is
+
+```
+( max # of valid segments in [1..t−1] )  +  ( max # of valid segments in [s+1..n] )  ≥ m.
+```
+
+Define two arrays by a simple greedy:
+
+  • `pref[i]` = maximum number of disjoint segments with sum ≥v in the prefix `a[1..i]`.  
+    We get this by a “take the earliest finishing segment” scan from left to right:
+      accumulate a running sum; once it reaches ≥v, we increment a counter, reset sum=0, and continue.
+
+  • `suff[i]` = maximum number of disjoint segments with sum ≥v in the suffix `a[i..n]`.
+    Analogously from right to left.
+
+Both `pref[i]` and `suff[i]` are automatically optimal for maximizing the count of ≥v‐segments (the classic “interval‐scheduling” greedy for earliest finish).
+
+Let
+```
+P[i] = a[1] + a[2] + … + a[i]   (prefix sums, with P[0]=0).
+```
+
+We want to choose an interval `[t..s]` to be Alice’s.  Then
+
+- the creatures must get at least `m` valid segments overall, i.e.
+  ```
+  pref[t−1] + suff[s+1] ≥ m.
+  ```
+- Alice’s sum is
+  ```
+  A = P[s] − P[t−1].
+  ```
+
+We now rewrite indices more conveniently.  Let
+```
+L = t−1   (so 0 ≤ L ≤ n),
+R = s+1   (so 1 ≤ R ≤ n+1),
+```
+and we require `L < R`.  The condition becomes
+
+  (1)  `pref[L] + suff[R] ≥ m`
+
+  Alice’s sum =  `P[R−1] − P[L]`.
+
+We must maximize that over all `0 ≤ L < R ≤ n+1` satisfying (1).
+
+Because `a[i] ≥ 1` the prefix sums are strictly increasing, so for each `R` we want the smallest possible `P[L]` among those `L < R` with
+```
+pref[L] ≥ m − suff[R].
+```
+Let
+```
+need(R) = m − suff[R].
+```
+If `need(R) ≤ 0`, that means the right side alone gives ≥m segments, so any `L<R` is OK (i.e. `pref[L] ≥ 0` always); if `need(R) > m`, no `L` can have `pref[L]` that large, so `R` is impossible.
+
+So for each `R=1..n+1`:
+
+1. Compute `need = m − suff[R]`.
+2. If `0 ≤ need ≤ m`, we look for
+   ```
+   minP = min{ P[L] : 0 ≤ L < R  and  pref[L] ≥ need }.
+   ```
+   Then candidate answer = `P[R−1] − minP`.
+3. We keep a data structure on the fly that, as we advance `R` from 1 up to `n+1`, has already “inserted” all `L=0,1,…,R−2` (so that the condition `L < R` is enforced), keyed by `pref[L]`, value `P[L]`, and supports:
+   - point‐update at index `p = pref[L]` with value `P[L]`,
+   - range‐minimum‐query over `[need..m]`.
+
+We clamp all `pref[i]` and `suff[i]` to at most `m` (anything above `m` behaves like `m`, since we only care up to `m`).
+
+A standard segment‐tree (or a Fenwick with min‐over‐suffix by index‐reversal trick) handles updates in O(log m) and queries in O(log m).  Since `n` and total over all test‐cases is ≤2⋅10^5, the total cost is O(n log n), which is fine.
+
+If we never find a valid `(L,R)` pair, we output −1; otherwise we output the maximum found.  Note also that an empty piece for Alice (sum=0) is allowed, so a final answer of 0 can be valid when no positive piece is possible but the creatures can still be made happy.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final long INF = (long)4e18;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            long v = Long.parseLong(st.nextToken());
+
+            long[] a = new long[n+1];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+
+            // 1) Compute pref[i] = max # of disjoint segments with sum >= v in a[1..i]
+            int[] pref = new int[n+1];
+            {
+                long sum = 0;
+                int cnt = 0;
+                for (int i = 1; i <= n; i++) {
+                    sum += a[i];
+                    if (sum >= v) {
+                        cnt++;
+                        sum = 0;
+                    }
+                    // clamp to m (we never need more than m)
+                    pref[i] = cnt > m ? m : cnt;
+                }
+                pref[0] = 0;
+            }
+
+            // 2) Compute suff[i] = max # of disjoint segments with sum >= v in a[i..n]
+            int[] suff = new int[n+2];
+            {
+                long sum = 0;
+                int cnt = 0;
+                for (int i = n; i >= 1; i--) {
+                    sum += a[i];
+                    if (sum >= v) {
+                        cnt++;
+                        sum = 0;
+                    }
+                    suff[i] = cnt > m ? m : cnt;
+                }
+                suff[n+1] = 0;
+            }
+
+            // 3) Prefix sums P
+            long[] P = new long[n+1];
+            for (int i = 1; i <= n; i++) {
+                P[i] = P[i-1] + a[i];
+            }
+
+            // 4) Segment tree (or BIT) to maintain min P[L] by pref[L] index
+            //    We have indices 0..m
+            SegmentTree seg = new SegmentTree(m+1);
+            // initialize all to INF
+            seg.init(INF);
+            // insert L=0: pref[0]=0, P[0]=0
+            seg.update(0, 0L);
+
+            long answer = -1;  // if stays -1, we print -1
+
+            // Sweep R = 1..n+1
+            for (int R = 1; R <= n+1; R++) {
+                int need = m - suff[R];
+                if (need <= m && need >= 0) {
+                    long bestL = seg.query(need, m);
+                    if (bestL < INF) {
+                        long candidate = P[R-1] - bestL;
+                        if (candidate > answer) {
+                            answer = candidate;
+                        }
+                    }
+                }
+                // now insert L = R (for the next rounds), as long as R <= n
+                if (R <= n) {
+                    int p = pref[R];
+                    long val = P[R];
+                    seg.update(p, val);
+                }
+            }
+
+            sb.append(answer).append('\n');
+        }
+        System.out.print(sb);
+    }
+
+    // A simple iterative segment‐tree for range minimum,
+    // size = next power of two ≥ n, tree in array [1..2*size)
+    static class SegmentTree {
+        int n, size;
+        long[] st;
+
+        SegmentTree(int n) {
+            this.n = n;
+            // find power-of-two
+            size = 1;
+            while (size < n) size <<= 1;
+            st = new long[2*size];
+        }
+
+        void init(long v) {
+            Arrays.fill(st, v);
+        }
+
+        // point update: st[pos] = min(st[pos], val)
+        void update(int pos, long val) {
+            pos += size;
+            if (val < st[pos]) {
+                st[pos] = val;
+                for (pos >>= 1; pos > 0; pos >>= 1) {
+                    st[pos] = Math.min(st[2*pos], st[2*pos+1]);
+                }
+            }
+        }
+
+        // range query [L..R], inclusive, 0-based
+        long query(int L, int R) {
+            long res = INF;
+            L += size;  R += size;
+            while (L <= R) {
+                if ((L & 1) == 1) res = Math.min(res, st[L++]);
+                if ((R & 1) == 0) res = Math.min(res, st[R--]);
+                L >>= 1; R >>= 1;
+            }
+            return res;
+        }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Greedy counts**  
+   We define  
+   ```  
+     pref[i] = maximum number of non‐overlapping subarrays of sum ≥ v in a[1..i],  
+     suff[i] = maximum number of non‐overlapping subarrays of sum ≥ v in a[i..n].  
+   ```  
+   Both can be found by a simple “take‐earliest‐finishing” greedy scan, which is known to maximize the number of segments.
+
+2. **Prefix sums**  
+   Let  
+   ```
+     P[i] = a[1] + ... + a[i],   P[0] = 0.
+   ```
+
+3. **Sliding the “free” block**  
+   If Alice’s block is `[t..s]`, define  
+   ```
+     L = t-1,   R = s+1   (so 0 ≤ L < R ≤ n+1).
+   ```  
+   Then the creatures must form at least `m` good segments in `[1..L]` plus `[R..n]`, i.e.
+   ```
+     pref[L] + suff[R] ≥ m.
+   ```  
+   Alice’s piece sum = `P[s] − P[t-1] = P[R-1] − P[L]`.
+
+4. **Data‐structure trick**  
+   As we sweep `R` from 1 up to `n+1`, we “insert” all `L` that are `< R` into a segment‐tree keyed by `pref[L]`, storing the value `P[L]`.  Then for each `R` we compute
+   ```
+     need = m − suff[R];
+   ```
+   we must have `0 ≤ need ≤ m`.  We query the minimum `P[L]` among all inserted `L` with `pref[L] ≥ need` (that is a range‐minimum query on the pref‐level index), and form a candidate
+   ```
+     candidate = P[R-1] − (that minimum).
+   ```
+   Taking the maximum of these candidates is the best Alice can do.
+
+If we never find a valid candidate, we print −1; otherwise we print the maximum found.
+
+This runs in O(n log n) per test, which is fine for ∑ n ≤ 2⋅10^5.

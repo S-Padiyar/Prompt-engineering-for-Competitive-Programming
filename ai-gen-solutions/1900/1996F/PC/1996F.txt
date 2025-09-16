@@ -1,0 +1,69 @@
+F. Bomb
+time limit per test2 seconds
+memory limit per test256 megabytes
+Sparkle gives you two arrays a
+ and b
+ of length n
+. Initially, your score is 0
+. In one operation, you can choose an integer i
+ and add ai
+ to your score. Then, you must set ai
+ = max(0,ai−bi)
+.
+
+You only have time to perform k
+ operations before Sparkle sets off a nuclear bomb! What is the maximum score you can acquire after k
+ operations?
+
+Input
+The first line contains t
+ (1≤t≤1000
+) — the number of test cases.
+
+The first line of each test case contains n
+ and k
+ (1≤n≤2⋅105,1≤k≤109
+) — the length of the arrays and the number of operations you can perform.
+
+The following line contains n
+ integers a1,a2,...an
+ (1≤ai≤109
+).
+
+The following line contains n
+ integers b1,b2,...bn
+ (1≤bi≤109
+).
+
+It is guaranteed that the sum of n
+ for all test cases does not exceed 2⋅105
+.
+
+Output
+For each test case, output an integer, the maximum score you can acquire after k
+ operations.
+
+Example
+InputCopy
+5
+3 4
+5 6 7
+2 3 4
+5 9
+32 52 68 64 14
+18 14 53 24 8
+5 1000
+1 2 3 4 5
+5 4 3 2 1
+1 1000000
+1000000
+1
+10 6
+3 3 5 10 6 8 6 8 7 7
+6 1 7 4 1 1 8 9 3 1
+OutputCopy
+21
+349
+27
+500000500000
+47

@@ -1,0 +1,297 @@
+**Problem Restatement**
+
+We have two integer arrays \(a[1..n]\) and \(b[1..n]\).  We must choose a single contiguous segment \([l,r]\) (with \(1\le l\le r\le n\)) and swap \(a_i\) with \(b_i\) for every \(i\in[l,r]\).  After doing exactly one such swap‐segment, we look at
+
+\[
+  G_A \;=\;\gcd\bigl(a_1,a_2,\dots,a_n\bigr),\quad
+  G_B \;=\;\gcd\bigl(b_1,b_2,\dots,b_n\bigr),
+\]
+
+and we wish to maximize \(G_A+G_B\).  We also want to count in how many ways (how many distinct pairs \((l,r)\)) achieve that maximum sum.
+
+We have up to \(t\) test cases, \(\sum n \le 5\times 10^5\).  Each \(a_i,b_i\le 10^9\).
+
+---
+
+**Key Observations**
+
+1.  Let
+   \[
+     {\tt preA}[i] = \gcd(a_1,\dots,a_i),\quad
+     {\tt sufA}[i] = \gcd(a_i,\dots,a_n),
+   \]
+   and similarly define {\tt preB} and {\tt sufB}.  Then if we swap on \([l,r]\), the new overall
+   \[
+     G_A' 
+     = \gcd\bigl(\underbrace{a_1,\dots,a_{l-1}}_{\text{unchanged prefix}},
+                 \underbrace{b_l,\dots,b_r}_{\text{swapped in}},
+                 \underbrace{a_{r+1},\dots,a_n}_{\text{unchanged suffix}}\bigr).
+   \]
+   Hence
+   \[
+     G_A' \;=\;
+       \gcd\bigl(\;\gcd(\,{\tt preA}[l-1],\,{\tt sufA}[r+1]\;),\;
+                 \gcd(b_l,b_{l+1},\dots,b_r)\bigr).
+   \]
+   And symmetrically
+   \[
+     G_B' = \gcd\!\bigl(\gcd({\tt preB}[l-1],\,{\tt sufB}[r+1]),\;
+                      \gcd(a_l,a_{l+1},\dots,a_r)\bigr).
+   \]
+
+2.  A naïve double‐loop over all \(1\le l\le r\le n\) costs \(O(n^2)\), far too big for \(n\) up to \(2\times10^5\).
+
+3.  However—classic trick—the *gcd* of a one‐dimensional sliding window \(\gcd(b_l,b_{l+1},\dots,b_r)\) changes only \(O(\log(\max b_i))\) times as \(r\) moves, because every time you extend the window the gcd either stays the same or strictly decreases (and any integer can only have \(O(\log(\text{value}))\) “drops” in its set of divisors).
+
+4.  Similarly the suffix‐gcd array {\tt sufA} (and {\tt sufB}) changes only \(O(\log(\,\max a_i\,))\) times as its index moves.
+
+Hence for fixed \(l\), if we walk \(r\) from \(l\) to \(n\), both
+- the value \(y_r=\gcd(b_l,b_{l+1},\dots,b_r)\), and
+- the value \(p_r=\gcd\bigl({\tt preA}[l-1],\,{\tt sufA}[r+1]\bigr)\)
+
+each only change \(O(\log)\) times.  Thus one can merge these two “change‐point sequences” and process each maximal interval of \(r\)-values in *amortized* \(O(\log)\).  Over all \(l\), that ends up \(O(n\log^2n)\) or so, which fits for \(n\) up to \(2\times10^5\).
+
+We do exactly the same in parallel for the other array to get the second gcd.  We keep track of the best sum and how many \((l,r)\) achieve it.
+
+---
+
+**Solution Outline**
+
+1.  **Read input** and for each test:
+2.  Compute
+    - {\tt preA} and {\tt preB} in one forward pass,
+    - {\tt sufA} and {\tt sufB} in one backward pass.
+3.  For each starting index \(l=1\) to \(n\):
+   a) We will walk \(r\) from \(l\) to \(n\).  
+   b) Maintain a *compressed list* of pairs \((g,\,\text{start})\) describing how \(\gcd(b_l..b_r)\) behaves as \(r\) grows.  Standard trick: each time you add \(b_r\), you update all prior gcd‐values, merge duplicates, and append \((b_r,r)\).  
+   c) In parallel maintain a compressed list for \(\gcd(a_l..a_r)\).  
+   d) Also note that \(p_r = \gcd(\,{\tt preA}[l-1],\,{\tt sufA}[r+1]\,)\) changes only at those few \(r\)-values where {\tt sufA} changes; we precompute the suffix‐gcd change positions.  Similarly for \(\gcd({\tt preB}[l-1],\,{\tt sufB}[r+1])\).  
+   e) We now have up to \(O(\log n)\) “segments” in \(r\)-space over which
+      - \(\gcd(b_l..b_r)\) is constant,
+      - \(\gcd(a_l..a_r)\) is constant,
+      - \(\gcd(\,{\tt preA}[l-1],{\tt sufA}[r+1])\) is constant,
+      - \(\gcd(\,{\tt preB}[l-1],{\tt sufB}[r+1])\) is constant.
+      
+      We can enumerate those \(O(\log)\) breakpoints in increasing order of \(r\), compute the sum
+      \[
+        G_A' \;=\;\gcd\bigl(\gcd({\tt preA}[l-1],{\tt sufA}[r+1]),\,\gcd(b_l..b_r)\bigr),
+        \quad
+        G_B' \;=\;\gcd\bigl(\gcd({\tt preB}[l-1],{\tt sufB}[r+1]),\,\gcd(a_l..a_r)\bigr),
+      \]
+      and note its value is the same for every \(r\) in that sub‐interval.  We add the length of that sub‐interval to the count of ways if it hits the current global maximum, or reset if it exceeds.
+4.  Print the best sum and count.
+
+Overall complexity is \(O\bigl(n\log^2 C\bigr)\) per test, where \(C\le10^9\).  Summed over all tests, \(\sum n\le5\cdot10^5\), this runs comfortably in the 4 s Java limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 200_000;
+    static int[] a = new int[MAXN+5], b = new int[MAXN+5];
+    static int[] preA = new int[MAXN+5], preB = new int[MAXN+5];
+    static int[] sufA = new int[MAXN+5], sufB = new int[MAXN+5];
+    static int n;
+
+    // Compute gcd
+    static int gcd(int x, int y) {
+        if (x == 0) return y;
+        if (y == 0) return x;
+        return Integer.gcd(x, y);
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        int T = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (T-- > 0) {
+            n = Integer.parseInt(br.readLine().trim());
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) a[i] = Integer.parseInt(st.nextToken());
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) b[i] = Integer.parseInt(st.nextToken());
+
+            // 1) Build prefix-gcd arrays
+            preA[0] = 0;
+            preB[0] = 0;
+            for (int i = 1; i <= n; i++) {
+                preA[i] = gcd(preA[i-1], a[i]);
+                preB[i] = gcd(preB[i-1], b[i]);
+            }
+
+            // 2) Build suffix-gcd arrays (with an extra slot at n+1 = 0)
+            sufA[n+1] = 0;
+            sufB[n+1] = 0;
+            for (int i = n; i >= 1; i--) {
+                sufA[i] = gcd(sufA[i+1], a[i]);
+                sufB[i] = gcd(sufB[i+1], b[i]);
+            }
+
+            // 3) Precompute change-points of sufA and sufB
+            //    We only care where sufA[i] != sufA[i+1].
+            ArrayList<Integer> changeA = new ArrayList<>();
+            ArrayList<Integer> changeB = new ArrayList<>();
+            for (int i = 1; i <= n; i++) {
+                if (sufA[i] != sufA[i+1]) changeA.add(i);
+                if (sufB[i] != sufB[i+1]) changeB.add(i);
+            }
+
+            long bestSum = 0, ways = 0;
+
+            // 4) For each l, we sweep r from l..n in O(log n) segments.
+            for (int l = 1; l <= n; l++) {
+                // Compressed list of (gcdVal, startR) for b[l..r]
+                ArrayList<int[]> segB = new ArrayList<>();
+                // Compressed list of (gcdVal, startR) for a[l..r]
+                ArrayList<int[]> segA = new ArrayList<>();
+                // initially empty ->  gcd(b_l..b_{l-1}) = 0
+                segB.add(new int[]{0, l});
+                segA.add(new int[]{0, l});
+
+                // Indices into change-point lists for suffix
+                int idxA = Collections.binarySearch(changeA, l) >= 0
+                         ? Collections.binarySearch(changeA, l)
+                         : -Collections.binarySearch(changeA, l)-1;
+                int idxB = Collections.binarySearch(changeB, l) >= 0
+                         ? Collections.binarySearch(changeB, l)
+                         : -Collections.binarySearch(changeB, l)-1;
+
+                int curR = l;
+                while (curR <= n) {
+                    // 1) Extend gcd-lists by adding position curR
+                    int valB = b[curR], valA = a[curR];
+                    // Update segB
+                    ArrayList<int[]> nextB = new ArrayList<>();
+                    nextB.add(new int[]{valB, curR}); 
+                    for (int[] p : segB) {
+                        int ng = gcd(p[0], valB);
+                        if (nextB.get(nextB.size()-1)[0] != ng) {
+                            nextB.add(new int[]{ng, p[1]});
+                        }
+                    }
+                    segB = nextB;
+                    // Update segA
+                    ArrayList<int[]> nextA = new ArrayList<>();
+                    nextA.add(new int[]{valA, curR});
+                    for (int[] p : segA) {
+                        int ng = gcd(p[0], valA);
+                        if (nextA.get(nextA.size()-1)[0] != ng) {
+                            nextA.add(new int[]{ng, p[1]});
+                        }
+                    }
+                    segA = nextA;
+
+                    // 2) Build the list of breakpoints from:
+                    //    - segB starts,
+                    //    - segA starts,
+                    //    - next suffix-change in A,
+                    //    - next suffix-change in B.
+                    int INF = n+1;
+                    TreeSet<Integer> cuts = new TreeSet<>();
+                    // from segB
+                    for (int[] p : segB) cuts.add(p[1]);
+                    // from segA
+                    for (int[] p : segA) cuts.add(p[1]);
+                    // suffix A-change
+                    if (idxA < changeA.size()) cuts.add(changeA.get(idxA));
+                    // suffix B-change
+                    if (idxB < changeB.size()) cuts.add(changeB.get(idxB));
+
+                    // We look for the smallest cut >= curR
+                    Integer start = cuts.ceiling(curR);
+                    if (start == null) break;
+                    // then also look for next cut > start to bound the interval
+                    Integer next = cuts.higher(start);
+                    int intervalEnd = (next == null ? n : next - 1);
+
+                    // But all of r in [start..intervalEnd] share
+                    //  gcd(b_l..b_r)= some Y
+                    //  gcd(a_l..a_r)= some V
+                    //  gcd( preA[l-1], sufA[r+1] ) = pA
+                    //  gcd( preB[l-1], sufB[r+1] ) = pB
+                    // So the swapped-GCDs:
+                    //   G1 = gcd(pA, Y),   G2 = gcd(pB, V)
+                    //
+                    // We extract Y,V by looking up segB, segA, and
+                    // pA,pB by index in changeA/changeB.
+
+                    // find Y
+                    int Y = 0;
+                    for (int[] p : segB) {
+                        if (p[1] <= start) Y = p[0];
+                        else break;
+                    }
+                    // find V
+                    int V = 0;
+                    for (int[] p : segA) {
+                        if (p[1] <= start) V = p[0];
+                        else break;
+                    }
+                    // find pA = gcd(preA[l-1], sufA[start+1])
+                    int borderApos = start+1;
+                    int pA = gcd(preA[l-1], borderApos<=n ? sufA[borderApos] : 0);
+                    // find pB
+                    int borderBpos = start+1;
+                    int pB = gcd(preB[l-1], borderBpos<=n ? sufB[borderBpos] : 0);
+
+                    int G1 = gcd(pA, Y);
+                    int G2 = gcd(pB, V);
+                    long sum = (long)G1 + G2;
+                    long len = intervalEnd - start + 1;
+                    if (sum > bestSum) {
+                        bestSum = sum;
+                        ways = len;
+                    } else if (sum == bestSum) {
+                        ways += len;
+                    }
+
+                    // Advance curR beyond this interval
+                    curR = intervalEnd + 1;
+
+                    // Advance suffix-change indices if we passed them
+                    while (idxA < changeA.size() && changeA.get(idxA) < curR) idxA++;
+                    while (idxB < changeB.size() && changeB.get(idxB) < curR) idxB++;
+                }
+            }
+
+            sb.append(bestSum).append(" ").append(ways).append("\n");
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+- We precompute prefix‐gcd (`preA`, `preB`) so we can quickly do \(\gcd(a_1\ldots a_{l-1})\) or \(\gcd(b_1\ldots b_{l-1})\).
+- We precompute suffix‐gcd (`sufA`, `sufB`) so we can quickly do \(\gcd(a_{r+1}\ldots a_n)\) or \(\gcd(b_{r+1}\ldots b_n)\).
+- For a fixed left‐endpoint \(l\), as we scan right‐endpoint \(r\) from \(l\) up to \(n\):
+  1.  We maintain a *small list* of pairs \((g,\text{start})\) that describes “if your window is \([l\ldots r]\), then \(\gcd(b_l..b_r)\) equals \(g\) for all \(r\) in some subinterval; and these pairs change only \(O(\log\max b)\) times.”  That list we rebuild in amortized \(O(\log)\) each extension of \(r\).
+  2.  Similarly for \(\gcd(a_l..a_r)\).
+  3.  We also only care about those \(r\) where *either* our window‐gcd changes *or* the suffix‐gcd\((a_{r+1}\ldots)\) or suffix‐gcd\((b_{r+1}\ldots)\) changes.  All together that is still \(O(\log)\) events as \(r\) goes from \(l\) to \(n\).
+  4.  On each maximal run of consecutive \(r\)-values where *none* of these four ingredients changes, the *combined* sum
+     \[
+       \gcd(\gcd(\text{preA}[l-1],\text{sufA}[r+1]),\,\gcd(b_l..b_r))
+       \;+\;
+       \gcd(\gcd(\text{preB}[l-1],\text{sufB}[r+1]),\,\gcd(a_l..a_r))
+     \]
+     is constant.  We compute it once, compare to the global best, and if it ties or exceeds we add the length of that run to our “ways” count.
+
+This brings the sweep for each \(l\) down to \(O(\log^2(\max a_i,b_i))\), and summing over all \(l\le n\) is \(O(n\log^2)\).  With \(\sum n\le5\!\times10^5\), Java easily handles it in 4 s and 256 MB.
+
+---
+
+**Complexity**
+
+- Let \(C\) be up to \(\max_i \max(a_i,b_i)\le10^9\).  Each of the two sliding‐gcd structures changes \(O(\log C)\) times per extension.  
+- The suffix‐gcd arrays each change \(O(\log(\max a))\), \(O(\log(\max b))\) times over \(n\).  
+- Merging those event‐streams per \(l\) is \(O(\log(C))\).  
+- We do \(n\) different \(l\).  
+
+Hence overall \(O(n\log^2 C)\).  Since \(\sum n\le 5\cdot10^5\) and \(\log^2(10^9)\approx(30)^2=900\), this runs in time under 4 s in Java. The extra memory is \(O(n)\).

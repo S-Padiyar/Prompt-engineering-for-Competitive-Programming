@@ -1,0 +1,132 @@
+Below is a Java implementation using a time‐dependent Dijkstra inside a binary search on the latest departure time.  The key idea is that once you fix a departure time x, you treat each bus‐ride as “unavailable” during the phone‐call window by forcing you to wait until the call finishes (if a ride would otherwise intersect the call).  Walking edges are always available.  You then check whether you can reach intersection n by time t₀ starting from time x, and binary‐search the maximum x for which this succeeds.
+
+This runs in O((n+m)·log(n+m)·log t₀) per test, which is fast enough under the problem’s constraints.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class Edge {
+        int to;
+        long busTime, walkTime;
+        Edge(int _to, long _b, long _w) {
+            to = _to;
+            busTime = _b;
+            walkTime = _w;
+        }
+    }
+
+    static int n, m;
+    static long T0, T1, T2;
+    static List<Edge>[] adj;
+    static final long INF = Long.MAX_VALUE / 4;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        int tc = Integer.parseInt(br.readLine().trim());
+        while (tc-- > 0) {
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            n = Integer.parseInt(st.nextToken());
+            m = Integer.parseInt(st.nextToken());
+            st = new StringTokenizer(br.readLine());
+            T0 = Long.parseLong(st.nextToken());
+            T1 = Long.parseLong(st.nextToken());
+            T2 = Long.parseLong(st.nextToken());
+            // build adjacency
+            adj = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) {
+                adj[i] = new ArrayList<>();
+            }
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                long l1 = Long.parseLong(st.nextToken());
+                long l2 = Long.parseLong(st.nextToken());
+                adj[u].add(new Edge(v, l1, l2));
+                adj[v].add(new Edge(u, l1, l2));
+            }
+
+            // Binary search the latest departure x in [0..T0]
+            long lo = 0, hi = T0, ans = -1;
+            while (lo <= hi) {
+                long mid = (lo + hi) >>> 1;
+                if (canReach(mid)) {
+                    ans = mid;
+                    lo = mid + 1;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            sb.append(ans).append('\n');
+        }
+        System.out.print(sb);
+    }
+
+    /**
+     * Check if we can depart at time x from node 1 and reach node n by time T0,
+     * respecting that bus-rides cannot intersect [T1,T2).
+     */
+    static boolean canReach(long x) {
+        // dist[u] = earliest time we can arrive at u
+        long[] dist = new long[n+1];
+        Arrays.fill(dist, INF);
+        dist[1] = x;
+
+        // Min-heap by arrival-time
+        PriorityQueue<long[]> pq = new PriorityQueue<>(Comparator.comparingLong(a -> a[0]));
+        pq.offer(new long[]{x, 1});
+
+        while (!pq.isEmpty()) {
+            long[] cur = pq.poll();
+            long t = cur[0];
+            int u = (int) cur[1];
+            if (t > dist[u]) continue;
+            if (t > T0) continue;         // no point if we already exceed T0
+            if (u == n) return true;     // reached n in time
+
+            for (Edge e : adj[u]) {
+                int v = e.to;
+
+                // 1) try walking
+                long wt = t + e.walkTime;
+                if (wt <= T0 && wt < dist[v]) {
+                    dist[v] = wt;
+                    pq.offer(new long[]{wt, v});
+                }
+
+                // 2) try bus
+                long depart;
+                // if we can start & finish before the call window ...
+                if (t + e.busTime <= T1 || t >= T2) {
+                    depart = t;
+                } else {
+                    // otherwise wait until T2 to start
+                    depart = T2;
+                }
+                long bt = depart + e.busTime;
+                if (bt <= T0 && bt < dist[v]) {
+                    dist[v] = bt;
+                    pq.offer(new long[]{bt, v});
+                }
+            }
+        }
+        return false;
+    }
+}
+```
+
+Explanation of the core parts:
+
+1. **Binary Search on Departure Time**  
+   We know that if it’s possible to make it by time T₀ starting at time x, then starting any earlier x′ < x only helps (you just have strictly more time).  Hence the predicate “canReach(x)” is monotonic in x, and we can binary‐search the maximum x with `canReach(x)=true`.
+
+2. **Time‐Dependent Dijkstra**  
+   We maintain an array `dist[u]` = the earliest absolute time you can arrive at intersection u.  We start from `dist[1] = x`.  For each edge, we always allow walking, which advances time by the walking cost.  For a bus‐ride of time `l1`, if taking it immediately at time `t` would overlap the phone window [T₁,T₂) (i.e. `t < T₂` but `t + l1 > T₁`), we force a wait at that node until time T₂, and then take the bus (so the departure is effectively `max(t, T₂)`).
+
+3. **Checking Feasibility**  
+   We run Dijkstra until either we extract node `n` with `dist[n] ≤ T₀` (then success) or exhaust the queue (then fail).
+
+Overall this solves each test in O((n+m)·log n · log T₀) time, which is efficient for the given constraints.

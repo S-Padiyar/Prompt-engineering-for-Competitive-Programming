@@ -1,0 +1,194 @@
+Below is a full, step‐by‐step write‐up and Java implementation for Codeforces 1805E “Expected Power.”  
+
+1.  Problem restatement  
+    We have n independent Bernoulli trials: for each i in [1..n], we toss a biased coin that comes up “heads” (we include aᵢ in our multiset S) with probability pᵢ/10⁴, and “tails” (we do not include aᵢ) with probability 1−pᵢ/10⁴.  After running all n trials, we compute  
+      f(S) = bitwise-XOR of all the aᵢ that were “included,”  
+    and we want the expected value of (f(S))², modulo 10⁹+7.  
+
+    Equivalently, if we think of f(S) in binary, let fₖ∈{0,1} be its k-th bit.  Then  
+      f(S) = ∑ₖ 2ᵏ·fₖ,  
+    and  
+      (f(S))² = ∑ₖ 2^{2k}·fₖ  + 2·∑_{k<ℓ} 2^{k+ℓ}·(fₖ·f_ℓ).  
+    Taking expectation, E[fₖ] = P(fₖ=1), and E[fₖ·f_ℓ] = P(fₖ=1 ∧ f_ℓ=1).  
+
+2.  Key probability / parity trick  
+    - For a fixed bit k, let Xₖ be the number of included aᵢ whose k-th bit =1.  Then fₖ = Xₖ mod 2.  
+    - Each aᵢ is included independently with probability Pᵢ = pᵢ·inv(10000) mod M.  
+    - It is a standard fact that for independent Bernoulli’s with parameters {Pᵢ : aᵢ has bit k},  
+        E[ (−1)^{Xₖ} ] = ∏_{i: aᵢ's k-th bit=1} (1 − 2Pᵢ).  
+      Moreover,  
+        P(fₖ=1) = P(Xₖ odd) = (1 − E[ (−1)^{Xₖ} ])/2.  
+
+    - For two bits k≠ℓ, let Xₖ, X_ℓ be the respective parities.  One shows by inclusion-exclusion that  
+        P(fₖ=1 ∧ f_ℓ=1)  
+          = ¼·[1 − E[ (−1)^{Xₖ} ] − E[ (−1)^{X_ℓ} ] + E[ (−1)^{Xₖ+X_ℓ} ]].  
+      But Xₖ+X_ℓ = ∑ᵢ bᵢ where bᵢ = (# of bits among k,ℓ set in aᵢ) mod 2 = (bitₖ⊕bit_ℓ).  
+      Hence  
+        E[ (−1)^{Xₖ+X_ℓ} ] = ∏_{i: bitₖ⊕bit_ℓ=1} (1 − 2Pᵢ).  
+
+3.  Putting it together  
+    Let  
+      Qᵢ = 1 − 2Pᵢ  (mod M),  
+    and for each bit k ∈ [0..9] (since aᵢ≤1023 has at most 10 bits):  
+      Tₖ = ∏_{i : (aᵢ has k-th bit =1)} Qᵢ,  
+    and for each pair 0≤k<ℓ≤9:  
+      Tₖℓ = ∏_{i : (aᵢ's k⊕ℓ bit =1)} Qᵢ.  
+
+    Then  
+      Pₖ ≡ P(fₖ=1) = (1 − Tₖ)*inv(2),  
+    and  
+      Pₖℓ ≡ P(fₖ=1 ∧ f_ℓ=1)  
+           = (1 − Tₖ − T_ℓ + Tₖℓ)*inv(4).  
+
+    Finally  
+      E[(f(S))²]  
+        = ∑ₖ 2^{2k}·Pₖ   +   2·∑_{k<ℓ} 2^{k+ℓ}·Pₖℓ  
+        = ∑ₖ 2^{2k}·(1 − Tₖ)/2  
+          + ∑_{k<ℓ} 2·2^{k+ℓ}·(1 − Tₖ − T_ℓ + Tₖℓ)/4  
+        = ∑ₖ 2^{2k−1}·(1 − Tₖ)  
+          + ∑_{k<ℓ} 2^{k+ℓ−1}·(1 − Tₖ − T_ℓ + Tₖℓ)  (all mod M).  
+
+4.  Complexity  
+    - We have at most 10 bits ⇒ 10 values of Tₖ and 45 values of Tₖℓ.  
+    - For each of the n elements we update up to 10 Tₖ’s (only those bits =1) and up to 45 Tₖℓ’s (those pairs with bitₖ⊕bit_ℓ=1).  
+      That is O(n·55) per test case.  
+    - Sum of all n across tests ≤2·10⁵ ⇒ about 11·10⁶ multiplications total.  Fine under 4s in Java.  
+
+5.  Implementation in Java  
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+    static long modInv(long x) {
+        // Fermat little theorem, since MOD is prime
+        long res = 1, pow = MOD-2;
+        x %= MOD;
+        while (pow > 0) {
+            if ((pow & 1) == 1) res = (res * x) % MOD;
+            x = (x * x) % MOD;
+            pow >>= 1;
+        }
+        return res;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        int t = Integer.parseInt(in.readLine());
+        
+        long inv10000 = modInv(10000);
+        long inv2 = modInv(2);
+        long inv4 = modInv(4);
+        
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine());
+            int[] a = new int[n];
+            int[] p = new int[n];
+            
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) {
+                p[i] = Integer.parseInt(st.nextToken());
+            }
+            
+            // Compute Q[i] = 1 - 2*P[i], where P[i] = p[i]/10000
+            long[] Q = new long[n];
+            for (int i = 0; i < n; i++) {
+                long Pi = (p[i] * inv10000) % MOD;
+                Q[i] = (1 - 2*Pi % MOD + MOD) % MOD;
+            }
+            
+            // T[k] = product of Q[i] over i with bit k = 1
+            long[] T = new long[10];
+            Arrays.fill(T, 1L);
+            
+            // Tpair[k][ℓ] = product of Q[i] over i with (bit_k XOR bit_ℓ)=1
+            long[][] Tpair = new long[10][10];
+            for (int i = 0; i < 10; i++) {
+                for (int j = 0; j < 10; j++) {
+                    Tpair[i][j] = 1L;
+                }
+            }
+            
+            // Accumulate products
+            for (int i = 0; i < n; i++) {
+                int mask = a[i];
+                // For each bit k set
+                for (int k = 0; k < 10; k++) {
+                    if (((mask >> k) & 1) == 1) {
+                        T[k] = (T[k] * Q[i]) % MOD;
+                    }
+                }
+                // For each pair k<ℓ or even k>ℓ, we just do all k,ℓ
+                for (int k = 0; k < 10; k++) {
+                    for (int ℓ = k + 1; ℓ < 10; ℓ++) {
+                        int bitK = (mask >> k) & 1;
+                        int bitL = (mask >> ℓ) & 1;
+                        if ((bitK ^ bitL) == 1) {
+                            Tpair[k][ℓ] = (Tpair[k][ℓ] * Q[i]) % MOD;
+                        }
+                    }
+                }
+            }
+            
+            // Now compute the final sum
+            long ans = 0;
+            
+            // Single-bit contributions
+            for (int k = 0; k < 10; k++) {
+                // Pₖ = (1 - T[k])/2
+                long pk = (1 - T[k] + MOD) % MOD * inv2 % MOD;
+                long term = pk * modPow(2, 2*k, MOD) % MOD;
+                ans = (ans + term) % MOD;
+            }
+            
+            // Two-bit contributions
+            for (int k = 0; k < 10; k++) {
+                for (int ℓ = k + 1; ℓ < 10; ℓ++) {
+                    // Pₖℓ = (1 - T[k] - T[ℓ] + Tpair[k][ℓ])/4
+                    long joint = (1 - T[k] - T[ℓ] + Tpair[k][ℓ]) % MOD;
+                    if (joint < 0) joint += MOD;
+                    joint = joint * inv4 % MOD;
+                    long term = (2 * modPow(2, k+ℓ, MOD)) % MOD * joint % MOD;
+                    ans = (ans + term) % MOD;
+                }
+            }
+            
+            System.out.println(ans);
+        }
+    }
+    
+    // Fast exponentiation
+    static long modPow(long base, int exp, int mod) {
+        long res = 1, b = base % mod;
+        while (exp > 0) {
+            if ((exp & 1) == 1) res = (res * b) % mod;
+            b = (b * b) % mod;
+            exp >>= 1;
+        }
+        return res;
+    }
+}
+```
+
+Explanation of the main steps in code:
+
+- We precompute `inv(10000)`, `inv(2)` and `inv(4)` under modulo \(10^9+7\).
+- Read each test case: arrays `a[]` and `p[]`.
+- Convert each probability \(p_i/10^4\) into a modular integer `Pᵢ`, then form `Qᵢ = 1−2Pᵢ mod M`.
+- Accumulate products `T[k] = ∏ Qᵢ` over all i with bit k=1, and similarly `Tpair[k][ℓ]` over all i with `(bitₖ⊕bit_ℓ)=1`.
+- Using the parity‐generating‐function identities, form
+    - \(Pₖ = (1−T[k])·inv(2)\), contributes \(2^{2k}·Pₖ\).
+    - \(Pₖℓ = (1−T[k]−T[ℓ]+Tpair[k][ℓ])·inv(4)\), contributes \(2·2^{k+ℓ}·Pₖℓ\).
+- Sum everything, print result.
+
+Time complexity:  
+- For each of up to \(2×10^5\) total elements we do O(55) multiplications ⇒ ~1.1×10^7 mod‐mults.  
+- Pre/post work is negligible.  
+Overall O(n·d²) with d=10, quite safe under the 4 s limit even in Java.

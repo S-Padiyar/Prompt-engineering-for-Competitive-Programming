@@ -1,0 +1,150 @@
+**Analysis**
+
+We want to count the number of pairs of indices \((i,j)\), \(1\le i<j\le n\), in a permutation \(p\) of length \(n\) such that
+
+\[
+i\cdot j \;\bigm|\; p_i \cdot p_j
+\]
+
+(in other words, \(p_i\,p_j\) is divisible by \(i\,j\)).
+
+A direct \(O(n^2)\) scan of all pairs is hopeless for \(n\) up to \(10^5\).  The trick is to rewrite the divisibility test in a form that lets us do an incremental sweep in \(O(n\sqrt{n})\) or so (in fact it will be roughly \(O(n\,\tau)\), where \(\tau\) is the typical number of divisors of an integer, about 100 at worst but on average much smaller).
+
+---
+
+**Key rewrite**
+
+Let
+
+\[
+g_i \;=\;\gcd(i,p_i), 
+\quad
+a_i \;=\;\frac{p_i}{g_i},
+\quad
+b_i \;=\;\frac{i}{g_i}.
+\]
+
+Then the condition
+\[
+i\,j \;\bigm|\; p_i\,p_j
+\]
+is equivalent to
+\[
+b_i\,b_j \;\bigm|\; a_i\,a_j,
+\]
+and because \(\gcd(a_i,b_i)=1\), one shows that this in turn is equivalent to
+
+  • \(b_i\) divides \(a_j\),  and  
+  • \(b_j\) divides \(a_i\).
+
+Hence we only need, for each pair \((i,j)\), to check those two divisibility conditions.
+
+---
+
+**Sweep‐line approach**
+
+We process \(i\) from \(1\) to \(n\) in increasing order and maintain a data structure (an array of lists) that, for each possible value of \(b\) in \([1\ldots n]\), keeps the previously seen indices \(j<i\) whose \(b_j\)=\(b\), together with their \(a_j\).  Then when we arrive at index \(i\) with pair \((a_i,b_i)\), we must count all earlier \(j<i\) such that
+
+1. \(b_j\) divides \(a_i\),  
+2. \(b_i\) divides \(a_j\).
+
+We do this by (a) factoring \(a_i\) to enumerate all its positive divisors \(d\), and then (b) looking into the list of earlier indices with \(b_j=d\).  For each stored \(a_j\) in that list we test \(a_j \bmod b_i=0\).  Each such \(j\) contributes one valid pair.  Finally we insert \((a_i,b_i)\) into the bucket for \(b_i\).
+
+Since
+
+- the average number of divisors of a number up to \(10^5\) is on the order of a dozen,  
+- each index contributes exactly once to one bucket, and  
+- the buckets remain fairly small on average,
+
+this ends up running in about \(O(n\sqrt{n})\) or even better in practice for \(n\le10^5\).  It easily fits into 3 s.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer tok = new StringTokenizer(in.readLine());
+        int t = Integer.parseInt(tok.nextToken());
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            tok = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(tok.nextToken());
+            int[] p = new int[n+1];
+            tok = new StringTokenizer(in.readLine());
+            for (int i = 1; i <= n; i++) {
+                p[i] = Integer.parseInt(tok.nextToken());
+            }
+            
+            // buckets[b] will hold the list of a_j for all processed j with b_j = b
+            @SuppressWarnings("unchecked")
+            ArrayList<Integer>[] buckets = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) {
+                buckets[i] = new ArrayList<>();
+            }
+            
+            long ans = 0;
+            for (int i = 1; i <= n; i++) {
+                int g = gcd(i, p[i]);
+                int a_i = p[i] / g;
+                int b_i = i   / g;
+                
+                // enumerate divisors of a_i
+                for (int d = 1; d * d <= a_i; d++) {
+                    if (a_i % d == 0) {
+                        int d1 = d;
+                        int d2 = a_i / d;
+                        
+                        // check bucket for b_j = d1
+                        for (int a_j : buckets[d1]) {
+                            if (a_j % b_i == 0) {
+                                ans++;
+                            }
+                        }
+                        
+                        // if distinct, also check bucket for b_j = d2
+                        if (d1 != d2) {
+                            for (int a_j : buckets[d2]) {
+                                if (a_j % b_i == 0) {
+                                    ans++;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // now "insert" index i into bucket b_i
+                buckets[b_i].add(a_i);
+            }
+            
+            sb.append(ans).append('\n');
+        }
+        System.out.print(sb);
+    }
+    
+    // fast gcd
+    static int gcd(int x, int y) {
+        while (y != 0) {
+            int r = x % y;
+            x = y;
+            y = r;
+        }
+        return x;
+    }
+}
+```
+
+**Explanation of the main steps**
+
+1. **Precompute** \((a_i,b_i)\) by dividing out the \(\gcd(i,p_i)\).  
+2. **Maintain** an array of buckets, `buckets[b]`, each bucket storing the list of all earlier `a_j` for which `b_j = b`.  
+3. **For each** new index `i`:  
+   a. Factor `a_i` in \(O(\sqrt{a_i})\) time to get all its divisors `d`.  
+   b. For each divisor `d`, look in `buckets[d]`.  Every entry there has `b_j=d`, so the first half of the test “`b_j|a_i`” is satisfied.  We then check the second half “`b_i|a_j`” by `if (a_j % b_i==0)`.  
+   c. Sum up all matches.  
+   d. Finally, add `a_i` to `buckets[b_i]` so it will serve future indices.  
+
+This runs in practice in about \(O\bigl(\sum_i \tau(a_i)\bigr)\approx O(n\sqrt{n})\) and easily handles \(n\) up to \(10^5\) in the given time limit.

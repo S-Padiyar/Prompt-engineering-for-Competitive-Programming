@@ -1,0 +1,100 @@
+E. Cosmic Rays
+time limit per test2 seconds
+memory limit per test512 megabytes
+Given an array of integers s1,s2,…,sl
+, every second, cosmic rays will cause all si
+ such that i=1
+ or si≠si−1
+ to be deleted simultaneously, and the remaining parts will be concatenated together in order to form the new array s1,s2,…,sl′
+.
+
+Define the strength of an array as the number of seconds it takes to become empty.
+
+You are given an array of integers compressed in the form of n
+ pairs that describe the array left to right. Each pair (ai,bi)
+ represents ai
+ copies of bi
+, i.e. bi,bi,⋯,biai times
+.
+
+For each i=1,2,…,n
+, please find the strength of the sequence described by the first i
+ pairs.
+
+Input
+Each test contains multiple test cases. The first line contains the number of test cases t
+ (1≤t≤104
+). The description of the test cases follows.
+
+The first line of each test case contains a single integer n
+ (1≤n≤3⋅105
+) — the length of sequence a
+.
+
+The next n
+ lines contain two integers each ai
+, bi
+ (1≤ai≤109,0≤bi≤n
+) — the pairs which describe the sequence.
+
+It is guaranteed that the sum of all n
+ does not exceed 3⋅105
+.
+
+It is guaranteed that for all 1≤i<n
+, bi≠bi+1
+ holds.
+
+Output
+For each test case, print one line containing n
+ integers — the answer for each prefix of pairs.
+
+Example
+InputCopy
+4
+4
+2 0
+1 1
+3 0
+5 1
+6
+4 6
+1 3
+4 6
+4 0
+7 6
+6 3
+7
+9 0
+7 1
+5 0
+7 1
+9 0
+1 1
+2 0
+10
+10 7
+4 9
+2 2
+7 9
+2 8
+8 5
+11 7
+15 5
+12 7
+4 0
+OutputCopy
+2 2 4 5 
+4 4 7 7 10 10 
+9 9 9 9 9 9 10 
+10 10 10 10 10 10 12 15 15 15 
+Note
+In the first test case, for the prefix of length 4
+, the changes will be [0,0,1,0,0,0,1,1,1,1,1]→[0,0,0,1,1,1,1]→[0,0,1,1,1]→[0,1,1]→[1]→[]
+, so the array becomes empty after 5
+ seconds.
+
+In the second test case, for the prefix of length 4
+, the changes will be [6,6,6,6,3,6,6,6,6,0,0,0,0]→[6,6,6,6,6,6,0,0,0]→[6,6,6,6,6,0,0]→[6,6,6,6,0]→[6,6,6]→[6,6]→[6]→[]
+, so the array becomes empty after 7
+ seconds.

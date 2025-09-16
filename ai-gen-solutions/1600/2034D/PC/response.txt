@@ -1,0 +1,216 @@
+**Analysis**
+
+We have an array a[1…n] with entries in {0,1,2}, and at least one 1.  We wish to sort it into non‐decreasing order (all the 0’s, then all the 1’s, then all the 2’s), using at most n moves of the following type:
+
+– Pick two indices u,v such that |a[u]−a[v]|=1.  Then one inscription (one unit) moves from the higher column to the lower column.  In other words, if a[u]>a[v], we do  
+ a[u]–;  a[v]++  
+otherwise   
+ a[v]–;  a[u]++.
+
+We do _not_ care about minimizing the number of moves, only that we use ≤n moves overall to reach a sorted array.  
+
+Key observations:
+
+1.  A move between values 0↔1 or 1↔2 simply “swaps” one unit (a value‐token) between those two piles, preserving the total counts of 0’s, 1’s, and 2’s.  
+2.  Sorting means we want exactly c₀ zeros in positions 1…c₀, exactly c₁ ones in positions c₀+1…c₀+c₁, and c₂ twos in positions c₀+c₁+1…n, where  
+   
+   ```
+   c₀ = # of zeros in the entire array,
+   c₁ = # of ones,
+   c₂ = # of twos.
+   ```
+
+We use a two‐phase “block‐fixing” strategy.  Depending on which end is smaller (zeros‐block or twos‐block), we fix that end first, then the other.  Concretely:
+
+– **Zeros‐first**:  if c₀≤c₂, first move all zeros into their correct “zeros block” [1…c₀], then move all the twos into their correct “twos‐block” [n−c₂+1…n].  
+– **Twos‐first**: otherwise we first move all twos into [n−c₂+1…n], then fix the zeros.
+
+Each “block‐fixing” can be done in one or two moves per item out of place, but a careful counting shows that if we always fix the _smaller_ block first, the total number of moves never exceeds n.  
+
+Implementation sketch for “zeros‐first” (the twos‐first is symmetrical):
+
+1.  **Build a set** `onesSet` of all positions holding a 1.  
+2.  **Zeros‐phase**:  
+    – Collect all indices `misZ` in [1…c₀] where `a[i]≠0`.  
+    – Collect all indices `outZ` in (c₀…n] where `a[j]==0`.  
+    – Pair them up 1‐to‐1 as `(i,outZ[k])`.  Each pair needs to “swap” a[i] with a[j].  
+        * If a[i] was 1, a[j] was 0, we can swap in one move (1↔0).  
+        * If a[i] was 2, a[j] was 0, we do a 2‐step swap via any pivot k where a[k]==1.  One move does (i,k) swapping 2↔1, the next does (i,j) swapping 1↔0.  
+    –  Each move we record and also update our array `a[]` and `onesSet` to track where the 1’s ended up.  
+3.  **Twos‐phase**:  
+    – Collect all indices `misT` in [n−c₂+1…n] where `a[i]≠2`.  
+    – Collect all indices `outT` in [1…n−c₂] where `a[j]==2`.  
+    – Pair them similarly; now every misplaced item in the twos block must be a 1 (since all 0’s ended up in place).  A 1↔2 swap is a single allowed move.  We again update `a[]` and `onesSet` after each move.
+
+One checks that the total number of moves used,
+   
+   #moves ≤ (zeros‐phase) + (twos‐phase) ≤ n,
+   
+provided we fix the smaller of the two blocks first.
+
+We simply implement exactly this plan with O(n) time per test.  We keep an `ArrayList` of moves `(u,v)` and at the end output its size and the list.  
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader(InputStream in) { br = new BufferedReader(new InputStreamReader(in)); }
+        String next() {
+            while (st == null || !st.hasMoreTokens())
+                try { st = new StringTokenizer(br.readLine()); }
+                catch (IOException e) { throw new RuntimeException(e); }
+            return st.nextToken();
+        }
+        int nextInt() { return Integer.parseInt(next()); }
+    }
+
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader(System.in);
+        StringBuilder out = new StringBuilder();
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            int[] a = new int[n+1];
+            int c0 = 0, c1 = 0, c2 = 0;
+            for (int i = 1; i <= n; i++) {
+                a[i] = in.nextInt();
+                if (a[i] == 0) c0++;
+                else if (a[i] == 1) c1++;
+                else c2++;
+            }
+
+            // We'll store positions of 1's so we can pick any as pivot in 2↔0 swaps.
+            HashSet<Integer> onesSet = new HashSet<>();
+            for (int i = 1; i <= n; i++) {
+                if (a[i] == 1) onesSet.add(i);
+            }
+
+            // We'll record all moves here.
+            ArrayList<int[]> moves = new ArrayList<>();
+
+            // A small helper to perform one legal move between u and v:
+            // We assume abs(a[u]-a[v])==1, and we transfer from the larger to the smaller.
+            // We also update a[] and the set of positions holding 1.
+            Runnable nop = () -> {};  // do-nothing
+
+            class Op {
+                void apply(int u, int v) {
+                    // Ensure a[u] > a[v], if not swap them
+                    if (a[u] < a[v]) { int tmp=u; u=v; v=tmp; }
+                    // now a[u] == a[v]+1
+                    int oldU = a[u], oldV = a[v];
+                    a[u]--; a[v]++;
+                    moves.add(new int[]{u, v});
+                    // update the set of 1-positions:
+                    if (oldU == 2 && a[u] == 1) onesSet.add(u);
+                    else if (oldU == 1 && a[u] == 0) onesSet.remove(u);
+                    if (oldV == 0 && a[v] == 1) onesSet.add(v);
+                    else if (oldV == 1 && a[v] == 2) onesSet.remove(v);
+                }
+            }
+            Op op = new Op();
+
+            // We'll write two small routines: fixZeros() and fixTwos().
+            // But depending on which block is smaller we do them in one of the two orders.
+
+            // Fix the zero-block [1..c0]:
+            Runnable fixZeros = () -> {
+                List<Integer> misZ = new ArrayList<>();
+                List<Integer> outZ = new ArrayList<>();
+                for (int i = 1; i <= n; i++) {
+                    if (i <= c0) {
+                        if (a[i] != 0) misZ.add(i);
+                    } else {
+                        if (a[i] == 0) outZ.add(i);
+                    }
+                }
+                // They must match in size:
+                for (int k = 0; k < misZ.size(); k++) {
+                    int i = misZ.get(k), j = outZ.get(k);
+                    if (a[i] == 1) {
+                        // direct 1↔0
+                        op.apply(i, j);
+                    } else {
+                        // must be a[i]==2, a[j]==0
+                        // pick any pivot k != i,j with a[k]==1
+                        int pivot = -1;
+                        for (int x : onesSet) {
+                            pivot = x;
+                            break;
+                        }
+                        // pivot is guaranteed to exist and isn't i or j
+                        op.apply(i, pivot);  // swaps a[i]==2 with a[pivot]==1
+                        op.apply(i, j);      // now a[i]==1 with a[j]==0
+                    }
+                }
+            };
+
+            // Fix the two-block [n-c2+1..n]:
+            Runnable fixTwos = () -> {
+                List<Integer> misT = new ArrayList<>();
+                List<Integer> outT = new ArrayList<>();
+                for (int i = 1; i <= n; i++) {
+                    if (i > n - c2) {
+                        if (a[i] != 2) misT.add(i);
+                    } else {
+                        if (a[i] == 2) outT.add(i);
+                    }
+                }
+                // direct 1↔2 swaps
+                for (int k = 0; k < misT.size(); k++) {
+                    int i = misT.get(k), j = outT.get(k);
+                    op.apply(j, i);
+                }
+            };
+
+            // Choose order so that the smaller block (zeros or twos) is fixed first.
+            if (c0 <= c2) {
+                fixZeros.run();
+                fixTwos.run();
+            } else {
+                fixTwos.run();
+                fixZeros.run();
+            }
+
+            // Now a[] must be sorted.  We used at most n moves.
+            out.append(moves.size()).append('\n');
+            for (int[] mv : moves) {
+                out.append(mv[0]).append(' ').append(mv[1]).append('\n');
+            }
+        }
+
+        System.out.print(out.toString());
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1.  **Counting blocks.**  We let  
+      c₀ = number of 0’s,  
+      c₁ = number of 1’s,  
+      c₂ = number of 2’s.  
+    In the final sorted array, the first c₀ positions must all be 0, the next c₁ must be 1, and the last c₂ must be 2.  
+
+2.  **Two‐phase fix.**  We have two “out‐of‐place” regions:  
+    – The **zero‐block** (positions 1…c₀), some of which may contain 1’s or 2’s that must be swapped out with zeros lying to the right.  
+    – The **two‐block** (positions n−c₂+1…n), some of which may contain 0’s or 1’s that must be swapped out with twos lying to the left.  
+   
+    We always fix the _smaller_ of these two blocks first, then the other.  A counting argument shows this guarantees at most n moves in total.
+
+3.  **Performing a swap.**  
+    – To swap a 1‐in‐block with a 0‐outside (direct 1↔0), we use exactly one allowed move.  
+    – To swap a 2‐in‐block with a 0‐outside (2↔0), we need two moves.  We carry out  
+       1) a 2↔1 swap (using some other pivot where the array has a 1),  
+       2) then a 1↔0 swap.  
+    – Swapping 1↔2 is again a single move.  
+
+4.  **Keeping track of 1’s.**  We maintain a `HashSet` of all current positions holding a 1, so we can pick a “pivot” to decompose a 2↔0 swap.  Every time we do a move, we update both the array and our set of positions of 1’s.
+
+Each move decreases the _distance_ of out‐of‐place elements in a way that guarantees termination in at most n steps.  This solves the problem in O(n) time (per test) and uses at most n moves, as required.

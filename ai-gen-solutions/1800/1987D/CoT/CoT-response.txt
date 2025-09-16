@@ -1,0 +1,100 @@
+**Analysis**
+
+Alice and Bob play on a multiset of cake‐tastiness‐values.  Alice may only ever eat a cake strictly larger than the maximum she has already eaten (so her eaten sequence must be *strictly increasing*).  Bob is free to eat (i.e. remove) any remaining cake.
+
+Alice wants to *maximize* the number of cakes she eats, Bob wants to *minimize* that number.  We claim that under optimal play:
+
+  1.  **Alice’s move**: she always picks the *smallest* remaining cake strictly greater than her current maximum (`last`).  
+  2.  **Bob’s move**: he always deletes the *largest* remaining cake strictly greater than Alice’s current maximum (`last`).  
+
+Why is that optimal?
+
+-  **Alice** wants to keep her “last” as small as possible so that many new cakes remain strictly above it.  Thus she “sacrifices” the smallest possible cake above her last, rolling her threshold forward minimally.
+-  **Bob** wants to destroy as many of Alice’s future prospects as he can.  Deleting the largest such cake each time is the most damaging way to reduce the tail of the multiset above Alice’s current maximum.
+
+We simulate these two greedy rules on the sorted multiset:
+
+1.  Sort the list of tastiness values.
+2.  Keep a variable `last = 0` (since all `a_i ≥ 1`).
+3.  Repeatedly:
+    - **Alice's turn**: scan from the front for the first element > `last`.  
+      - If none exists, the game ends.  
+      - Otherwise, remove it, set `last` to that value, and increment Alice’s count.
+    - **Bob's turn**: scan from the *back* for the first element > `last`.  
+      - If none exists, the game ends immediately.  
+      - Otherwise, remove it (Bob doesn’t change `last`).
+
+Since ​n​ per test is up to 5000 and the sum of all ​n​ across tests is ≤5000, an \(O(n^2)\) removal‐in‐an‐ArrayList simulation is fast enough (~25 million operations worst‐case).  
+
+Below is a clean Java implementation.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(in.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine().trim());
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            List<Integer> v = new ArrayList<>(n);
+            for (int i = 0; i < n; i++) {
+                v.add(Integer.parseInt(st.nextToken()));
+            }
+            Collections.sort(v);
+
+            int aliceCount = 0;
+            int last = 0;  // Alice's current maximum eaten
+
+            while (true) {
+                // Alice's turn: pick the smallest > last
+                int pickIdx = -1;
+                for (int i = 0; i < v.size(); i++) {
+                    if (v.get(i) > last) {
+                        pickIdx = i;
+                        break;
+                    }
+                }
+                if (pickIdx == -1) {
+                    // Alice cannot move
+                    break;
+                }
+                last = v.remove(pickIdx);
+                aliceCount++;
+
+                // Bob's turn: delete the largest > last
+                int delIdx = -1;
+                for (int i = v.size() - 1; i >= 0; i--) {
+                    if (v.get(i) > last) {
+                        delIdx = i;
+                        break;
+                    }
+                }
+                if (delIdx == -1) {
+                    // Bob cannot move, game ends immediately
+                    break;
+                }
+                v.remove(delIdx);
+                // Note: Bob does not change 'last'
+            }
+
+            sb.append(aliceCount).append("\n");
+        }
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+- We keep the multiset of remaining cakes as a sorted `ArrayList<Integer>`.
+- `last` records the largest cake‐value Alice has eaten so far.
+- On **Alice’s** turn, we scan from the front for the first cake strictly greater than `last`.  If found, we remove it, update `last`, and increment her count.
+- On **Bob’s** turn, we scan from the back for the first cake strictly greater than `last`—this is the largest such cake—and remove it.  Bob does not update `last`.
+- If either player cannot find a valid cake on their turn, the game ends immediately.
+- The loop repeats until no more valid moves exist, and we output how many cakes Alice ate under these optimal‐greedy rules.
+
+This simulation runs in \(O(n^2)\) per test (since each removal shifts up to \(O(n)\) elements), which is acceptable for total \(n \le 5000\).

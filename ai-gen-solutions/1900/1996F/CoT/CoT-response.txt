@@ -1,0 +1,166 @@
+**Analysis**
+
+We have \(n\) sequences (one for each index \(i\)), where the \(i\)-th sequence is
+
+\[
+a_i,\quad a_i - b_i,\quad a_i - 2b_i,\quad \dots
+\]
+
+stopping once it would go below 0 (at which point further terms are all 0).  We are allowed \(k\) picks total (over all sequences), and each pick contributes the current value of the chosen sequence term to our score; after picking a term we “advance” that sequence by subtracting \(b_i\) (but not below zero).
+
+Our goal is to maximize the sum of the picked terms in exactly \(k\) picks.  Obviously, if we have fewer than \(k\) *positive* terms in total, we would pick them all and then pick zeros (which do not contribute to the score).  Otherwise, we must pick exactly the top \(k\) *positive* terms out of the union of all the arithmetic progressions.
+
+A classical approach to “take the top \(k\) of a big multiset” defined by many arithmetic progressions is:
+
+1. **Binary‐search** on a threshold value \(T\).  
+   Define
+   \[
+     C(x)\;=\;\sum_{i=1}^n 
+       \bigl|\{\,j\ge0 : a_i - j\,b_i \ge x\}\bigr|.
+   \]
+   In plain terms, \(C(x)\) is the total number of terms \(\ge x\) across all sequences.
+   - Note \(C(x)\) is nonincreasing in \(x\).
+   - If \(C(x)\ge k\), there are *at least* \(k\) terms \(\ge x\).
+   - We want the largest \(T\) such that \(C(T)\ge k\).  Equivalently,
+     \[
+       C(T)\ge k,\quad
+       C(T+1)<k.
+     \]
+
+2. Once we have that \(T\), there are  
+   \[
+     \text{totalGreater} \;=\; C(T+1)
+   \]
+   terms *strictly greater* than \(T\), and we need \(\bigl(k - \text{totalGreater}\bigr)\) more terms, all of which must be equal to \(T\) to reach a total of \(k\) terms.
+
+3. We can sum all the terms that are \(>T\) by another simple loop over \(i\), computing how many terms in the \(i\)-th sequence exceed \(T\) and summing those arithmetic‐progression values in \(O(1)\) per sequence.  Finally we add \(\bigl(k - \text{totalGreater}\bigr)\times T\) for all the picks that land exactly at \(T\).
+
+If \(C(1)<k\), it means even the count of *positive* terms is less than \(k\), so we just pick all positive terms (and the rest are zero anyway).  Summing all positive terms is also an arithmetic‐progression sum for each sequence.
+
+Complexity:
+
+- We do \(O(\log(\max a_i))\) steps of binary search, each time \(O(n)\) to compute \(C(\cdot)\).  
+- Summing the final answer is \(O(n)\).  
+- Across all test cases \(\sum n \le 2\times 10^5\) and \(\log(\max a_i)\approx 30\), so it runs easily within time limits.
+
+---
+
+```java
+import java.io.*;
+import java.util.StringTokenizer;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        int t = Integer.parseInt(br.readLine().trim());
+
+        while (t-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long k = Long.parseLong(st.nextToken());
+
+            long[] a = new long[n], b = new long[n];
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+            st = new StringTokenizer(br.readLine());
+            for (int i = 0; i < n; i++) {
+                b[i] = Long.parseLong(st.nextToken());
+            }
+
+            // Helper to count how many terms >= x across all sequences.
+            // We cap the count at k, since we only care if it's >= k.
+            java.util.function.LongUnaryOperator countAtLeast = (long x) -> {
+                long total = 0;
+                for (int i = 0; i < n; i++) {
+                    if (a[i] >= x) {
+                        long cnt = (a[i] - x) / b[i] + 1;
+                        total += cnt;
+                        if (total >= k) {
+                            // no need to count more precisely
+                            return k;
+                        }
+                    }
+                }
+                return total;
+            };
+
+            // If even the positive terms are fewer than k, sum all positives.
+            long posCount = countAtLeast.applyAsLong(1L);
+            if (posCount < k) {
+                // Sum all positive terms:
+                // for each i, number of positive terms = c = (a[i]-1)/b[i] + 1
+                // sum of that AP = c*a[i] - b[i]*c*(c-1)/2
+                long ans = 0;
+                for (int i = 0; i < n; i++) {
+                    long c = (a[i] >= 1) ? ((a[i] - 1) / b[i] + 1) : 0;
+                    if (c > 0) {
+                        ans += c * a[i] - b[i] * (c * (c - 1) / 2);
+                    }
+                }
+                System.out.println(ans);
+                continue;
+            }
+
+            // Binary search for the largest T with C(T) >= k
+            long low = 1, high = 0;
+            for (long v : a) {
+                if (v > high) high = v;
+            }
+
+            while (low < high) {
+                long mid = (low + high + 1) >>> 1;
+                if (countAtLeast.applyAsLong(mid) >= k) {
+                    low = mid;
+                } else {
+                    high = mid - 1;
+                }
+            }
+            long T = low;
+
+            // Now compute how many are strictly greater than T (i.e. >= T+1)
+            // and sum those terms.
+            long totalGreater = 0;
+            long sumGreater = 0;
+            for (int i = 0; i < n; i++) {
+                if (a[i] >= T + 1) {
+                    long c = (a[i] - (T + 1)) / b[i] + 1;
+                    totalGreater += c;
+                    // sum of c terms: a + (a - b) + ... + (a - (c-1)b)
+                    // = c*a - b*(c*(c-1)/2)
+                    sumGreater += c * a[i] - b[i] * (c * (c - 1) / 2);
+                }
+            }
+
+            // We still need (k - totalGreater) terms that are exactly == T
+            long needT = k - totalGreater;
+            long answer = sumGreater + needT * T;
+
+            System.out.println(answer);
+        }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Counting terms ≥ `x`**  
+   For each sequence with parameters \((a_i,b_i)\), the number of terms \(\ge x\) is
+   \[
+     \max\bigl(0,\;\lfloor (a_i - x)/b_i\rfloor + 1\bigr),
+   \]
+   provided \(a_i \ge x\).  We sum this over all \(i\), capping at \(k\) since anything above \(k\) is equivalent for our binary search.
+
+2. **Binary search for threshold \(T\)**  
+   We find the maximal \(T\) such that there are at least \(k\) terms \(\ge T\).  After that, we know there are fewer than \(k\) terms \(\ge T+1\).
+
+3. **Summing the terms**  
+   - All terms strictly greater than \(T\) we take fully; we can sum each sequence’s contribution in \(O(1)\) via the standard arithmetic-progression sum formula.  
+   - The remaining picks \(\bigl(k - \text{#terms} > T\bigr)\) must all be of value exactly \(T\).  
+
+4. **Edge case**  
+   If the total count of *positive* terms is less than \(k\), we simply sum all positive terms (again by the AP sum formula) and the rest are zeros.
+
+This runs in \(O(n\log(\max a_i))\) per test and easily fits under the given limits.

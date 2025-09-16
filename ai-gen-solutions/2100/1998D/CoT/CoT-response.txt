@@ -1,0 +1,270 @@
+**Analysis**
+
+We have \(n\) islands in a row \(1,2,\dots,n\), with one‐way “main” bridges \(i\to i+1\) for \(1\le i<n\), plus \(m\) extra one‐way “alternative” bridges \(u\to v\) (\(u<v\)).  Elsie (the faster cow) may use *all* bridges; Bessie only the main ones.  Initially Elsie is on island 1, Bessie on island \(s\), and they alternate moves, Bessie first.  On her move a cow **must** follow an outgoing bridge if one exists; then whatever island she just left collapses (and so do all bridges into or out of it).  If a cow ever has no outgoing bridge on her turn, her island collapses and she is eliminated.  The race ends as soon as *either* cow reaches island \(n\), and Bessie “wins” if and only if she manages to reach \(n\) strictly before Elsie does.
+
+A crucial simplification:
+
+1.  **Bessie's path is forced.**  She can only go \(s\to s+1\to\cdots\to n\), one step on each Bessie's turn, collapsing the island she departed.
+
+2.  **Elsie’s victory condition** is that she can find some path of \(L\) moves from \(1\) to \(n\) (using main+alternative bridges) so that she reaches \(n\) strictly before Bessie.  
+   -  Bessie will reach \(n\) in exactly \((n-s)\) of *her* moves, i.e.\ at global time \(2\,(n-s)-1\).  
+   -  Elsie needs to reach in at most \(L\) of *her* moves, i.e.\ at time \(2L\).  She beats Bessie if
+     \[
+       2L < 2(n-s)-1 
+       \quad\Longleftrightarrow\quad 
+       L \le n-s-1.
+     \]
+3.  However, any island \(i\) that Bessie visits (and leaves) is collapsed (and stays collapsed) thereafter, so Elsie cannot use any bridge *out* of such an \(i\) after Bessie has passed it.  In particular an alternative bridge \(u\to v\) is only safely usable by Elsie if she uses it *before* Bessie collapses \(u\).  Since Bessie starts at \(s\) and on her \(k\)-th move goes from island \((s+k-1)\to (s+k)\) collapsing \((s+k-1)\), by Elsie’s \(k\)-th move the set of collapsed “Bessie‐left‐behind” islands is
+\[
+  \{\,s,\,s+1,\,\dots,\,s+k-1\}.
+\]
+Hence Elsie may only use an alternative bridge \(u\to v\) *if and only if* \(u<s\).  Any bridge whose start \(u\ge s\) will have been collapsed before Elsie’s chance to use it.
+
+Putting everything together, for each starting point \(s\) of Bessie:
+
+- Elsie must find a path   \(1=u_{0}\to u_{1}\to\cdots\to u_{L}=n\)
+  of length \(L\) using
+  1) main bridges (costing 1 move each, from \(i\to i+1\)) and
+  2) alternative bridges \(u\to v\) (also costing 1 move),
+  
+  such that
+  (i) she reaches \(n\) in \(L\le n-s-1\) moves, and  
+  (ii) *every* alternative bridge \(u\to v\) in her path has \(u<s\).
+
+- Bessie *loses* (Elsie wins) if such a path exists; otherwise Bessie *wins*.
+
+It turns out that in such a path it is irrelevant exactly *where* Elsie inserts her main steps between alternative edges.  One checks that the total number of moves for Elsie is
+\[
+   L \;=\;(\text{main‐steps})+(\text{alt‐edges})
+   \;=\;\bigl(n-1 -\sum_j(v_j - u_j)\bigr)+(\#\hbox{alt‐edges})
+   \;=\;n-1 \;-\;\Bigl(\sum_j\bigl((v_j-u_j)-1\bigr)\Bigr).
+\]
+Define the “gain” of using an alternative bridge \(u\to v\) by
+\[
+   w = (v-u)-1.
+\]
+Then if Elsie uses a sequence of such alt‐bridges of total gain
+\(\sum_j w_j = W\), her total moves \(L = (n-1)-W\).  She requires
+\[
+   L \le n-s-1 
+   \quad\Longleftrightarrow\quad
+   (n-1)-W \le n-s-1
+   \quad\Longleftrightarrow\quad
+   W \ge s.
+\]
+Moreover each alt‐bridge she uses must have its start­point \(u<s\).  Hence
+for each \(s\) we look *only* at those alternative bridges with \(u<s\),
+and ask whether, from \(1\) to \(n\), one can collect total gain
+\(\ge s\) along some walk that may also use the main chain \(i\to i+1\)
+(any time), but **never** uses any alternative \(u\to v\) with \(u\ge s\).
+
+This becomes a single‐source longest‐path‐in‐DAG problem with **incremental** insertion
+of edges, as \(s\) grows from \(1\) to \(n\!-\!1\).
+
+- We process \(s=1,2,\dots,n-1\) in order.
+- We maintain an array \(\mathit{dp}[i]\) = maximum total gain achievable
+  from \(1\) to island \(i\), using *only* the alt‐edges whose start
+  \(u<s\).  We also allow arbitrarily many uses of the main edges
+  \((i\to i+1)\) which carry zero gain; this has the effect that
+  \(\mathit{dp}[i]\) is always non‐decreasing in \(i\), because
+  one can always “coast” from \(i\) to \(i+1\) without losing total gain.
+- Initially for \(s=1\) we have no alt‐edge with \(u<1\), so
+  \(\mathit{dp}[i]\equiv 0\).
+-  When we move from \(s\) to \(s+1\), we *add* all alternative edges
+  \((u\to v)\) with \(u=s\).  For each such edge we have gain
+  \(w=v-u-1\).  We see if it improves \(\mathit{dp}[v]\);
+  if \(\mathit{dp}[u]+w > \mathit{dp}[v]\), we raise \(\mathit{dp}[v]\)
+  to that new value, and --- because \(\mathit{dp}\) must stay non‐decreasing
+  in \(i\) (we can always use zero‐gain main edges to coast rightward) ---
+  we “spread” that improved value rightward until it meets or exceeds
+  itself somewhere.
+
+After all insertions for this \(s\) we look at \(\mathit{dp}[n]\).  Elsie
+can win precisely if \(\mathit{dp}[n]\ge s\), meaning she has gathered
+gain at least \(s\) by the time she reaches \(n\).  Hence Bessie wins
+(\(=1\)) if and only if \(\mathit{dp}[n]<s\).
+
+We implement a segment‐tree over \(\mathit{dp}[1..n]\) supporting
+1) point‐query \(\mathit{dp}[u]\),  
+2) range‐update “set all \(\mathit{dp}[i]\gets X\) for \(i\in[v..r]\)”
+   but only when \(X\) is larger than the previous entries there,
+3) a search for the first index \(\ge v\) whose \(\mathit{dp}[\cdot]\)
+   already exceeds or meets \(X\).  
+
+All these operations can be done in \(O(\log n)\).  Since each
+alternative bridge is processed exactly once (when its \(u\) becomes
+\(<s\)), the total complexity per test is
+\[
+   O\bigl((n + m)\,\log n\bigr),
+\]
+and the total over all tests is fine for \(n,m\le2\times10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(in.readLine().trim());
+        // We'll need up to sum(n) <= 2e5, so we size arrays generously.
+        int MAX = 200_000 + 5;
+
+        // adjacency of alt-edges by their start u
+        ArrayList<int[]>[] byStart = new ArrayList[MAX];
+        for(int i = 0; i < MAX; i++) {
+            byStart[i] = new ArrayList<>();
+        }
+
+        // Segment tree arrays
+        long[] seg = new long[4*MAX];     // seg[v] = max in that node's interval
+        long[] lazy = new long[4*MAX];    // lazy[v]>=0 means "set entire seg[v]'s interval = lazy[v]"
+
+        // Build / reset the segment tree for indices [1..n], all zeros
+        Runnable build = () -> {
+            Arrays.fill(seg, 0L);
+            Arrays.fill(lazy, -1L);
+        };
+
+        // push a lazy "set-to" down
+        BiConsumer<Integer,Integer> push = (node, len) -> {
+            long x = lazy[node];
+            if (x >= 0) {
+                int lc = node*2, rc = node*2+1;
+                seg[lc] = x;
+                seg[rc] = x;
+                lazy[lc] = x;
+                lazy[rc] = x;
+                lazy[node] = -1L;
+            }
+        };
+
+        // range-set [ql..qr] = val
+        class Update {
+            void upd(int node, int l, int r, int ql, int qr, long val) {
+                if (ql > r || qr < l) return;
+                if (ql <= l && r <= qr) {
+                    seg[node] = val;
+                    lazy[node] = val;
+                    return;
+                }
+                push.accept(node, r-l+1);
+                int mid = (l+r) >>> 1;
+                upd(node*2, l, mid, ql, qr, val);
+                upd(node*2+1, mid+1, r, ql, qr, val);
+                seg[node] = Math.max(seg[node*2], seg[node*2+1]);
+            }
+        }
+        Update updater = new Update();
+
+        // point-query
+        class Query {
+            long query(int node, int l, int r, int pos) {
+                if (l==r) return seg[node];
+                push.accept(node, r-l+1);
+                int mid = (l+r)>>>1;
+                if (pos<=mid) return query(node*2, l, mid, pos);
+                else         return query(node*2+1, mid+1, r, pos);
+            }
+            // find first index >= startPos with seg[idx] >= threshold, or return n+1
+            int firstGE(int node, int l, int r, int startPos, long threshold) {
+                if (startPos>r || seg[node]<threshold) return (MAX-1); 
+                if (l==r) return l;
+                push.accept(node, r-l+1);
+                int mid = (l+r)>>>1;
+                int res;
+                if (startPos<=mid) {
+                    res = firstGE(node*2, l, mid, startPos, threshold);
+                    if (res<=mid) return res;
+                    return firstGE(node*2+1, mid+1, r, startPos, threshold);
+                } else {
+                    return firstGE(node*2+1, mid+1, r, startPos, threshold);
+                }
+            }
+        }
+        Query querier = new Query();
+
+        StringBuilder sb = new StringBuilder();
+        for(int _case=0;_case<t;_case++) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            // clear adjacency
+            for(int i=1;i<=n;i++) byStart[i].clear();
+            // read alt-bridges
+            for(int i=0;i<m;i++) {
+                st = new StringTokenizer(in.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                byStart[u].add(new int[]{u,v});
+            }
+
+            // reset dp‐array in the segtree
+            build.run();
+
+            // We'll build answer for s=1..n-1
+            // Process s in increasing order, each time "un‐hide" edges with start u=s
+            // Actually for s we need edges u<s, so we add byStart[s-1] at iteration s.
+            sb.setLength(0);
+            for(int s=1; s<n; s++) {
+                int unew = s-1;
+                if (unew>=1) {
+                    for(var e: byStart[unew]) {
+                        int u = e[0], v = e[1];
+                        // gain
+                        long w = (v - u) - 1L;
+                        // dp[u]
+                        long cur = querier.query(1,1,n,u);
+                        long cand = cur + w;
+                        long oldv = querier.query(1,1,n,v);
+                        if (cand>oldv) {
+                            // find first pos >= v where dp[pos] >= cand
+                            int r = querier.firstGE(1,1,n,v,cand);
+                            // if none found r==n+1
+                            if (r>n) r = n+1;
+                            int rr = r-1;  // we'll update [v..rr]
+                            if (v<=rr) {
+                                updater.upd(1,1,n,v,rr,cand);
+                            }
+                        }
+                    }
+                }
+                // now dp[n] = maximum gain Elsie can collect by the time she reaches n
+                long bestAtN = querier.query(1,1,n,n);
+                // Bessie wins iff dp[n] < s
+                sb.append(bestAtN < s ? '1' : '0');
+            }
+            sb.append('\n');
+            System.out.print(sb);
+        }
+    }
+}
+```
+
+**Explanation of the key steps**
+
+1.  We store all *alternative* bridges in lists by their starting island `u`.
+2.  We keep a “dp‐array” \(\mathit{dp}[1..n]\) in a segment tree, where
+   \(\mathit{dp}[i]\) = the maximal total “gain” Elsie can have upon reaching island \(i\),
+   *using only* the alt‐edges whose start \(u\) is already \(<s\).  We also allow
+   unlimited 0‐gain main‐chain moves, so \(\mathit{dp}[i]\) is non‐decreasing in \(i\).
+3.  We sweep Bessie’s start \(s=1,2,\dots,n-1\).  When we move from \(s\) to \(s+1\),
+   we now "unlock" all alternative bridges with start \(u=s\).  For each such
+   bridge \(u\to v\) with gain \(w=(v-u)-1\), we see if
+   \(\mathit{dp}[u]+w\) improves \(\mathit{dp}[v]\); if so, we set
+   \(\mathit{dp}[v]\gets \mathit{dp}[u]+w\), and then since we must maintain
+   monotonicity \(\mathit{dp}[i]\le \mathit{dp}[i+1]\), we “push” that
+   improvement rightward until we hit an index whose value already is
+   \(\ge \mathit{dp}[v]\).
+4.  Once all new edges for that \(s\) have been processed, we look at
+   \(\mathit{dp}[n]\).  If \(\mathit{dp}[n]\ge s\), Elsie can gather gain
+   \(\ge s\), so she can finish in \(\le(n-1)-s\) moves and thus beat Bessie.
+   In that case Bessie’s answer bit is `0`.  Otherwise the bit is `1`.
+
+All heavy operations (range‐updates, range‐max‐queries, finding the first
+position \(\ge v\) whose value ≥ a threshold) are done in \(O(\log n)\) with
+a standard lazy‐segment tree.  Since each of the \(m\) alternative edges is
+handled exactly once, the total time per test is
+\(\;O((n+m)\log n)\), which easily fits under the given limits.

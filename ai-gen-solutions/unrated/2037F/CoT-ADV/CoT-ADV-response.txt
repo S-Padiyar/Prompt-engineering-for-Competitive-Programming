@@ -1,0 +1,196 @@
+Problem Restatement  
+We have \(n\) enemies standing on integer positions \(x_i\) (\(1 \le i \le n\)), each with health \(h_i\), and a hero whose ground-stomp deals a distance‐falling damage pattern: if we place her at position \(p\), then in one attack enemy \(i\) at \(x_i\) takes
+\[
+d_i(p) \;=\;\max\bigl(0,\;m - |p - x_i|\bigr)
+\]
+damage.  We must choose a single \(p\) overall, and then hit repeatedly.  After \(t\) attacks, enemy \(i\) has lost \(t \cdot d_i(p)\) health, and is defeated if \(t\cdot d_i(p)\ge h_i\).  We want to defeat at least \(k\) enemies, minimizing the number of attacks \(t\).  If it’s impossible for any placement \(p\) to ever kill \(k\) enemies, output \(-1\).
+
+Input  
+- \(t\), the number of test cases \((1\le t\le10^4)\).  
+- For each test case:  
+  - Three integers \(n, m, k\) \((1\le k\le n\le10^5,\;1\le m\le10^9)\).  
+  - A line of \(n\) integers \(h_1,h_2,\dots,h_n\) \((1\le h_i\le10^9)\).  
+  - A line of \(n\) strictly increasing integers \(x_1,x_2,\dots,x_n\) \((1\le x_i\le10^9)\).  
+
+Over all test cases, \(\sum n\le10^5\).
+
+Output  
+For each test case, print the minimum \(t\) so that there is a placement \(p\) with which at least \(k\) enemies die in \(t\) hits.  If no such \(t\) exists, print \(-1\).
+
+Constraints and Edge Cases  
+- \(n\) up to \(10^5\) total, so per‐test \(O(n\log^2 n)\) or \(O(n\log n)\) is acceptable.  
+- \(m\) and \(h_i\) up to \(10^9\): damage per attack and health are large, so any direct DP in that range is impossible.  
+- If for a given \(t\), an enemy \(i\) needs per‐hit damage \(d\ge1\) such that \(t\cdot d\ge h_i\), i.e.\ \(d\ge\lceil h_i/t\rceil\).  If \(\lceil h_i/t\rceil>m\), it is impossible to kill \(i\) in \(t\) steps (max per‐hit is \(m\)).  
+- We must pick a single integer \(p\).  For each enemy \(i\), requiring \(m - |p - x_i|\ge w\) (where \(w=\lceil h_i/t\rceil\)) forces
+  \[
+     |p - x_i|\le m - w.
+  \]
+  Hence \(p\) must lie in the interval 
+  \(\bigl[\,x_i - (m - w),\;x_i + (m - w)\bigr]\).  
+- We build these intervals for all enemies that can possibly die in \(t\) hits, and simply ask: is there an integer point \(p\) covered by at least \(k\) of those intervals?  That becomes a classical “maximum interval‐overlap” check, doable by a sweep‐line in \(O(n\log n)\).
+
+Algorithmic Pattern  
+1. **Binary search** on \(t\), the number of attacks, from 1 up to \(\max_i h_i\).  
+2. For each candidate \(t\), determine for each enemy the minimum needed per‐hit damage \(w_i = \lceil h_i / t\rceil\).  
+   - If \(w_i > m\), enemy \(i\) cannot be killed in \(t\) hits: skip it.  
+   - Else it contributes the interval  
+     \[
+       \bigl[x_i - (m-w_i)\,,\;x_i + (m-w_i)\bigr]
+     \]
+     of feasible \(p\)-positions.  
+3. We then check if there exists an integer \(p\) covered by at least \(k\) intervals.  We do this by the standard sweep‐line on the “add +1 at interval start, add –1 just after interval end” events, sorting events in \(O(n\log n)\) and scanning to see if the running sum ever reaches \(k\).  
+4. If “yes, feasible,” we try smaller \(t\); otherwise we increase \(t\).
+
+Overall complexity per test: \(O(\log(\max h)\times n\log n)\).  Since \(\sum n\le10^5\) and \(\log(\max h)\approx30\), this passes in a few seconds in Java.
+
+Java Implementation  
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class Event {
+        long pos;
+        int delta;
+        Event() {}
+        Event(long p, int d) { pos = p; delta = d; }
+    }
+    
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st = new StringTokenizer(in.readLine());
+        int T = Integer.parseInt(st.nextToken());
+        StringBuilder sb = new StringBuilder();
+        
+        // Process each test case
+        while (T-- > 0) {
+            st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long m = Long.parseLong(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+            
+            long[] h = new long[n];
+            long[] x = new long[n];
+            st = new StringTokenizer(in.readLine());
+            long hMax = 0;
+            for (int i = 0; i < n; i++) {
+                h[i] = Long.parseLong(st.nextToken());
+                hMax = Math.max(hMax, h[i]);
+            }
+            st = new StringTokenizer(in.readLine());
+            for (int i = 0; i < n; i++) {
+                x[i] = Long.parseLong(st.nextToken());
+            }
+            
+            // Prepare event buffer (2 events per interval at most)
+            Event[] events = new Event[2 * n];
+            for (int i = 0; i < 2*n; i++) {
+                events[i] = new Event();
+            }
+            
+            // Binary search on t = number of attacks
+            long left = 1, right = hMax, answer = -1;
+            while (left <= right) {
+                long mid = (left + right) >>> 1;
+                if (canKillK(mid, n, m, k, h, x, events)) {
+                    answer = mid;
+                    right = mid - 1;
+                } else {
+                    left = mid + 1;
+                }
+            }
+            
+            sb.append(answer).append('\n');
+        }
+        
+        System.out.print(sb.toString());
+    }
+    
+    /**
+     * Checks if, with t = 'attacks', we can choose a position p
+     * that kills at least k enemies.
+     */
+    static boolean canKillK(long t, int n, long m, int k,
+                            long[] h, long[] x, Event[] events) {
+        int evCnt = 0;
+        
+        // Build intervals [L, R] in which p must lie to kill each enemy
+        for (int i = 0; i < n; i++) {
+            // Minimum per-hit damage needed to kill i in t hits:
+            long needed = (h[i] + t - 1) / t;  // ceil(h[i]/t)
+            if (needed > m) {
+                // Cannot kill this enemy in t hits
+                continue;
+            }
+            long radius = m - needed;  // allowed |p - x[i]| <= radius
+            long L = x[i] - radius;
+            long R = x[i] + radius;
+            // We do +1 at L, and -1 at R+1 for an inclusive range [L..R].
+            events[evCnt].pos = L;
+            events[evCnt++].delta = +1;
+            events[evCnt].pos = R + 1;
+            events[evCnt++].delta = -1;
+        }
+        
+        // If fewer than k intervals are even alive, impossible
+        if (evCnt / 2 < k) return false;
+        
+        // Sort events by position
+        Arrays.sort(events, 0, evCnt, new Comparator<Event>() {
+            public int compare(Event a, Event b) {
+                return Long.compare(a.pos, b.pos);
+            }
+        });
+        
+        // Sweep‐line: accumulate deltas, look for a point with sum >= k
+        int curr = 0;
+        int idx = 0;
+        while (idx < evCnt) {
+            long currPos = events[idx].pos;
+            int sumDelta = 0;
+            // process all events at the same position
+            while (idx < evCnt && events[idx].pos == currPos) {
+                sumDelta += events[idx].delta;
+                idx++;
+            }
+            curr += sumDelta;
+            if (curr >= k) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+}
+```
+
+Explanation of Key Steps  
+1. **Binary Search on \(t\)**  
+   We know \(t\) must be between 1 and \(\max_i h_i\).  We look for the smallest \(t\) that can defeat \(k\) enemies.  
+
+2. **Interval Construction**  
+   For each enemy \(i\), to kill it in \(t\) hits we need per‐hit damage \(\ge \lceil h_i/t\rceil\).  Since the stomp does \(m-|p-x_i|\) damage, we get the constraint
+   \[
+     m - |p-x_i| \;\ge\;\lceil h_i/t\rceil
+     \quad\Longrightarrow\quad
+     |p - x_i|\;\le\;m - \bigl\lceil h_i/t\bigr\rceil.
+   \]
+   Hence \(p\) must lie in the interval
+   \[
+     [\,x_i - (m-w),\;x_i + (m-w)\,],\quad w=\lceil h_i/t\rceil.
+   \]
+   Enemies for which \(w>m\) are discarded (impossible to kill).
+
+3. **Maximum‐Overlap Check**  
+   We have up to \(n\) intervals; we want to know if any integer \(p\) is covered by at least \(k\) of them.  We create “sweep events”:
+   - \((L_i, +1)\) at the start of each interval,  
+   - \((R_i+1, -1)\) just after the interval ends.  
+   Sorting all events by position and scanning, we keep a running sum of “active intervals.”  If it ever reaches \(k\), we have a feasible placement \(p\).
+
+4. **Complexities**  
+   - Each feasibility check (“canKillK”) takes \(O(n)\) to build intervals plus \(O(n\log n)\) to sort and sweep, i.e.\ \(O(n\log n)\).  
+   - We binary‐search over \(t\) in about \(\log(\max h_i)\approx30\) steps.  
+   - Hence overall \(O(n\,\log(\max h)\,\log n)\).  With \(\sum n\le 10^5\), this runs in time within the 4-second limit.
+
+By combining binary search with an interval‐overlap sweep, we efficiently find the smallest number of attacks needed (or \(-1\) if it cannot be done).

@@ -1,0 +1,223 @@
+**Problem restatement**  
+We have an array  
+  a[i] = i  
+for 0 ≤ i ≤ n−1.  A subarray [l…r] is called *k-good* if for every element in it the number of 1’s in its binary representation (popcount) is ≤ k.  Count how many k-good subarrays there are (modulo 10^9+7).  
+
+Equivalently, mark each index i (0≤i<n) as “good” if popcount(i)≤k and “bad” otherwise; we want the total number of subarrays made up only of good positions.  In a standard array problem, one would scan left→right, keep a running `cur` = length of the current suffix of consecutive goods, and add `cur` to the answer at each good position.  But here n can be up to 10^18 so we cannot literally walk the whole array.  
+
+Instead, we exploit a *digit-dp over the binary representation of i* plus some bookkeeping so that in O((#bits)*(k)) per test we compute in aggregate the same “sum of cur’s” from i=0..n−1 without enumerating them.  
+
+---
+
+**Input**  
+t  — number of test cases (≤10^4)  
+Each test: two integers n, k (1≤n≤10^18, 1≤k≤60).  
+
+**Output**  
+For each test, the number of k-good subarrays modulo 10^9+7.  
+
+---
+
+**Key idea (digit-dp + “block merging”)**  
+We want  
+  ans = ∑_{i=0..n-1} cur[i],  
+where `cur[i] = 0 if i is bad, else cur[i-1]+1`.  
+In a plain scan, we would do  
+
+```
+cur = 0; ans = 0;
+for i in [0..n-1]:
+  if popcount(i) ≤ k:
+    cur += 1;
+  else
+    cur = 0;
+  ans += cur;
+```
+
+We cannot do that up to 10^18.  But we can process the range of i from 0..N = n−1 as a binary tree of depth B≈60 (one level per binary digit).  At each dp state we represent the entire *block* of suffixes by five quantities:
+
+- len = number of integers in that block  
+- full = whether *all* integers in that block are “good”  
+- head = length of the initial run of consecutive goods at the start of the block  
+- tail = length of the final run of consecutive goods at the end of the block  
+- sum = what the scan would have added to `ans` if we had run from cur=0 over precisely that block  
+
+We can **merge** two consecutive blocks A then B in O(1):  
+- the total len = A.len + B.len  
+- full = A.full & B.full  
+- head = (A.full ? A.len + B.head : A.head)  
+- tail = (B.full ? B.len + A.tail : B.tail)  
+- sum = (A.sum + B.sum + A.tail·B.head) mod  
+
+Finally we do a *digit-dp* over the binary of N with a tight flag; whenever tight turns 0 we can memoize the entire state (pos,cntOnes) in an array of size ~60×60.  The end result at dp(0,0,1) is a single block covering exactly all i in [0..N], and its `sum` field is the desired answer.
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+    // dpMemo[pos][ones] caches the BlockState for tight==0
+    static BlockState[][] dpMemo;
+    static boolean[][] seen;
+    static int B;          // number of bits in N
+    static int K;          // the k from input
+    static int[] nbits;    // binary digits of N
+    static long[] pow2;    // pow2[i] = 2^i
+    static long[] sufVal;  // sufVal[pos] = numeric value of N's suffix from pos..B-1
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(in.readLine().trim());
+        pow2 = new long[61];
+        pow2[0] = 1;
+        for (int i = 1; i <= 60; i++) pow2[i] = pow2[i-1] << 1;
+
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            long n = Long.parseLong(st.nextToken());
+            K = Integer.parseInt(st.nextToken());
+            long N = n - 1;  // we handle [0..N]
+
+            // special case: if K >= 60, all numbers < 2^60 are good
+            if (K >= 60) {
+                long x = n % MOD;
+                long ans = x * ((x + 1) % MOD) % MOD * ((MOD+1)/2) % MOD;
+                sb.append(ans).append('\n');
+                continue;
+            }
+            if (N < 0) {
+                // n=0 impossible by constraints, but just in case
+                sb.append(0).append('\n');
+                continue;
+            }
+
+            // build binary of N
+            String bs = Long.toBinaryString(N);
+            B = bs.length();
+            nbits = new int[B];
+            for (int i = 0; i < B; i++) {
+                nbits[i] = bs.charAt(i) - '0';
+            }
+            // build suffix values
+            sufVal = new long[B+1];
+            sufVal[B] = 0;
+            for (int i = B-1; i >= 0; i--) {
+                int bit = nbits[i];
+                long contrib = bit * pow2[B-1 - i];
+                sufVal[i] = sufVal[i+1] + contrib;
+            }
+
+            // prepare memo
+            dpMemo = new BlockState[B][K+2];
+            seen   = new boolean[B][K+2];
+            // compute dp
+            BlockState full = dp(0, 0, true);
+            sb.append(full.sum).append('\n');
+        }
+        System.out.print(sb);
+    }
+
+    // digit-dp: at position pos, with cnt ones so far, and tight?
+    static BlockState dp(int pos, int ones, boolean tight) {
+        if (pos == B) {
+            // reached a single number leaf
+            if (ones <= K) {
+                // it's good
+                return new BlockState(1, true, 1, 1, 1);
+            } else {
+                // bad
+                return new BlockState(1, false, 0, 0, 0);
+            }
+        }
+        // can we use memo?  only if tight==false
+        if (!tight && seen[pos][ones]) {
+            return dpMemo[pos][ones];
+        }
+
+        int maxBit = tight ? nbits[pos] : 1;
+        BlockState acc = null;
+        for (int b = 0; b <= maxBit; b++) {
+            int nones = ones + (b == 1 ? 1 : 0);
+            boolean nt = tight && (b == maxBit);
+
+            BlockState child;
+            if (nones > K) {
+                // all numbers in that subtree are bad
+                long length;
+                if (!nt) {
+                    // free subtree of depth (B-pos-1) => 2^(B-pos-1) numbers
+                    length = pow2[B-1 - pos];
+                } else {
+                    // still tight => count how many follow
+                    // exactly sufVal[pos+1]+1
+                    length = sufVal[pos+1] + 1;
+                }
+                child = new BlockState(length, false, 0, 0, 0);
+            } else {
+                // go deeper
+                child = dp(pos+1, nones, nt);
+            }
+
+            if (acc == null) {
+                acc = child;
+            } else {
+                acc = merge(acc, child);
+            }
+        }
+
+        if (!tight) {
+            seen[pos][ones] = true;
+            dpMemo[pos][ones] = acc;
+        }
+        return acc;
+    }
+
+    // Merge two consecutive blocks A then B:
+    // len = A.len + B.len
+    // full = A.full & B.full
+    // head = A.full ? A.len + B.head : A.head
+    // tail = B.full ? B.len + A.tail : B.tail
+    // sum = A.sum + B.sum + (A.tail * B.head) mod
+    static BlockState merge(BlockState A, BlockState B) {
+        long len = A.len + B.len;
+        boolean full = A.full && B.full;
+        long head = A.full ? (A.len + B.head) : A.head;
+        long tail = B.full ? (B.len + A.tail) : B.tail;
+
+        long s = A.sum + B.sum;
+        s %= MOD;
+        long extra = ( (A.tail % MOD) * (B.head % MOD) ) % MOD;
+        s = (s + extra) % MOD;
+        return new BlockState(len, full, head, tail, s);
+    }
+
+    // encapsulates a "block" of consecutive integers
+    static class BlockState {
+        long len;      // how many ints in that block
+        boolean full;  // are *all* of them "good"?
+        long head;     // length of initial run of goods
+        long tail;     // length of final run of goods
+        long sum;      // what the scan would add to ans if cur started at 0
+
+        BlockState(long _len, boolean _full, long _head, long _tail, long _sum) {
+            len = _len; full = _full; head = _head; tail = _tail; sum = _sum;
+        }
+    }
+}
+```
+
+**How it works (brief walk‐through)**  
+- We want the sum of “current good‐run length” at each index `i∈[0..n−1]`.  
+- We treat all those numbers as leaves of a depth‐B (B≈60) binary tree, where each path is the binary representation of `i`.  
+- At each DP state `(pos,ones, tight)`, we represent *all* the leaves under that subtree by a small 5‐tuple (`len,full,head,tail,sum`).  
+- We combine two children (bit=0 then bit=1) in O(1) to get the parent.  
+- We memoize only the “free” subtrees (tight==false) in a 60×(k+1) table.  
+- Finally `dp(0,0,true)` covers exactly `i=0..n−1`, and its `.sum` is our answer.  
+
+Time complexity per test is O(B·k) ≃ 60·60 steps, easily within limits even for t=10^4. Space is O(B·k) for the DP memo.

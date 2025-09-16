@@ -1,0 +1,146 @@
+**Analysis**
+
+We have an array `a[1..n]` whose entries are in {0,1,2}, with at least one `1`.  We want to reorder it into non‐decreasing order (all the 0’s, then all the 1’s, then all the 2’s) by a sequence of moves, where in one move we pick two indices `u,v` with `|a[u]−a[v]|=1` and transfer one “inscription” from the larger to the smaller.  Concretely:
+
+- If `a[u]=1, a[v]=0`, in one move we can make `(a[u],a[v])` go to `(0,1)`.  
+- If `a[u]=2, a[v]=1`, one move can make `(a[u],a[v])` go to `(1,2)`.
+
+Observe that these moves exactly allow us to swap a 1 and a 0 (wherever they are), or a 2 and a 1, but we cannot directly swap a 2 and a 0.
+
+We only need *some* sequence of at most `n` moves; we do not need to minimize the number of moves.
+
+**Strategy**
+
+1.  Count how many 0’s, 1’s, 2’s there are: `c0`, `c1`, `c2`.  
+    - Final positions `1..c0` must all be 0.  
+    - Final positions `c0+1..c0+c1` must all be 1.  
+    - Final positions `c0+c1+1..n` must all be 2.
+
+2.  We do two passes:
+
+    **Pass 1** (fix the 0‐block):
+
+    For `i = 1..c0`, we want `a[i]` to become 0.
+    - If `a[i] == 0`, do nothing.
+    - If `a[i] == 1`, find any position `j>i` with `a[j]==0` and swap them by a single move.  That is valid because |1−0|=1.
+    - If `a[i] == 2`, we cannot swap directly with a 0.  But we know there is at least one `1` somewhere (and because of the swaps we did earlier, there *must* be a `1` to the right of `i`).  So:
+        1.  Find `k>i` with `a[k]==1` and swap `(2,1)→(1,2)`.
+        2.  Now `a[i]` is `1`.  Then find `j>i` with `a[j]==0` and swap `(1,0)→(0,1)`.
+
+    Each time we record the move `(i,j)` or `(i,k)`, and update our data structures.
+
+    After this pass we guarantee `a[1..c0]` are all zero.
+
+    ---
+    
+    **Pass 2** (fix the 1‐block):
+
+    For `i = c0+1 .. c0+c1`, we want `a[i]` to be 1.
+    - If it is already `1`, do nothing.
+    - If it is `2`, we must swap it with some `1` in the 2‐zone (positions `>c0+c1`), which exists because the total number of 1’s is `c1`, and if there is a `2` in the 1‐block we haven’t placed all 1’s there yet.  So find `k > c0+c1` with `a[k]==1`, swap `(2,1)->(1,2)`, and record that move.
+
+    After this pass, `a[c0+1..c0+c1]` are all `1`, and the suffix `a[c0+c1+1..n]` must be all `2` automatically.
+
+It can be shown that this uses at most `2·c0 + (c1_in_second_pass) ≤ n` moves, so we are within the required bound of `≤n` moves.
+
+To implement efficiently we maintain three `TreeSet<Integer>` (or any balanced‐BST) storing the positions of 0’s, 1’s, and 2’s.  Each time we change a value in `a[]`, we remove the old position from its old set and insert it into its new set in `O(log n)`.  Finding e.g. a 0 to the right of `i` is just `set0.higher(i)` in `O(log n)`.
+
+Overall complexity is `O(n log n)` per test, which is fine for `n` up to 2·10^5 total.
+
+**Code**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter    pw = new PrintWriter(System.out);
+        int t = Integer.parseInt(br.readLine());
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine());
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            int[] a = new int[n+1];
+            for (int i = 1; i <= n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+            // Count how many 0,1,2
+            int c0=0, c1=0, c2=0;
+            for (int i = 1; i <= n; i++) {
+                if (a[i]==0) c0++;
+                else if (a[i]==1) c1++;
+                else c2++;
+            }
+            // Three sets storing positions of 0s,1s,2s
+            TreeSet<Integer> set0 = new TreeSet<>();
+            TreeSet<Integer> set1 = new TreeSet<>();
+            TreeSet<Integer> set2 = new TreeSet<>();
+            for (int i = 1; i <= n; i++) {
+                if (a[i]==0) set0.add(i);
+                else if (a[i]==1) set1.add(i);
+                else             set2.add(i);
+            }
+
+            List<int[]> moves = new ArrayList<>();
+
+            // Pass 1: Make positions 1..c0 all zeros
+            for (int i = 1; i <= c0; i++) {
+                if (a[i] == 0) continue;
+                if (a[i] == 1) {
+                    // Swap with a 0 somewhere to the right
+                    Integer j = set0.higher(i);
+                    // perform swap(i,j)
+                    moves.add(new int[]{i, j});
+                    // update sets and a[]
+                    set1.remove(i); set0.remove(j);
+                    a[i] = 0;  a[j] = 1;
+                    set0.add(i); set1.add(j);
+                } else {
+                    // a[i] == 2.  First swap with a 1
+                    Integer k = set1.higher(i);
+                    moves.add(new int[]{i, k});
+                    set2.remove(i); set1.remove(k);
+                    a[i] = 1;  a[k] = 2;
+                    set1.add(i); set2.add(k);
+
+                    // Now a[i] == 1, swap with a 0
+                    Integer j = set0.higher(i);
+                    moves.add(new int[]{i, j});
+                    set1.remove(i); set0.remove(j);
+                    a[i] = 0;  a[j] = 1;
+                    set0.add(i); set1.add(j);
+                }
+            }
+
+            // Pass 2: Make positions c0+1..c0+c1 all ones
+            int startOne = c0+1, endOne = c0+c1;
+            for (int i = startOne; i <= endOne; i++) {
+                if (a[i] == 1) continue;
+                // then a[i] must be 2, swap with a 1 in the suffix
+                Integer k = set1.higher(endOne);
+                moves.add(new int[]{i, k});
+                set2.remove(i); set1.remove(k);
+                a[i] = 1;  a[k] = 2;
+                set1.add(i); set2.add(k);
+            }
+
+            // Output result
+            pw.println(moves.size());
+            for (int[] mv : moves) {
+                pw.println(mv[0] + " " + mv[1]);
+            }
+        }
+        pw.flush();
+        pw.close();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+- We keep three balanced‐BST sets (`TreeSet<Integer>` in Java) storing the *current* positions of all 0’s, all 1’s, and all 2’s.
+- **Pass 1** ensures the first `c0` positions become 0.  Whenever we see a 1 in that range, we swap it with a 0 further right.  If we see a 2, we first swap it with a 1 (to make it a 1), then immediately swap that 1 with a 0.  Each individual swap is valid (difference 1).
+- **Pass 2** ensures the next `c1` positions become 1.  Any 2 in that block is swapped with a 1 in the tail.
+- We record each swap as a move `(u,v)` and update both the array `a[]` and our three sets in `O(log n)` each time.
+- One can show we make at most `2·c0 + (at most c1)` swaps, so ≤ `n` moves in total.  Thus the solution always respects the limit of at most `n` moves.

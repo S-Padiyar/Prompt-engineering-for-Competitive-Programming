@@ -1,0 +1,285 @@
+**Analysis**
+
+We have an undirected graph of \(n\) intersections and \(m\) edges.  On each edge we may traverse
+
+- by bus in time \(\ell_1\), or
+- on foot in time \(\ell_2\),
+
+with \(\ell_1<\ell_2\).  You start at node \(1\) at some departure‐time \(S\), you must arrive by time \(t_0\) to node \(n\), and there is a forced “phone‐call” interval \([t_1,t_2]\) during which you may _not_ be on the bus (you may only walk or wait).
+
+We want the **latest** \(S\) for which there is a valid route that arrives by time \(t_0\).  Observe that
+
+- if you leave _earlier_, you only get more time, so feasibility is monotone in \(S\): 
+  \[
+     S\le S^*\quad\Longrightarrow\quad\text{route is feasible},
+  \]
+  and for \(S>S^*\) it becomes infeasible.  Here \(S^*\) denotes the maximum feasible departure.
+- we can binary‐search \(S\in[0,t_0]\).  
+
+To **test** a given \(S\) we run a _time‐dependent_ Dijkstra in which
+
+- we store for each vertex \(u\) the earliest time \(\mathit{dist}[u]\) at which we can arrive there,  
+- initialize \(\mathit{dist}[1]=S\), all others \(=\infty\),  
+- always relax the **walking** transition \((u\to v)\) with cost \(\ell_2\) (walking is allowed at any time),  
+- only relax the **bus** transition \((u\to v)\) with cost \(\ell_1\) if
+  1. we are boarding strictly _before_ \(t_1\) and can finish the ride no later than \(t_1\), 
+     \[
+       \bigl(\mathit{dist}[u]<t_1\bigl)\quad\wedge\quad\bigl(\mathit{dist}[u]+\ell_1\le t_1\bigr),
+     \]
+     or
+  2. we are boarding at or _after_ \(t_2\),
+     \[
+       \mathit{dist}[u]\ge t_2.
+     \]
+
+We keep pulling the next‐smallest arrival time from a min‐heap, relaxing edges, and stop early as soon as we either
+
+- settle node \(n\) with \(\mathit{dist}[n]\le t_0\)—then \(S\) is feasible,
+- or the heap is empty or the next time exceeds \(t_0\)—then \(S\) is _not_ feasible.
+
+Each test requires \(\log t_0\) calls to this Dijkstra; \(t_0\) can be up to \(10^9\), so \(\log t_0\approx 30\).  The graph has up to \(10^5\) edges over all testcases, so the overall complexity is about
+\[
+   \sum_{\text{tests}}O\bigl(\log t_0\;\times\;(m\,\log n)\bigr)
+   \;\approx\;30\times10^5\times\log(10^5)\;=\;O(10^8),
+\]
+which can be made to pass in optimized Java (4 s time limit) by using a custom binary‐heap rather than Java’s built‐in `PriorityQueue`.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final long INF = (long)1e18;
+
+    // A custom min‐heap of (time,node), no decrease‐key,
+    // just push new entries and ignore stale ones.
+    static class MinHeap {
+        int size;
+        int[] node;
+        long[] time;
+
+        MinHeap(int cap) {
+            node = new int[cap+1];
+            time = new long[cap+1];
+            size = 0;
+        }
+
+        void clear() {
+            size = 0;
+        }
+
+        boolean isEmpty() {
+            return size == 0;
+        }
+
+        void push(int u, long t) {
+            size++;
+            node[size] = u;
+            time[size] = t;
+            siftUp(size);
+        }
+
+        // peek root (without removing)
+        int  peekNode() { return node[1]; }
+        long peekTime() { return time[1]; }
+
+        // remove root
+        void pop() {
+            node[1] = node[size];
+            time[1] = time[size];
+            size--;
+            siftDown(1);
+        }
+
+        void siftUp(int i) {
+            while (i > 1) {
+                int p = i >>> 1;
+                if (time[p] <= time[i]) break;
+                swap(p, i);
+                i = p;
+            }
+        }
+
+        void siftDown(int i) {
+            while (true) {
+                int l = i<<1, r = l+1, best = i;
+                if (l <= size && time[l] < time[best]) best = l;
+                if (r <= size && time[r] < time[best]) best = r;
+                if (best == i) break;
+                swap(best, i);
+                i = best;
+            }
+        }
+
+        void swap(int i, int j) {
+            long tt = time[i]; time[i] = time[j]; time[j] = tt;
+            int uu = node[i]; node[i] = node[j]; node[j] = uu;
+        }
+    }
+
+    // Graph in adjacency‐list form with two costs per edge.
+    static int[] head, nxt, to;
+    static long[] btime, wtime;  // bus time, walk time
+    static int edgeCnt;
+    static int n, m;
+    static long t0, t1, t2;
+    static long[] dist;          // used in Dijkstra
+    static MinHeap heap;
+
+    static void addEdge(int u, int v, long b, long w) {
+        to[edgeCnt] = v;
+        btime[edgeCnt] = b;
+        wtime[edgeCnt] = w;
+        nxt[edgeCnt] = head[u];
+        head[u] = edgeCnt++;
+    }
+
+    // Return true iff we can start at time S from node 1
+    // and reach node n no later than t0 under the bus‐ban in [t1,t2].
+    static boolean feasible(long S) {
+        // initialize
+        for (int i = 1; i <= n; i++) dist[i] = INF;
+        dist[1] = S;
+        heap.clear();
+        heap.push(1, S);
+
+        while (!heap.isEmpty()) {
+            int u = heap.peekNode();
+            long cur = heap.peekTime();
+            heap.pop();
+            // stale entry?
+            if (cur != dist[u]) continue;
+            // if we already exceed t0, no point in continuing
+            if (cur > t0) break;
+            // if we've reached the target in time, success
+            if (u == n) return true;
+
+            // relax all edges
+            for (int e = head[u]; e != -1; e = nxt[e]) {
+                int v = to[e];
+                // 1) walking is always allowed
+                long nt = cur + wtime[e];
+                if (nt < dist[v] && nt <= t0) {
+                    dist[v] = nt;
+                    heap.push(v, nt);
+                }
+                // 2) bus only if either (start< t1 and finish≤ t1) or start≥ t2
+                long bt = btime[e];
+                if (cur < t1) {
+                    if (cur + bt <= t1) {
+                        nt = cur + bt;
+                        if (nt < dist[v] && nt <= t0) {
+                            dist[v] = nt;
+                            heap.push(v, nt);
+                        }
+                    }
+                } else if (cur >= t2) {
+                    nt = cur + bt;
+                    if (nt < dist[v] && nt <= t0) {
+                        dist[v] = nt;
+                        heap.push(v, nt);
+                    }
+                }
+            }
+        }
+        // if dist[n] ≤ t0 we returned true above
+        return false;
+    }
+
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        PrintWriter out = new PrintWriter(System.out);
+
+        int T = in.nextInt();
+        while (T-- > 0) {
+            n = in.nextInt();
+            m = in.nextInt();
+            t0 = in.nextLong();
+            t1 = in.nextLong();
+            t2 = in.nextLong();
+
+            // allocate graph
+            head = new int[n+1];
+            nxt  = new int[2*m];
+            to   = new int[2*m];
+            btime= new long[2*m];
+            wtime= new long[2*m];
+            Arrays.fill(head, -1);
+            edgeCnt = 0;
+
+            for (int i = 0; i < m; i++) {
+                int u = in.nextInt();
+                int v = in.nextInt();
+                long b = in.nextLong();
+                long w = in.nextLong();
+                addEdge(u, v, b, w);
+                addEdge(v, u, b, w);
+            }
+
+            // For Dijkstra we need a dist[] plus a heap
+            dist = new long[n+1];
+            // heap capacity: in worst case we push up to ~2*m entries per run
+            heap = new MinHeap(2*m + 5);
+
+            // Binary‐search the maximum S in [0..t0] for which feasible(S) is true
+            long lo = 0, hi = t0, ans = -1;
+            while (lo <= hi) {
+                long mid = (lo + hi) >>> 1;
+                if (feasible(mid)) {
+                    ans = mid;
+                    lo = mid + 1;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+
+            out.println(ans);
+        }
+        out.flush();
+    }
+
+    // fast input
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader() {
+            br = new BufferedReader(new InputStreamReader(System.in));
+        }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens())
+                st = new StringTokenizer(br.readLine());
+            return st.nextToken();
+        }
+        int nextInt()    throws IOException { return Integer.parseInt(next()); }
+        long nextLong()  throws IOException { return Long.parseLong(next()); }
+    }
+}
+```
+
+**Explanation of Key Points**
+
+1. **Monotonicity in \(S\).**  
+   If we can leave at time \(S\) and still arrive by \(t_0\), then leaving any time \(S'<S\) (i.e.\ earlier) can only help.  Thus the feasibility in \(S\) is a 0–1 predicate that goes
+   \[
+     \underbrace{0,1,\,\dots,\,1}_{\text{all }S\le S^*}
+     \;\;\;0,0,\dots\;\;\;
+     \text{(infeasible for }S>S^*\!).
+   \]
+   We binary‐search for the largest feasible \(S\).
+
+2. **Time‐dependent Dijkstra check.**  
+   - We keep a usual `dist[u]` = earliest time we can arrive at \(u\).  
+   - Walking (edge‐cost \(\ell_2\)) is _always_ allowed.  
+   - Bus (cost \(\ell_1\)) is allowed only if it does _not_ overlap the forbidden interval \([t_1,t_2]\).  Concretely:
+     - If we board at time \(\tau< t_1\), we must finish by \(\le t_1\).  
+     - Or if we board at \(\tau\ge t_2\), there is no overlap.  
+
+   We run a standard Dijkstra expansion (with a custom binary‐heap to be fast), stopping as soon as we either settle node \(n\) in time \(\le t_0\) (success) or exhaust the queue / exceed \(t_0\) (failure).
+
+3. **Complexity.**  
+   - Each Dijkstra is \(O(m\log n)\).  
+   - We do \(O(\log(t_0))\approx 30\) such runs per test case.  
+   - Sum of \(m\) over all tests is \(\le10^5\).  
+   - So the total is about \(30\times10^5\times\log(10^5)\approx 10^8\) heap operations, which runs in time under the 4 s limit if implemented carefully in Java.

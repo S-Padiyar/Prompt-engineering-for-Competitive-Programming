@@ -1,0 +1,308 @@
+**Analysis**
+
+We have a tree of \(n\) vertices, each edge with a weight.  We must handle two kinds of operations:
+
+1. **“^ y”**:  XOR‐update *all* edge‐weights by \(y\).  
+2. **“? v x”**:  We imagine adding an edge \((v,u)\) of weight \(x\) for some \(u\neq v\).  That creates exactly one cycle, whose XOR‐sum of edge‐weights is
+\[
+\bigl(\text{XOR‐sum of current tree‐edges on the }v\!\to\!u\text{ path}\bigr)\;\oplus\;x.
+\]
+We must choose \(u\neq v\) to *maximize* this cycle‐XOR.
+
+---
+
+### Key observations
+
+1.  If we root the tree at vertex \(1\), and let
+   \[
+     A_u \;=\;\bigl(\text{XOR‐sum of original (unmodified) weights on the root→\(u\) path}\bigr),
+   \]
+   then the XOR on the path \(v\to u\) in the *current* tree is
+   \[
+     A_v \oplus A_u
+     \quad\text{(properties of XOR in trees).}
+   \]
+   Hence the cycle‐XOR is
+   \[
+     (A_v\oplus A_u)\;\oplus\;x
+     \;=\;(A_u)\;\oplus\;(A_v\oplus x).
+   \]
+   So if we fix \(v,x\), we set
+   \[
+     z \;=\;A_v\oplus x
+   \]
+   and we want
+   \[
+     \max_{u\neq v}\;\bigl(A_u\oplus z\bigr).
+   \]
+   We must *exclude* \(u=v\) (which would give \(\;A_v\oplus z=x\)) if it happens to be the maximum.
+
+2.  **Global XOR‐updates** of all edges by some \(y\).  
+   If every edge‐weight \(w_e\) is replaced by \(w_e\oplus y\), then every root→\(u\) XOR—originally \(A_u\)—becomes
+   \[
+     A_u\;\oplus\;\bigl(\underbrace{y\oplus y\oplus\cdots\oplus y}_{\text{one }y\text{ for each edge on the path}}\bigr).
+   \]
+   If the path has odd length, we pick one extra \(y\), if even length we pick none.  Equivalently, if \(\mathrm{depth}(u)\bmod2=1\), it flips by \(y\); otherwise not.  
+
+   Thus we partition the vertices by parity of depth:
+
+     •  **Even**‐depth vertices keep their \(A_u\) as \(A_u\).  
+     •  **Odd**‐depth vertices see \(A_u\) become \(A_u\oplus Y\),  
+       where \(Y\) is the XOR of *all* global updates so far.
+
+3.  We must therefore maintain the multiset of
+   \[
+     \{A_u\;|\;\text{depth}(u)\bmod2=0\}
+     \quad\text{and}\quad
+     \{\,A_u\;|\;\text{depth}(u)\bmod2=1\}
+   \]
+   in a binary‐trie so that for a query “\(?\,v\,x\)” we can in \(\,O(\log C)\) (here 31 bits) find
+   \[
+     \max_{u \in\text{even‐group}}
+       \bigl(A_u \oplus (A_v\oplus x)\bigr)
+     \quad\text{and}\quad
+     \max_{u \in\text{odd‐group}}
+       \bigl((A_u\oplus Y)\oplus (A_v\oplus x)\bigr).
+   \]
+   We just take the larger of the two.  
+
+4.  **Excluding** \(u=v\):  it can happen that the best we get is \(u=v\), whose cycle‐value would be
+   \[
+     A_v\oplus(A_v\oplus x)=x,
+   \]
+   but \(u\neq v\) is mandated.  We handle that by noting that if the *unique* best in the trie is that same \(A_v\), then we temporarily remove that one copy of \(A_v\) from the trie, re‐query, and then re‐insert.  All in \(O(\log C)\) each time.  
+
+Putting it all together, each query is \(O(31)\approx O(1)\).  Each global XOR is \(O(1)\).  Building the initial tries is \(O(n\cdot 31)\).  This easily handles \(n,m\) up to \(2\cdot10^5\).
+
+---
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    // Maximum sum of n over all tests is 200k, each insertion uses ≤31 nodes
+    // We allocate a global pool of about 6.3 million nodes.
+    static final int MAXNODE = 200_000 * 31 + 5;
+    static int[] ch0 = new int[MAXNODE], ch1 = new int[MAXNODE];
+    static int[] cntEven = new int[MAXNODE], cntOdd = new int[MAXNODE];
+    static int nodesUsed;
+
+    // Insert or remove (delta = +1 or -1) value val into the trie,
+    // in group g: 0=even, 1=odd.
+    static void trieUpdate(int val, int g, int delta) {
+        int node = 0;
+        // update root count
+        if (g == 0) cntEven[node] += delta;
+        else          cntOdd[node]  += delta;
+
+        // for bits 30..0
+        for (int b = 30; b >= 0; b--) {
+            int bit = (val >>> b) & 1;
+            if (bit == 0) {
+                if (ch0[node] == 0) {
+                    ch0[node] = nodesUsed;
+                    // initialize the new node
+                    ch0[nodesUsed] = ch1[nodesUsed] = 0;
+                    cntEven[nodesUsed] = cntOdd[nodesUsed] = 0;
+                    nodesUsed++;
+                }
+                node = ch0[node];
+            } else {
+                if (ch1[node] == 0) {
+                    ch1[node] = nodesUsed;
+                    ch0[nodesUsed] = ch1[nodesUsed] = 0;
+                    cntEven[nodesUsed] = cntOdd[nodesUsed] = 0;
+                    nodesUsed++;
+                }
+                node = ch1[node];
+            }
+            if (g == 0) cntEven[node] += delta;
+            else         cntOdd[node]  += delta;
+        }
+    }
+
+    // Query the trie for group g, with query‐value qz,
+    // returning {maxXor, the tBest that achieves it}, or maxXor=-1 if empty.
+    static int[] trieQuery(int qz, int g) {
+        int rootCount = (g == 0 ? cntEven[0] : cntOdd[0]);
+        if (rootCount == 0) {
+            // that group is empty
+            return new int[]{-1, 0};
+        }
+        int node = 0;
+        int bestXor = 0;
+        int tBest = 0;
+        for (int b = 30; b >= 0; b--) {
+            int qb = (qz >>> b) & 1;
+            // we want tBit ^ qb = 1 => tBit = 1 - qb
+            int want = qb ^ 1;
+            int nxt = (want == 0 ? ch0[node] : ch1[node]);
+            int cntNxt = (nxt == 0 ? 0 : (g == 0 ? cntEven[nxt] : cntOdd[nxt]));
+            if (cntNxt > 0) {
+                // we can go that way
+                tBest = (tBest << 1) | want;
+                bestXor = (bestXor << 1) | 1;
+                node = nxt;
+            } else {
+                // must go the other way
+                int other = qb; // since otherBit = qb => tBit^qb=0
+                tBest = (tBest << 1) | other;
+                bestXor = (bestXor << 1) | 0;
+                node = (other == 0 ? ch0[node] : ch1[node]);
+            }
+        }
+        return new int[]{bestXor, tBest};
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        int T = Integer.parseInt(in.readLine().trim());
+        while (T-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+
+            // Read the tree
+            ArrayList<int[]>[] adj = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) adj[i] = new ArrayList<>();
+            for (int i = 0; i < n-1; i++) {
+                st = new StringTokenizer(in.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                int w = Integer.parseInt(st.nextToken());
+                adj[u].add(new int[]{v,w});
+                adj[v].add(new int[]{u,w});
+            }
+
+            // Compute A[u] = XOR from root=1 to u, and parity depth[u]%2
+            int[] A = new int[n+1], depthParity = new int[n+1];
+            Deque<int[]> stack = new ArrayDeque<>();
+            stack.push(new int[]{1,0}); // (node, parent)
+            A[1] = 0;
+            depthParity[1] = 0;
+            while (!stack.isEmpty()) {
+                int[] cur = stack.pop();
+                int u = cur[0], p = cur[1];
+                for (int[] e : adj[u]) {
+                    int v = e[0], w = e[1];
+                    if (v == p) continue;
+                    A[v] = A[u] ^ w;
+                    depthParity[v] = depthParity[u] ^ 1;
+                    stack.push(new int[]{v,u});
+                }
+            }
+
+            // Reset trie for this test
+            nodesUsed = 1;
+            ch0[0] = ch1[0] = 0;
+            cntEven[0] = cntOdd[0] = 0;
+
+            // Insert all A[u] into the trie, in even/odd group
+            for (int u = 1; u <= n; u++) {
+                trieUpdate(A[u], depthParity[u], +1);
+            }
+
+            // Process queries
+            int Y = 0;  // global XOR so far
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(in.readLine());
+                String type = st.nextToken();
+                if (type.charAt(0) == '^') {
+                    // global XOR‐update
+                    int y = Integer.parseInt(st.nextToken());
+                    Y ^= y;
+                } else {
+                    // "? v x"
+                    int v = Integer.parseInt(st.nextToken());
+                    int x = Integer.parseInt(st.nextToken());
+                    // compute z = A[v] ^ x, but A[v] is itself possibly flipped by Y if depthParity[v]==1
+                    int Av_current = A[v] ^ (depthParity[v]==1 ? Y : 0);
+                    int z = Av_current ^ x;
+
+                    // groupEven query with qz = z
+                    int[] qe = trieQuery(z, 0);
+                    // groupOdd query with qz = z ^ Y  (because odd-group values were A[u]^Y)
+                    int[] qo = trieQuery(z ^ Y, 1);
+
+                    int bestEven = qe[0], tEven = qe[1];
+                    int bestOdd  = qo[0], tOdd  = qo[1];
+
+                    // Suppose v is in group g = depthParity[v].
+                    int g = depthParity[v];
+                    // the qz we used for that group:
+                    int qzg = (g==0 ? z : z^Y);
+                    int bestG = (g==0 ? bestEven : bestOdd);
+                    int tG    = (g==0 ? tEven   : tOdd);
+
+                    // maybe the best is from u=v; that yields exactly x.
+                    // If tG == A[v] (original) and that value was unique, we must exclude it.
+                    int origAv = A[v];
+                    boolean exclude = false;
+                    if (tG == origAv && bestG == x) {
+                        // check how many copies of origAv in that group
+                        int node = 0;
+                        for (int b = 30; b >= 0; b--) {
+                            int bit = (origAv >>> b) & 1;
+                            node = (bit==0 ? ch0[node] : ch1[node]);
+                        }
+                        int cntAtLeaf = (g==0 ? cntEven[node] : cntOdd[node]);
+                        if (cntAtLeaf == 1) {
+                            exclude = true;
+                        }
+                    }
+
+                    int ans;
+                    if (!exclude) {
+                        // no need to exclude, answer is max of bestEven,bestOdd
+                        ans = Math.max(bestEven, bestOdd);
+                    } else {
+                        // temporarily remove A[v] from group g
+                        trieUpdate(origAv, g, -1);
+                        // re-query just that group
+                        int newBestG = trieQuery(qzg, g)[0];
+                        // re-insert A[v]
+                        trieUpdate(origAv, g, +1);
+                        // now compare with other group
+                        if (g == 0) {
+                            ans = Math.max(newBestG, bestOdd);
+                        } else {
+                            ans = Math.max(bestEven, newBestG);
+                        }
+                    }
+                    sb.append(ans).append(' ');
+                }
+            }
+            sb.append('\n');
+        }
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of the main steps**
+
+1. **Precompute**  
+   We root at node 1 and do a simple stack‐DFS to compute  
+   \[
+     A_u = \bigl(\text{XOR of original edge‐weights on the path }1\to u\bigr),
+     \quad
+     \text{depthParity}[u] = (\text{depth}(u)\bmod2).
+   \]
+
+2. **Maintain two groups in one binary trie**  
+   - **Even‐depth** vertices store their value \(A_u\) under the “even” count.  
+   - **Odd‐depth** vertices effectively store \(A_u\oplus Y\) but actually we just store \(A_u\) and carry a separate counter `cntOdd`.  To query an odd‐depth group with current global shift \(Y\), we simply XOR the query with \(Y\).  
+
+3. **Global XOR updates** (“\^ y”) merely update a global integer `Y`.  
+
+4. **Query** (“\? v x”):  
+   - Compute the current value at \(v\) (flipped by \(Y\) if depth is odd), call it `Av_current`.  
+   - Let `z = Av_current ^ x`.  
+   - Query the *even* group trie with `qz = z`, and the *odd* group trie with `qz = z ^ Y`.  Each returns a `(maxXor, whichValueT)` pair in \(O(31)\).  
+   - We must exclude \(u=v\).  That would have produced exactly `x`.  So if the best came from `t = A[v]` alone and that `A[v]` is *unique* in that group, we temporarily remove it, re‐query that group, then re‐insert.  
+
+All operations are \(O(31)\approx O(1)\) per query, comfortably efficient for \(n,m\le2\cdot10^5\).

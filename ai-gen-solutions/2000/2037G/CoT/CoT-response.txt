@@ -1,0 +1,217 @@
+**Analysis**
+
+We have \(n\) cities numbered from \(1\) to \(n\).  City \(i\) has an integer attractiveness \(a_i\ge2\).  There is a directed edge \(i\to j\) (with \(i<j\)) if and only if
+\[
+  \gcd(a_i,a_j)\;>\;1.
+\]
+Because edges only go from lower index to higher index, the graph is a DAG (directed acyclic graph).  We wish to count the number of distinct paths from city \(1\) to city \(n\), modulo
+\[
+  \;998244353.
+\]
+
+A classic DP on a DAG would be
+
+\[
+  dp[v] \;=\;\sum_{u\,:\,u<v,\;\gcd(a_u,a_v)>1}dp[u]
+\]
+with \(dp[1]=1\) and answer \(dp[n]\).  But a naive double loop is \(O(n^2)\) and far too large for \(n\) up to \(2\cdot10^5\).
+
+We must accelerate the step “sum over all earlier \(u\) with \(\gcd(a_u,a_v)>1\).”  Note
+
+\[
+  \gcd(a_u,a_v)>1
+  \quad\Longleftrightarrow\quad
+  a_u\text{ and }a_v\text{ share at least one common prime factor.}
+\]
+
+So if \(P_v=\{p_1,p_2,\dots,p_k\}\) is the set of *distinct* prime factors of \(a_v\), then
+
+\[
+  \{\,u < v : \gcd(a_u,a_v)>1\}
+  =
+  \bigcup_{i=1}^k
+  \{\,u < v : p_i\mid a_u\}.
+\]
+
+We want
+\[
+  dp[v]
+  \;=\;
+  \sum_{u<v,\;\gcd(a_u,a_v)>1}dp[u]
+  \;=\;
+  \sum_{\emptyset\neq S\subseteq P_v}
+    (-1)^{|S|+1}
+    \sum_{\substack{u<v\\\forall\,p\in S:p\mid a_u}}dp[u].
+\]
+Here we applied the principle of inclusion–exclusion on the primes in \(P_v\).  
+
+We will maintain an array
+
+\[
+  \texttt{sumdp}[d]
+  =
+  \sum_{\substack{u<v\\d\mid a_u}}
+    dp[u]
+  \pmod{998244353},
+\]
+
+for every possible square‐free \(d\le10^6\).  (Since \(a_i\le10^6\), every relevant \(d\) is a product of distinct primes each \(\le10^6\).)
+
+Then to compute \(dp[v]\), we:
+
+1. Factor \(a_v\) into its distinct prime factors \(p_1,\dots,p_k\).
+2. Enumerate all nonempty subsets \(S\subseteq\{1,\dots,k\}\).  
+   - Let \(\displaystyle d_S=\prod_{i\in S}p_i\).
+   - By inclusion–exclusion,
+     \[
+       dp[v]
+       = \sum_{\emptyset\neq S\subseteq P_v}
+         (-1)^{|S|+1}\,\texttt{sumdp}[\,d_S\,].
+     \]
+3. Then we update \(\texttt{sumdp}[d_S]\mathrel{+}=dp[v]\) for every nonempty subset \(S\) so that future vertices can use this city \(v\).
+
+Since each \(a_v\) has at most about 7 distinct prime factors (in fact \(\le7\) for \(a_v\le10^6\)), there are at most \(2^7-1=127\) nonempty subsets, which is small.  Thus the total complexity is about
+\[
+  \sum_{v=1}^n O\bigl(\text{factorization}(a_v) + 2^{\#\text{primes}(a_v)}\bigr)
+  = O\bigl(n\log A + n\cdot 128\bigr)
+  = O(n\log A)
+\]
+with \(A=10^6\).  This easily fits under the 4 s limit in optimized Java.
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 998244353;
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int n = Integer.parseInt(br.readLine().trim());
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int[] a = new int[n];
+        int maxA = 0;
+        for (int i = 0; i < n; i++) {
+            a[i] = Integer.parseInt(st.nextToken());
+            if (a[i] > maxA) maxA = a[i];
+        }
+
+        // 1) Build smallest-prime-factor (spf) table up to maxA
+        int[] spf = new int[maxA + 1];
+        for (int i = 2; i <= maxA; i++) {
+            if (spf[i] == 0) {
+                for (int j = i; j <= maxA; j += i) {
+                    if (spf[j] == 0) spf[j] = i;
+                }
+            }
+        }
+
+        // 2) sumdp[d] = sum of dp[u] for all u<v with d | a[u]
+        int[] sumdp = new int[maxA + 1];
+
+        // Precompute bit‐counts for masks up to 1<<7 = 128
+        int MAXMASK = 1 << 7;
+        int[] bitCount = new int[MAXMASK];
+        for (int m = 1; m < MAXMASK; m++) {
+            bitCount[m] = bitCount[m >>> 1] + (m & 1);
+        }
+
+        // Map single-bit masks to their index: bitIdx[1<<i]=i
+        int[] bitIdx = new int[MAXMASK];
+        for (int i = 0; i < 7; i++) {
+            bitIdx[1 << i] = i;
+        }
+
+        // dp[v] will be computed on the fly; we only need dp[n-1] at the end.
+        int dpAtN = 0;
+
+        // A small buffer for subset-products
+        int[] prodBuf = new int[MAXMASK];
+
+        for (int i = 0; i < n; i++) {
+            // 1) Factor a[i] to get distinct primes
+            int x = a[i];
+            ArrayList<Integer> primes = new ArrayList<>();
+            while (x > 1) {
+                int p = spf[x];
+                primes.add(p);
+                while (x % p == 0) {
+                    x /= p;
+                }
+            }
+            int k = primes.size();
+            int limit = 1 << k;
+
+            int dpVal;
+            if (i == 0) {
+                // dp[1] = 1
+                dpVal = 1;
+            } else {
+                // 2) Compute dp[i] by inclusion–exclusion
+                long s = 0;
+                prodBuf[0] = 1;
+                for (int mask = 1; mask < limit; mask++) {
+                    int low = mask & -mask;        // lowest set bit
+                    int idx = bitIdx[low];        // which prime
+                    int prev = mask ^ low;
+                    prodBuf[mask] = prodBuf[prev] * primes.get(idx);
+                    int bc = bitCount[mask];
+                    int d = prodBuf[mask];
+                    int val = sumdp[d];
+                    if ((bc & 1) == 1) {
+                        s += val;
+                    } else {
+                        s -= val;
+                    }
+                }
+                // normalize modulo
+                s %= MOD;
+                if (s < 0) s += MOD;
+                dpVal = (int)s;
+            }
+
+            // 3) Update sumdp for every nonempty subset of primes
+            for (int mask = 1; mask < limit; mask++) {
+                int d = prodBuf[mask];
+                int nv = sumdp[d] + dpVal;
+                if (nv >= MOD) nv -= MOD;
+                sumdp[d] = nv;
+            }
+
+            if (i == n - 1) dpAtN = dpVal;
+        }
+
+        // Answer is dp[n]
+        System.out.println(dpAtN);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Sieve for smallest‐prime‐factor (spf):**  
+   We build an array `spf[]` so that `spf[x]` is the smallest prime that divides `x`.  This lets us factor each \(a_i\) in \(O(\log a_i)\) time.
+
+2. **Dynamic array `sumdp[d]`:**  
+   After we finish computing `dp[i]`, we add `dp[i]` into `sumdp[d]` for every square‐free divisor \(d\) of `a[i]`.  Concretely, we only do this for those \(d\) that are products of distinct primes of `a[i]`.
+
+3. **Inclusion–exclusion to get \(dp[i]\):**  
+   Let the distinct prime factors of `a[i]` be \(\{p_1,\dots,p_k\}\).  We enumerate all nonempty subsets \(S\subseteq\{1,\dots,k\}\).  If
+   \[
+     d_S \;=\;\prod_{j\in S} p_j,
+   \]
+   then by inclusion–exclusion
+   \[
+     dp[i]
+     = \sum_{\emptyset\neq S}
+       (-1)^{|S|+1}\;
+       \texttt{sumdp}[\,d_S\,].
+   \]
+
+4. **Complexity:**  
+   - Factoring each \(a_i\) costs \(O(\log a_i)\).  
+   - If \(a_i\) has \(k\) distinct primes, we do \(2^k-1\) subset‐operations.  In the worst case for \(a_i\le10^6\), \(k\le7\), so at most 127 subsets.  
+   - Thus overall \(O\bigl(n\log A + n\cdot 2^7\bigr)\), easily fitting in 4 s for \(n\le2\cdot10^5\).
+
+This solves the problem in \(O(n\log A)\) time and \(O(A)\) memory, where \(A=10^6\).

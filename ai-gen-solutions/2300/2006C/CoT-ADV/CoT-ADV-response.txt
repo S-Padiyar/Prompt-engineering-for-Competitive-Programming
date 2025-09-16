@@ -1,0 +1,200 @@
+**Analysis**
+
+We have an array \(a\) of length \(n\).  We call a subarray \(a[\ell..r]\) “brilliant” if, when we take the *set* of its (distinct) values and repeatedly insert the integer average of any two distinct elements \(x,y\) (provided \(\tfrac{x+y}2\) is an integer not already in the set), we can eventually fill all the integers from \(\min\) to \(\max\) in that set.
+
+It turns out (and can be shown by tracking how the greatest common divisor of differences evolves under mid-point insertions) that the necessary-and-sufficient condition for a set of integers to be “expandable” into a full consecutive block is:
+
+> **The GCD of all pairwise differences of the members of the set must be a *power of two*.**
+
+Equivalently, if you list the unique elements in sorted order  
+\[
+x_1 < x_2 < \cdots < x_k
+\]
+and form 
+\[
+D = \gcd(x_2 - x_1,\; x_3 - x_1,\;\dots,\; x_k - x_1),
+\]
+then the set can be expanded to all integers from \(x_1\) to \(x_k\) if and only if \(D\) is a power of two (including the degenerate case \(D=0\), which happens exactly when all elements are the same).
+
+---
+
+### Reducing to subarrays of **differences**
+
+Consider a subarray \(a[\ell..r]\).  Define
+\[
+D \;=\;\gcd\bigl(|a_i - a_\ell|\;:\; i=\ell,\dots,r\bigr).
+\]
+One checks that
+\[
+\gcd\bigl(|a_{\ell+1}-a_\ell|,\;|a_{\ell+2}-a_\ell|,\dots\bigr)
+\;=\;
+\gcd\bigl(|a_{\ell+1}-a_\ell|,\;|a_{\ell+2}-a_{\ell+1}|,\;
+|a_{\ell+3}-a_{\ell+2}|,\dots\bigr),
+\]
+so it suffices to look at the array of *adjacent* absolute differences
+\[
+b_i \;=\; |a_{i+1} - a_i|\,,\quad i=1\ldots n-1.
+\]
+Then for any subarray \(\ell<r\), the GCD
+\(\gcd\bigl(b_\ell,b_{\ell+1},\dots,b_{r-1}\bigr)\)
+equals \(D\).  We then want to count how many subarrays of \(b\) have GCD equal to a power of two (including zero).  Finally we add \(n\) to account for the \(n\) trivial subarrays of \(a\) of length \(1\) (each single element is automatically “brilliant,” corresponding to “all-differences-zero,” i.e.\ GCD \(=0\), a valid power-of-two case).
+
+---
+
+### Counting subarrays by maintenance of suffix‐GCDs
+
+A classic trick: as we scan \(b\) from left to right, at each index \(i\) maintain all the distinct GCD‐values of subarrays *ending* at \(i\).  Concretely we keep a small list of pairs
+
+\[
+\bigl(g_1,c_1\bigr),\bigl(g_2,c_2\bigr),\dots,
+\]
+
+where \(g_j\) is a GCD value and \(c_j\) counts how many subarrays ending at \(i\) have GCD exactly \(g_j\).  There are only \(O(\log(\max b_i))\) such GCD‐values at any position, because each time you extend a subarray its GCD can only drop by dividing out prime factors, and there are at most \(\log\) many distinct divisors in a gcd‐chain.
+
+When we move from position \(i-1\) to \(i\), we form a new list for “ending at \(i\)” by
+
+1.  Starting with the single‐element new subarray \([i,i]\), which has GCD \(b_i\), so we add \((b_i,1)\).
+
+2.  For each old pair \((g,c)\) from “ending at \(i-1\)”, compute \(\gcd(g,b_i)\); that value also appears with multiplicity \(c\).  We merge runs of the same gcd‐value to keep the list small.
+
+After building the new list, we simply add up the counts \(c_j\) for those \(g_j\) which are powers of two (including \(g_j=0\), since \(0\) & \((0-1)\)==0 in bit‐logic, so we get it “for free” by the usual test `(g & (g-1)) == 0`).
+
+Finally, we add \(n\) (the number of length-1 subarrays of \(a\)), and print the result.
+
+This runs in \(O\bigl(n\log(\max a_i)\bigr)\), which is perfectly fine for \(n\le4\cdot10^5\).
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    // Fast GCD
+    private static int gcd(int a, int b) {
+        while (b != 0) {
+            int t = a % b;
+            a = b;
+            b = t;
+        }
+        return a < 0 ? -a : a;
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        int t = Integer.parseInt(br.readLine());
+
+        // We will reuse these small arrays for the dynamic-programming state
+        // Since the number of distinct gcds per position is O(log A), ~< 32
+        int MAXS = 64;
+        int[] prevG = new int[MAXS], curG = new int[MAXS];
+        long[] prevCnt = new long[MAXS], curCnt = new long[MAXS];
+
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine());
+            st = new StringTokenizer(br.readLine());
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            // Edge case: length 1
+            if (n == 1) {
+                sb.append(1).append('\n');
+                continue;
+            }
+
+            // Build the adjacent-differences array b of length n-1
+            int[] b = new int[n - 1];
+            for (int i = 0; i < n - 1; i++) {
+                b[i] = Math.abs(a[i + 1] - a[i]);
+            }
+
+            // We'll accumulate the count of "good" subarrays of b (length >= 1)
+            long goodSubB = 0;
+
+            // "prev" list is initially empty (no subarrays ending at -1)
+            int prevSize = 0;
+
+            // Sweep b from left to right
+            for (int i = 0; i < n - 1; i++) {
+                int x = b[i];
+                int curSize = 0;
+
+                // 1) Start with the single-element subarray [i..i]
+                curG[curSize] = x;
+                curCnt[curSize] = 1;
+                curSize++;
+
+                // 2) Extend all old subarrays by b[i]
+                for (int j = 0; j < prevSize; j++) {
+                    int g = gcd(prevG[j], x);
+                    long c = prevCnt[j];
+                    // Merge runs of the same gcd
+                    if (curG[curSize - 1] == g) {
+                        curCnt[curSize - 1] += c;
+                    } else {
+                        curG[curSize] = g;
+                        curCnt[curSize] = c;
+                        curSize++;
+                    }
+                }
+
+                // 3) Count how many of these have gcd a power of two (or zero)
+                for (int j = 0; j < curSize; j++) {
+                    int g = curG[j];
+                    // Test "power-of-two or zero" by (g & (g-1)) == 0
+                    if ((g & (g - 1)) == 0) {
+                        goodSubB += curCnt[j];
+                    }
+                }
+
+                // 4) Move cur → prev for the next iteration
+                System.arraycopy(curG, 0, prevG, 0, curSize);
+                System.arraycopy(curCnt, 0, prevCnt, 0, curSize);
+                prevSize = curSize;
+            }
+
+            // Total brilliant subarrays of a = singletons (n)
+            //                                  + good subarrays of b (length>=1)
+            long answer = n + goodSubB;
+            sb.append(answer).append('\n');
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+---
+
+**Explanation of Key Steps**
+
+1. **Reduction to differences**  
+   A subarray \(a[\ell..r]\) is brilliant precisely when  
+   \(\gcd\bigl(|a_i - a_\ell|\bigr)\) over \(i=\ell,\dots,r\)  
+   is a power of two (or zero).  One shows that this equals  
+   \(\gcd(b_\ell,b_{\ell+1},\dots,b_{r-1})\) where  
+   \(b_i = |a_{i+1}-a_i|\).
+
+2. **Counting subarrays of \(b\) with gcd a power-of-two**  
+   We scan left to right maintaining all *distinct* gcd-values of subarrays that end at the current index.  When we append a new element \(b[i]\), each old gcd \(g\) turns into \(\gcd(g,b[i])\), and we also get the one-element subarray whose gcd is just \(b[i]\).  We merge runs of identical gcds to keep the list short (\(O(\log A)\) distinct values).  Then we simply add up the counts of those runs whose gcd is a power of two.
+
+3. **Singleton subarrays**  
+   Every single element of \(a\) (length-1 subarray) is automatically brilliant (the set has zero difference, gcd = 0), so we add \(n\) at the end.
+
+Overall complexity: \(O\bigl(n\,\log(\max a_i)\bigr)\), which easily handles up to \(n=4\cdot10^5\). 
+
+---
+
+**Time and Space Complexity**
+
+- **Time**  
+  We do one pass over the \(n-1\) entries of \(b\).  At each step we merge at most \(O(\log A)\) old gcd‐collections, and do one gcd per old entry.  Hence \(O\bigl(n\log(\max a_i)\bigr)\).
+
+- **Space**  
+  We use only \(O(\log A)\) temporary state at each step, plus the input arrays of size \(O(n)\).  So overall \(O(n)\).

@@ -1,0 +1,205 @@
+**Analysis**
+
+We have an \(n\times k\) grid \(a_{i,j}\).  We form a new grid \(b_{i,j}\) by taking the prefix‐OR down each column:
+
+\[
+b_{i,j} \;=\; a_{1,j}\;|\;a_{2,j}\;\big|\;\dots\;\big|\;a_{i,j}\,.
+\]
+
+Since bitwise OR only ever turns bits on (never off), each column \(j\) of the sequence
+
+\[
+b_{1,j},\,b_{2,j},\,\dots,\,b_{n,j}
+\]
+
+is a *nondecreasing* sequence of integers.
+
+We then get \(q\) queries.  Each query has \(m\) “requirements,” each of the form
+
+```
+region r, operator (> or <), value c
+```
+
+and we want the *smallest* row index \(i\) (if any) for which **all** requirements are simultaneously satisfied.  Concretely:
+
+- If the requirement is “\(b_{i,r} < c\),” then since the sequence \(b_{1,r},b_{2,r},\dots\) is nondecreasing, the set of indices \(i\) satisfying \(b_{i,r}<c\) is a prefix
+  \[
+    i\in [1,\;f-1],
+    \quad\text{where }f=\min\{i\mid b_{i,r}\ge c\}.
+  \]
+  In code we find \(f\) via a lower‐bound search, then the valid interval is \([1,f-1]\).
+
+- If the requirement is “\(b_{i,r} > c\),” then the set of \(i\) is a suffix
+  \[
+    i\in [f,n],
+    \quad\text{where }f=\min\{i\mid b_{i,r}>c\}.
+  \]
+  We find that \(f\) by an upper‐bound search, and the valid interval is \([f,n]\).
+
+A query with \(m\) requirements yields \(m\) intervals on the row‐index axis; the rows satisfying *all* requirements lie in the intersection of these intervals.  We just keep a running \([L,R]\) intersection, and if at the end \(L\le R\) we output \(L\) (the smallest valid country), otherwise \(-1\).
+
+Because \(n\cdot k\le 10^5\), we can afford to store all \(b_{i,j}\) values.  Moreover each query has up to \(m\) requirements, and the total \(\sum m\le10^5\), so doing an \(\,O(\log n)\) binary search for each requirement is perfectly efficient.
+
+To minimize Java‐overhead, we
+
+ 1. Read the original \(a_{i,j}\) row by row,
+ 2. Maintain an array `prefix[j]` which accumulates the column‐wise OR,
+ 3. Immediately store the result `prefix[j]` into a flattened array `flat[j*n + i] = b[i][j]`.
+
+Thus `flat` has length \(k\times n\), and for each column \(j\), its data are in `flat[j*n + 0 .. j*n + (n-1)]` in nondecreasing order.  We can then do our two custom `lowerBound` / `upperBound` routines on that subarray in \(O(\log n)\) time each.
+
+Overall:
+
+- Preprocessing takes \(O(nk)\) to build the OR‐prefixes.
+- Each of the \(\le 10^5\) constraints is handled in \(O(\log n)\).
+- Total is well within the \(2\) s time limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+    static StringTokenizer st;
+
+    public static void main(String[] args) throws IOException {
+        // Read n, k, q
+        st = new StringTokenizer(br.readLine());
+        int n = Integer.parseInt(st.nextToken());
+        int k = Integer.parseInt(st.nextToken());
+        int q = Integer.parseInt(st.nextToken());
+
+        // We'll build the matrix b[i][j] on the fly into a flattened array:
+        // flat[j*n + i] = b[i][j], where i in [0..n-1], j in [0..k-1].
+        int[] flat = new int[n * k];
+        int[] prefixOR = new int[k];  // column-wise running OR
+
+        // Read each row of a[], accumulate into prefixOR and store in flat
+        for (int i = 0; i < n; i++) {
+            st = new StringTokenizer(br.readLine());
+            for (int j = 0; j < k; j++) {
+                int aij = Integer.parseInt(st.nextToken());
+                prefixOR[j] |= aij;
+                flat[j * n + i] = prefixOR[j];
+            }
+        }
+
+        StringBuilder answer = new StringBuilder();
+
+        // Process queries
+        for (int _q = 0; _q < q; _q++) {
+            // Number of requirements in this query
+            st = new StringTokenizer(br.readLine());
+            int m = Integer.parseInt(st.nextToken());
+
+            // We'll keep an intersection [L,R], 1-based.  Initially [1..n].
+            int L = 1, R = n;
+            boolean possible = true;
+
+            // Read and apply each requirement
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                int r = Integer.parseInt(st.nextToken()) - 1;  // 0-based column
+                char op = st.nextToken().charAt(0);
+                int c = Integer.parseInt(st.nextToken());
+
+                if (!possible) {
+                    // We already know it's impossible, just consume input
+                    continue;
+                }
+
+                int base = r * n;  // offset in 'flat' for column r
+
+                if (op == '<') {
+                    // we need b[i,r] < c
+                    // find the first index p with b[p]>=c  (lowerBound)
+                    int p = lowerBound(flat, base, n, c);
+                    // valid rows are [1..p]
+                    //   since p is 0-based, that means [1..p] in 1-based is [1..p]
+                    //     (if p==0, it's empty; if p==n, it means all are <c)
+                    R = Math.min(R, p);
+                } else {
+                    // op == '>'
+                    // we need b[i,r] > c
+                    // find first index p with b[p]>c  (upperBound)
+                    int p = upperBound(flat, base, n, c);
+                    // valid rows are [p+1..n] in 1-based
+                    L = Math.max(L, p + 1);
+                }
+
+                if (L > R) {
+                    possible = false;
+                }
+            }
+
+            // Output the result for this query
+            answer.append((possible && L <= R) ? L : -1)
+                  .append('\n');
+        }
+
+        // Print all answers
+        System.out.print(answer);
+    }
+
+    // Find first index in flat[base..base+len-1] with value >= key
+    // Returns an index in [0..len], i.e. 'len' if none >= key.
+    static int lowerBound(int[] flat, int base, int len, int key) {
+        int lo = 0, hi = len;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (flat[base + mid] >= key) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        return lo;
+    }
+
+    // Find first index in flat[base..base+len-1] with value > key
+    // Returns an index in [0..len], i.e. 'len' if none > key.
+    static int upperBound(int[] flat, int base, int len, int key) {
+        int lo = 0, hi = len;
+        while (lo < hi) {
+            int mid = (lo + hi) >>> 1;
+            if (flat[base + mid] > key) {
+                hi = mid;
+            } else {
+                lo = mid + 1;
+            }
+        }
+        return lo;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Building \(b_{i,j}\) in one pass**  
+   We keep `prefixOR[j]` = \(a_{1,j}\;|\;a_{2,j}\;|\;\dots\;|\;a_{i,j}\).  As soon as we read row \(i\) we update  
+   ```
+     prefixOR[j] |= a[i][j]
+   ```  
+   and then store that into `flat[j*n + i]`.
+
+2. **Flat‐array layout**  
+   In `flat` we store column 0 in positions  
+   \[
+     flat[0\cdot n + 0],\,flat[0\cdot n + 1],\dots,flat[0\cdot n + (n-1)]
+   \]  
+   column 1 in positions  
+   \[
+     flat[1\cdot n + 0],\,flat[1\cdot n + 1],\dots
+   \]  
+   etc.  Each of these subarrays of length \(n\) is nondecreasing, so we can do binary‐search.
+
+3. **Answering one requirement**  
+   - `"< c"` becomes a prefix of the column: we binary‐search for the first index whose value is \(\ge c\).  Call that 0-based index \(p\).  Then rows \(\{1,2,\dots,p\}\) (in 1-based) satisfy `<c`.  
+   - `"> c"` becomes a suffix: we binary‐search for the first index whose value is \(>c\).  Call that 0-based index \(p\).  Then rows \(\{p+1,\dots,n\}\) satisfy `>c`.
+
+4. **Intersecting intervals**  
+   We keep a global \([L,R]\) in 1-based row indices.  Initially \([1,n]\).  Each requirement cuts it down.  If finally \(L\le R\) we print \(L\), otherwise \(-1\).
+
+This runs in \(O(nk + \sum_{\rm all\;m} \log n)\le O(10^5 + 10^5\log 10^5)\), which is well within the limits.

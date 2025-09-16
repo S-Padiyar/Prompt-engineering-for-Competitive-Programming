@@ -1,0 +1,218 @@
+**Analysis**
+
+We are given \(n\) points \((x_i,y_i)\) and an even distance \(d\).  We call three of these points a *Manhattan triangle* if the Manhattan distance between every pair among them is exactly \(d\).  Recall
+
+\[
+\text{dist}_{\mathrm{man}}((x_1,y_1),(x_2,y_2))
+\;=\;|x_1-x_2| + |y_1-y_2|
+\;=\;d.
+\]
+
+A classic trick is to make the change of coordinates
+
+\[
+u \;=\; x+y,\quad
+v \;=\; x-y.
+\]
+
+Under \((u,v)\) the Manhattan distance becomes the Chebyshev distance
+
+\[
+\lvert x_1-x_2\rvert + \lvert y_1-y_2\rvert
+\;=\;
+\max\bigl(\lvert u_1-u_2\rvert,\lvert v_1-v_2\rvert\bigr).
+\]
+
+Thus in \((u,v)\)–space we are looking for three points each at \(\ell_\infty\)–distance exactly \(d\) from each other.
+
+A key geometric fact about \(\ell_\infty\)–geometry is:
+
+  – If two points \(P,Q\) satisfy 
+    \(\max(|u_P-u_Q|,|v_P-v_Q|)=d\), 
+    then any third point \(R\) that also lies at \(\ell_\infty\)–distance \(d\) from both \(P\) and \(Q\) must share either the same \(u\)–coordinate (and differ by \(\pm d\) in \(v\)) or the same \(v\)–coordinate (and differ by \(\pm d\) in \(u\)).  
+
+In particular one checks that *any* \(\ell_\infty\)–equilateral triangle has at least one side which is horizontal in \((u,v)\)–space (i.e.\ same \(v\), \(u\) differing by \(d\)) or vertical (same \(u\), \(v\) differing by \(d\)).  
+
+Hence a very efficient search is:
+
+  1.  Compute for each point \(i\):
+     \[
+       u_i = x_i + y_i,\quad v_i = x_i - y_i.
+     \]
+  
+  2.  Build two maps
+     \(\mathtt{mapU}\colon u\mapsto\{(v,i)\}\)
+     and
+     \(\mathtt{mapV}\colon v\mapsto\{(u,i)\}\),
+     each listing the points at a given \(u\) or \(v\).
+
+  3.  In \(\mathtt{mapU}\), for each fixed \(u\) take its list of points \((v,i)\) and sort by \(v\).  
+     Whenever two *adjacent* \(v\)-values differ exactly by \(d\), say
+     \[
+       (u,v_1)\leftrightarrow i_1,
+       \quad
+       (u,v_2)\leftrightarrow i_2,
+       \qquad
+       v_2 - v_1 \;=\; d,
+     \]
+     then these two points are at Chebyshev distance \(d\) (they lie on the same vertical line \(u=\text{const}\)).  
+     To complete a triangle we need *any* third point whose \(u\)-coordinate is \(u\pm d\).  
+     We look up whether \(\mathtt{mapU}\) has key \(u+d\) or \(u-d\); if it does, choose *any* one point from that list and we have a triple \(\{i_1,i_2,i_3\}\).  
+
+  4.  Symmetrically scan \(\mathtt{mapV}\).  If two adjacent \(u\)-values differ by \(d\) on the same \(v\)-line, look for a third point at \(v\pm d\).  
+
+  5.  If we find any such triple, we output it.  Otherwise we print `0 0 0`.
+
+This runs in \(O(n\log n)\) per test (sorting each bucket) and in total \(O(n\log n)\) over all tests, which is well within the problem’s limits.
+
+----
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        int t = Integer.parseInt(in.readLine().trim());
+
+        while (t-- > 0) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int d = Integer.parseInt(st.nextToken());
+
+            int[] U = new int[n];
+            int[] V = new int[n];
+            int[] X = new int[n];
+            int[] Y = new int[n];
+
+            // Read points, compute (u,v)
+            for (int i = 0; i < n; i++) {
+                st = new StringTokenizer(in.readLine());
+                int x = Integer.parseInt(st.nextToken());
+                int y = Integer.parseInt(st.nextToken());
+                X[i] = x;
+                Y[i] = y;
+                U[i] = x + y;
+                V[i] = x - y;
+            }
+
+            // Build mapU: u -> list of (v, index)
+            //      mapV: v -> list of (u, index)
+            HashMap<Integer, ArrayList<int[]>> mapU = new HashMap<>();
+            HashMap<Integer, ArrayList<int[]>> mapV = new HashMap<>();
+
+            for (int i = 0; i < n; i++) {
+                mapU.computeIfAbsent(U[i], k -> new ArrayList<>()).add(new int[]{V[i], i});
+                mapV.computeIfAbsent(V[i], k -> new ArrayList<>()).add(new int[]{U[i], i});
+            }
+
+            // Sort each bucket by the other coordinate
+            for (ArrayList<int[]> lst : mapU.values()) {
+                lst.sort(Comparator.comparingInt(a -> a[0]));
+            }
+            for (ArrayList<int[]> lst : mapV.values()) {
+                lst.sort(Comparator.comparingInt(a -> a[0]));
+            }
+
+            boolean found = false;
+
+            // 1) Scan vertical lines in (u,v)-space => same u, v differs by d
+            outer:
+            for (Map.Entry<Integer, ArrayList<int[]>> entry : mapU.entrySet()) {
+                int u = entry.getKey();
+                ArrayList<int[]> lst = entry.getValue();
+                for (int j = 0; j + 1 < lst.size(); j++) {
+                    int v1 = lst.get(j)[0], i1 = lst.get(j)[1];
+                    int v2 = lst.get(j+1)[0], i2 = lst.get(j+1)[1];
+                    if (v2 - v1 == d) {
+                        // these two are at Chebyshev distance d
+                        // look for any third point at u ± d
+                        if (mapU.containsKey(u + d)) {
+                            int i3 = mapU.get(u + d).get(0)[1];
+                            sb.append((i1+1)).append(' ')
+                              .append((i2+1)).append(' ')
+                              .append((i3+1)).append('\n');
+                            found = true;
+                            break outer;
+                        }
+                        if (mapU.containsKey(u - d)) {
+                            int i3 = mapU.get(u - d).get(0)[1];
+                            sb.append((i1+1)).append(' ')
+                              .append((i2+1)).append(' ')
+                              .append((i3+1)).append('\n');
+                            found = true;
+                            break outer;
+                        }
+                    }
+                }
+            }
+
+            // 2) If not found, scan horizontal lines => same v, u differs by d
+            if (!found) {
+                outer:
+                for (Map.Entry<Integer, ArrayList<int[]>> entry : mapV.entrySet()) {
+                    int v = entry.getKey();
+                    ArrayList<int[]> lst = entry.getValue();
+                    for (int j = 0; j + 1 < lst.size(); j++) {
+                        int u1 = lst.get(j)[0], i1 = lst.get(j)[1];
+                        int u2 = lst.get(j+1)[0], i2 = lst.get(j+1)[1];
+                        if (u2 - u1 == d) {
+                            // these two are at Chebyshev distance d
+                            // look for any third at v ± d
+                            if (mapV.containsKey(v + d)) {
+                                int i3 = mapV.get(v + d).get(0)[1];
+                                sb.append((i1+1)).append(' ')
+                                  .append((i2+1)).append(' ')
+                                  .append((i3+1)).append('\n');
+                                found = true;
+                                break outer;
+                            }
+                            if (mapV.containsKey(v - d)) {
+                                int i3 = mapV.get(v - d).get(0)[1];
+                                sb.append((i1+1)).append(' ')
+                                  .append((i2+1)).append(' ')
+                                  .append((i3+1)).append('\n');
+                                found = true;
+                                break outer;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // If still not found, no such triangle
+            if (!found) {
+                sb.append("0 0 0\n");
+            }
+        }
+
+        System.out.print(sb.toString());
+    }
+}
+```
+
+**Explanation of the key steps**
+
+1. **\(u,v\)–transform**  
+   We set  
+   \[
+     u = x+y,\quad v = x-y.
+   \]  
+   Then  
+   \(\lvert x_1-x_2\rvert + \lvert y_1-y_2\rvert
+     = \max\bigl(\lvert u_1-u_2\rvert,\lvert v_1-v_2\rvert\bigr).\)
+
+2. **Bucket by constant \(u\) or constant \(v\)**  
+   - `mapU` groups all points with the same \(u\).  Within that group we sort by \(v\).  
+   - `mapV` groups all points with the same \(v\).  Within that group we sort by \(u\).
+
+3. **Detect an “axis‐aligned” side of length \(d\)**  
+   - On a fixed \(u\)–line, if two *adjacent* \(v\)-coordinates differ by \(d\), those two points are at distance \(d\).  To form a triangle we only need any third point whose \(u\)–coordinate is offset by \(\pm d\).  
+   - Similarly on a fixed \(v\)–line.
+
+4. **Why this finds *every* Manhattan‐equilateral triangle**  
+   In the Chebyshev (\(\ell_\infty\)) metric, every equilateral triangle has at least one side which is either horizontal or vertical.  Hence it suffices to look for pairs of points on the same \(u\)–line or on the same \(v\)–line at Chebyshev‐distance \(d\), and then grab any third point at the appropriate offset.  
+
+This runs in \(O(n\log n)\) overall per test and easily handles up to \(2\times10^5\) total points.

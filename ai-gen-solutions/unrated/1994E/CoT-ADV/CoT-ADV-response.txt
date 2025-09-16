@@ -1,0 +1,176 @@
+**Analysis**
+
+We have a forest of \(k\) rooted trees (total number of nodes over all trees in one test is up to \(10^6\)), and we want to perform a sequence of “remove‐a‐subtree” operations so that the bitwise‐OR of *the sizes of the removed subtrees* is as large as possible.  Equivalently, we end up choosing a set of removal‐roots \(v_1,v_2,\dots\) (an **antichain** in the rooted forest so that no chosen root is an ancestor or descendant of another) and the OR of the sizes of the subtrees rooted at those chosen nodes should be maximized.
+
+A key observation (that one can extract from experimenting on small examples) is that we only care *which bits* we can turn on in the final OR.  Once we know exactly *which* bits \(b\) (from, say, 0 up to \(\lfloor\log_2 n\rfloor\)) are turned on, we can achieve the numerical maximum OR.
+
+We use the following **greedy‐by‐bits** strategy:
+
+1.  Compute for **every** node \(v\) in the entire forest:
+    - Its subtree size \(\mathrm{sz}[v]\).
+    - A DFS‐time interval \(\mathrm{in}[v],\mathrm{out}[v]\) so that \(u\) is a descendant of \(v\) iff
+      \[
+        \mathrm{in}[v]\le \mathrm{in}[u] < \mathrm{out}[v].
+      \]
+2.  Build a global list of all nodes in the forest sorted in *decreasing* order of depth.  
+    This way, when we look for a node to supply bit \(b\), we try the *deepest* candidates first—to minimize conflicts with future picks.
+3.  Now we go from the highest bit \((\sim\!\lfloor\log_2 n_{\max}\rfloor)\) down to bit 0.  For each bit \(b\):
+   - Scan our global depth‐sorted list of nodes, looking for a node \(v\) whose subtree‐size has bit \(b\) set,
+     i.e.\ \((\mathrm{sz}[v]\;\&\;(1\ll b))\neq 0\),
+     and which does **not** conflict (i.e.\ is neither ancestor nor descendant) with *any* node we have already chosen to supply *higher* bits.
+   - If we find such a node, we record it as our supplier for bit \(b\), blocking its entire root‐to‐leaf path and its entire subtree from being used to supply other bits.  We then *set* bit \(b\) in our answer.
+4.  At the end, the OR of the selected subtree‐sizes has *exactly* the bits we turned on in that greedy pass.  That OR is the maximum possible.
+
+This works because:
+
+-  We only ever need *one* node to supply each bit \(b\).  
+-  By going from high bits to low bits, we ensure the final integer is as large as possible in binary.
+-  Sorting by depth ensures that when we “claim” a node for bit \(b\), we block *minimal* region of the forest (we pick as deep as possible), leaving more flexibility to supply lower bits.
+
+The overall time per test is roughly
+
+-  \(O(n)\) to build the forest, run one DFS per tree to compute `sz[]`, `in[]`, `out[]`, `depth[]`.
+-  \(O(n\log n)\) (sorting the nodes once by depth).
+-  Then for about up to 20–21 bits, scanning the \(n\) nodes in worst case, and for each candidate doing up to \(\sim 20\) ancestor/descendant checks (since we pick at most one node per bit, we have at most 21 “chosen” nodes).  That is about \(21\times n\times 21\approx 441n\), which is fine up to \(n=10^6\).
+
+Summed over all test cases the total \(n\) is \(\le10^6\), so this runs in time.  Memory is also linear.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 1000000 + 5;
+    static ArrayList<Integer>[] g = new ArrayList[MAXN];
+    static int[] sz = new int[MAXN];
+    static int[] in = new int[MAXN], out = new int[MAXN], depth = new int[MAXN], parent = new int[MAXN];
+    static int timer;
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        int T = Integer.parseInt(br.readLine().trim());
+        // initialize adjacency lists
+        for (int i = 0; i < MAXN; i++) {
+            g[i] = new ArrayList<>();
+        }
+        int nodeBase = 0;
+        while (T-- > 0) {
+            int K = Integer.parseInt(br.readLine().trim());
+            nodeBase = 0;
+            List<Integer> treeRoots = new ArrayList<>(K);
+            // read all trees
+            for (int t = 0; t < K; t++) {
+                int n = Integer.parseInt(br.readLine().trim());
+                nodeBase += n;
+                // read parents for 2..n
+                StringTokenizer st = new StringTokenizer(br.readLine());
+                parent[1] = 0;  // root has no parent
+                int offset = nodeBase - n;
+                for (int i = 2; i <= n; i++) {
+                    int p = Integer.parseInt(st.nextToken());
+                    parent[i + offset] = p + offset;
+                    g[p + offset].add(i + offset);
+                }
+                treeRoots.add(nodeBase - n + 1);
+            }
+            // run a DFS on each tree to compute subtree sizes
+            timer = 0;
+            for (int root : treeRoots) {
+                depth[root] = 0;
+                dfs(root);
+            }
+            // collect all nodes in one array
+            int totalNodes = nodeBase;
+            Integer[] allNodes = new Integer[totalNodes];
+            for (int i = 1; i <= totalNodes; i++) {
+                allNodes[i - 1] = i;
+            }
+            // sort them by depth descending
+            Arrays.sort(allNodes, (a, b) -> Integer.compare(depth[b], depth[a]));
+
+            // selected nodes that supply bits
+            ArrayList<Integer> chosen = new ArrayList<>();
+            int answerMask = 0;
+            // try bits from highest (20) down to 0
+            for (int b = 20; b >= 0; b--) {
+                int want = 1 << b;
+                for (int v : allNodes) {
+                    if ((sz[v] & want) == 0) continue;  // this node doesn't have bit b
+                    boolean conflict = false;
+                    // check against previously chosen nodes
+                    for (int u : chosen) {
+                        // u is ancestor of v or v is ancestor of u ?
+                        if ((in[u] <= in[v] && in[v] < out[u]) ||
+                            (in[v] <= in[u] && in[u] < out[v])) {
+                            conflict = true;
+                            break;
+                        }
+                    }
+                    if (!conflict) {
+                        // we can claim node v for bit b
+                        chosen.add(v);
+                        answerMask |= want;
+                        break;
+                    }
+                }
+            }
+
+            sb.append(answerMask).append("\n");
+
+            // clear adjacency for next test
+            for (int i = 1; i <= totalNodes; i++) {
+                g[i].clear();
+            }
+        }
+
+        System.out.print(sb);
+    }
+
+    // standard DFS to compute:
+    //  - depth[]
+    //  - in[v], out[v] (euler-time interval)
+    //  - sz[v] = subtree size
+    static void dfs(int v) {
+        in[v] = timer++;
+        sz[v] = 1;
+        for (int c : g[v]) {
+            depth[c] = depth[v] + 1;
+            dfs(c);
+            sz[v] += sz[c];
+        }
+        out[v] = timer;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Reading and Building the Forest**  
+   We read \(K\) trees.  Each tree has \(n\) nodes, rooted at node 1 of that tree.  We store them in one big graph, offsetting node‐indices so no two trees conflict.  We build a standard adjacency list `g[]`.
+
+2. **DFS to Compute `sz[]`, `in[]`, `out[]`, `depth[]`**  
+   - `sz[v]` = size of the subtree rooted at \(v\).  
+   - `in[v]`, `out[v]` = entry/exit times in a DFS so that the key test  
+     \[
+       u\text{ is in the subtree of }v\quad\Longleftrightarrow\quad in[v]\le in[u]<out[v]
+     \]
+     holds.  
+   - `depth[v]` = depth of \(v\) in its tree.
+
+3. **Global Node List Sorted by Depth**  
+   We flatten all nodes into one array `allNodes[]` and sort it once in *decreasing* order of `depth[]`.  That way, when we try to pick a node to “claim” bit \(b\), we first try the deepest ones (which block the *smallest* region of the forest and thus give us the best chance to satisfy lower bits later).
+
+4. **Greedy‐by‐Bits**  
+   We iterate \(b=20,19,\dots,0\).  For each bit \(b\), we scan our depth‐sorted list looking for a node \(v\) whose subtree size has bit \(b\) set, i.e.\ `(sz[v] & (1<<b)) != 0`, *and* which does *not* conflict with any previously chosen node (neither ancestor nor descendant).  If we find such a \(v\), we add it to our “chosen” list and turn on bit \(b\)` in our answer mask.  We then move on to the next bit.
+
+Since we only ever choose at most one node per bit, checking conflicts is \(O(\#\text{chosen})\approx O(21)\).  Scanning all \(n\) nodes up to ~21 times and doing a small conflict‐check loop is well within the \(2\)-second limit even for \(n\) up to \(10^6\).
+
+**Complexity**
+
+- Building the forest and doing the DFS: \(O(n)\).
+- Sorting all \(n\) nodes by depth: \(O(n\log n)\).
+- The greedy‐by‐bits phase: for up to 21 bits, scan up to \(n\) nodes → \(O(21\,n)\).  Each candidate does up to 21 ancestor‐checks → \(O(21)\).  Total \(O(21 \times n \times 21)=O(n)\) up to a small constant.
+
+Overall \(O(n\log n)\) per test (but total \(n\) over all tests is \(\le10^6\)), which easily fits in the time and memory limits.

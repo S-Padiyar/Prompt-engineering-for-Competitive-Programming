@@ -1,0 +1,300 @@
+**Problem Restatement**
+
+We have an undirected tree of \(n\) vertices (numbered \(1\) through \(n\)), with each edge having an integer weight.  We must process \(m\) queries of two types:
+
+1. **“^ y”**  
+   Bitwise-XOR every tree‐edge’s weight with \(y\).  This update is *persistent*: future queries see the updated weights.
+
+2. **“? v x”**  
+   Mental operation: pick a different vertex \(u\neq v\), add an edge of weight \(x\) between \(v\) and \(u\), form the unique simple cycle, and compute the XOR of all edge‐weights along that cycle.  We want to *maximize* that cycle‐XOR over our choice of \(u\).  Output that maximum.  (The tree itself is **not** actually modified.)
+
+We must answer all “?” queries in the order given.
+
+---
+
+**Key Observations**
+
+1.  After a sequence of type‐1 updates (“\(^\,y\)”), each original tree‐edge of original weight \(w\) has current weight
+   \[
+     w' \;=\; w \xor Y,
+   \]
+   where \(Y\) is the cumulative XOR of all \(y\)-values seen so far.
+
+2.  Suppose we fix a query “? \(v,x\)”.  We attach a new edge \((v,u)\) of weight \(x\).  The resulting cycle is  
+   \[
+     v \;\to\;\text{tree‐path}\;\to\;u \;\to\;(u\!,v)\;\to\;v.
+   \]
+   The XOR of all its edge‐weights is
+   \[
+     \bigl(\text{XOR of weights along tree‐path }v\to u\bigr)\;\xor\; x.
+   \]
+
+3.  Let us root the tree at node \(1\).  Precompute for each node \(u\):
+   - `A[u] = XOR of original edge‐weights along the path 1→u`.  
+   - `parity[u] = (distance in edges from 1 to u) mod 2`, i.e.\ depth parity.
+
+   Then the original XOR along \(v\to u\) is
+   \[
+     A[v]\;\xor\;A[u].
+   \]
+   Under the global edge‐XOR by \(Y\), each edge weight \(w_i\) becomes \(w_i \xor Y\), so a length-\(k\) path’s XOR becomes
+   \[
+     (A[v]\xor A[u]) \;\xor\; (Y\;\times\;(k\bmod2))
+     \;=\;
+     A[v]\xor A[u]\xor
+     \begin{cases}
+       0,& k\text{ even}\\
+       Y,& k\text{ odd}
+     \end{cases}.
+   \]
+   But the parity \(k\bmod2\) is exactly
+   \(\bigl(parity[v]\oplus parity[u]\bigr)\).
+
+4.  So for a query “? \(v,x\)”, the possible cycle XOR is
+   \[
+     \bigl(A[v]\xor A[u]\xor (\,parity[v]\oplus parity[u]\,)\cdot Y\bigr)\;\xor\;x.
+   \]
+   We must maximize that over all \(u\neq v\).  Rewrite it as two cases:
+   - **Case 0** (\(parity[u]=parity[v]\)):  
+     cycle‐XOR \(=\bigl(A[v]\xor A[u]\bigr)\xor x\).
+   - **Case 1** (\(parity[u]\neq parity[v]\)):  
+     cycle‐XOR \(=\bigl(A[v]\xor A[u]\xor Y\bigr)\xor x\).
+
+5.  Maximizing \((A[v]\xor A[u])\xor x\) over \(u\) of the same parity is the same as building a bit‐trie (prefix‐trie of bits) over  
+   \(\{\,A[u]\mid parity[u]=p\}\)  
+   and querying “best XOR against the pattern \((A[v]\xor x)\).”  Likewise for the opposite‐parity set with the pattern \((A[v]\xor Y\xor x)\).
+
+6.  **Important**: We must never allow \(u=v\).  Inserting \(A[v]\) into the same‐parity trie would allow \(u=v\) and give a fake answer \((0)\xor x = x\).  Hence, for each “?” query, we **temporarily remove** \(A[v]\) from the trie of its own parity, do our two max‐XOR queries, then re‐insert \(A[v]\).
+
+7.  All operations (one removal, one reinsertion, two max‐XOR‐queries) cost \(O(\log W)\), with \(W\le10^9\) so \(\log W\approx30\).  Over up to \(2\times10^5\) queries total, this is about \(O(200000\times60)\approx12\) million trie‐steps—comfortably fast in Java with good I/O.
+
+---
+
+**Solution Outline**
+
+1. Read \(t\) (number of test cases).
+2. For each test:
+   a. Read \(n,m\).  
+   b. Read the \(n-1\) edges; build an adjacency list.  
+   c. BFS from node 1, computing:
+      - `A[u] =` XOR of original weights along 1→u.
+      - `parity[u] =` depth\(\bmod2\).
+   d. Build two bit‐tries (`root[0]` and `root[1]`), one per parity.  Insert every `A[u]` into the trie corresponding to `parity[u]`.
+   e. Maintain a running `Y=0`.  Process queries:
+      - If “^ y”: do `Y ^= y`.
+      - If “? v x”:
+         i. Remove `A[v]` from `trie[parity[v]]`.
+         ii. Let  
+            \[
+              val0 = A[v]\xor x,\quad
+              val1 = A[v]\xor Y \xor x.
+            \]
+            - If trie[parity[v]] is nonempty, query its best‐XOR with `val0`.  Otherwise set that candidate to \(-1\).
+            - Query trie[parity[v]^1] with `val1`.
+         iii. The answer is the maximum of the two candidates.  Print it.
+         iv. Re‐insert `A[v]` into `trie[parity[v]]`.
+   f. After finishing, clear out all used trie‐nodes so the next test can reuse the same global arrays.
+
+3. Done.
+
+Time complexity per test is \(O((n+m)\times \log W)\).  Since \(\sum n,\sum m \le2\times10^5\), total under \(10^7\)–\(10^8\) operations.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXNODE = 6500000;  // ~ 2e5 * 31 + a little extra
+    static int[][] nxt = new int[MAXNODE][2];
+    static int[] cnt = new int[MAXNODE];
+    static int nextNode;
+    static int[] root = new int[2];
+
+    // Insert val into trie #t (t = 0 or 1)
+    static void trieInsert(int t, int val) {
+        int cur = root[t];
+        cnt[cur]++;
+        for (int b = 30; b >= 0; b--) {
+            int bit = (val >> b) & 1;
+            if (nxt[cur][bit] == 0) {
+                nxt[cur][bit] = nextNode++;
+            }
+            cur = nxt[cur][bit];
+            cnt[cur]++;
+        }
+    }
+
+    // Remove val from trie #t
+    static void trieRemove(int t, int val) {
+        int cur = root[t];
+        cnt[cur]--;
+        for (int b = 30; b >= 0; b--) {
+            int bit = (val >> b) & 1;
+            cur = nxt[cur][bit];
+            cnt[cur]--;
+        }
+    }
+
+    // Query maximum (val XOR stored) in trie #t; returns -1 if empty
+    static int trieQuery(int t, int val) {
+        int cur = root[t];
+        if (cnt[cur] == 0) return -1;
+        int res = 0;
+        for (int b = 30; b >= 0; b--) {
+            int bit = (val >> b) & 1;
+            // prefer opposite branch if nonempty
+            int opp = nxt[cur][bit ^ 1];
+            if (opp != 0 && cnt[opp] > 0) {
+                res |= (1 << b);
+                cur = opp;
+            } else {
+                cur = nxt[cur][bit];
+            }
+        }
+        return res;
+    }
+
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        StringBuilder output = new StringBuilder();
+        int T = in.nextInt();
+        while (T-- > 0) {
+            int n = in.nextInt(), m = in.nextInt();
+            List<int[]>[] adj = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) {
+                adj[i] = new ArrayList<>();
+            }
+            for (int i = 0; i < n-1; i++) {
+                int u = in.nextInt();
+                int v = in.nextInt();
+                int w = in.nextInt();
+                adj[u].add(new int[]{v, w});
+                adj[v].add(new int[]{u, w});
+            }
+            // BFS to compute A[u] and parity[u]
+            int[] A = new int[n+1];
+            int[] parity = new int[n+1];
+            boolean[] seen = new boolean[n+1];
+            Deque<Integer> dq = new ArrayDeque<>();
+            dq.add(1); seen[1] = true;
+            A[1] = 0; parity[1] = 0;
+            while (!dq.isEmpty()) {
+                int u = dq.poll();
+                for (int[] e : adj[u]) {
+                    int v = e[0], w = e[1];
+                    if (!seen[v]) {
+                        seen[v] = true;
+                        parity[v] = parity[u] ^ 1;
+                        A[v] = A[u] ^ w;
+                        dq.add(v);
+                    }
+                }
+            }
+
+            // Initialize our 2 tries
+            nextNode = 2;
+            root[0] = 0; root[1] = 1;
+            cnt[0] = cnt[1] = 0;
+            nxt[0][0] = nxt[0][1] = 0;
+            nxt[1][0] = nxt[1][1] = 0;
+
+            // Insert each A[u] into the appropriate parity-trie
+            for (int u = 1; u <= n; u++) {
+                trieInsert(parity[u], A[u]);
+            }
+
+            int Y = 0;  // cumulative XOR from "^ y" updates
+            for (int qi = 0; qi < m; qi++) {
+                char c = in.next().charAt(0);
+                if (c == '^') {
+                    int y = in.nextInt();
+                    Y ^= y;
+                } else {
+                    // query "? v x"
+                    int v = in.nextInt();
+                    int x = in.nextInt();
+
+                    // Temporarily remove A[v] from its parity-trie
+                    int p = parity[v];
+                    trieRemove(p, A[v]);
+
+                    // Prepare the two patterns to XOR-query
+                    int val0 = A[v] ^ x;       // same-parity
+                    int val1 = A[v] ^ Y ^ x;   // opposite-parity
+
+                    int ans0 = trieQuery(p, val0);
+                    int ans1 = trieQuery(p^1, val1);
+                    int ans = Math.max(ans0, ans1);
+                    output.append(ans).append(' ');
+
+                    // Re-insert A[v]
+                    trieInsert(p, A[v]);
+                }
+            }
+            output.append('\n');
+
+            // Clear out the trie nodes we used in this test
+            for (int i = 0; i < nextNode; i++) {
+                cnt[i] = 0;
+                nxt[i][0] = nxt[i][1] = 0;
+            }
+        }
+        System.out.print(output);
+    }
+
+    /** Fast I/O **/
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader() {
+            br = new BufferedReader(new InputStreamReader(System.in));
+        }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens())
+                st = new StringTokenizer(br.readLine());
+            return st.nextToken();
+        }
+        int nextInt() throws IOException {
+            return Integer.parseInt(next());
+        }
+    }
+}
+```
+
+**Explanation of Core Steps**
+
+1. **Preprocessing**  
+   - We root the tree at node 1 and do a BFS to compute, for every node `u`:
+     - `A[u]` = XOR of original weights along the root(1)→`u` path.
+     - `parity[u]` = depth(1→`u`) mod 2 (this tells us whether the number of edges on that path is even or odd).
+
+2. **Maintaining Global XOR Updates**  
+   - A running integer `Y` tracks the XOR of all “^ y” updates.  
+   - After these updates, an original edge weight `w` becomes `w⊕Y`.
+
+3. **Answering a “? v x” Query**  
+   - The XOR for cycle formed by adding `(v,u)` with weight `x` is  
+     \(\bigl(\text{pathXOR}(v,u)\bigr)\oplus x\).  
+   - Under the global XOR‐with‐`Y`, the tree‐path XOR from `v` to `u` is
+     \[
+       A[v]\oplus A[u]\oplus
+       \bigl((parity[v]\oplus parity[u])\times Y\bigr).
+     \]
+   - Splitting nodes `u` into **same parity** or **opposite parity** relative to `v`, we get two expressions:
+     1. Same parity: \((A[v]\oplus A[u])\oplus x\).
+     2. Opposite parity: \((A[v]\oplus A[u]\oplus Y)\oplus x\).
+   - To *maximize* an XOR of the form `(K ⊕ A[u])`, a classic trick is to keep a bit‐trie of all `A[u]` in that parity set and query it with `K`.  Here
+     - for same parity: `K = A[v] ⊕ x`,
+     - for opposite parity: `K = A[v] ⊕ Y ⊕ x`.
+   - **Important**: we must *not* allow the choice `u=v`.  Hence we **temporarily remove** `A[v]` from its own–parity trie, do both queries, then re‐insert `A[v]`.
+
+4. **Complexities**  
+   - **Preprocessing BFS**: \(O(n)\).
+   - **Building tries**: \(O(n \times \log W)\) with \(W\le10^9\).
+   - **Each “?” query**: Removal \((O(\log W))\), two trie‐queries \((2\times O(\log W))\), and re‐insertion \((O(\log W))\).  Total \(O(\log W)\approx30\).  
+   - With up to \(2\times10^5\) queries over all tests, the solution runs comfortably in time.
+   - Space is dominated by the trie nodes (\(\approx n\times \log W\approx6\times10^6\) nodes), well under the 512 MB limit.
+
+This completes the solution.

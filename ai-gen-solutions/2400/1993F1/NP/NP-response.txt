@@ -1,0 +1,172 @@
+Below is a concise O(n)‐time Java solution for the easy version (k≤n).  The main idea is:
+
+ 1.  We maintain two “flip” bits  
+     flipLR (whether L⇄R has been flipped an odd number of times)  
+     flipUD (whether U⇄D has been flipped an odd number of times)  
+ 2.  For each of the 4 possible flip‐states S=(flipLR,flipUD), we precompute on the original script s (length n):  
+     – dxS[i], dyS[i] = the prefix sums of x‐ and y‐movement through the first i commands assuming we are in state S.  
+     – minDxS, maxDxS = the minimum and maximum of {dxS[1…n]}.  (Similarly minDyS, maxDyS.)  
+     – sumDxS=dxS[n], sumDyS=dyS[n] (total displacement).  
+     – an unordered_map zeroCountS that counts, for each pair (dx,dy) among the prefixes, how many i have (dxS[i],dyS[i])==(dx,dy).  
+ 3.  In the actual walk we keep track of current (x,y), current state S, and how many full script‐repetitions remain (r=k down to 0).  
+     – As long as the entire remaining script s (in state S) never drives us out of the [0…w]×[0…h] box  
+       i.e.  x+minDxS≥0, x+maxDxS≤w, y+minDyS≥0, y+maxDyS≤h  —  then we can “bulk‐apply” all r runs in O(1):  
+         •  add to the answer  r * zeroCountS.getOrDefault((-x, -y),0)  
+         •  advance  x+=r*sumDxS,  y+=r*sumDyS  
+         •  set r=0 and break.  
+     – Otherwise there must be at least one boundary‐hit in the next copy of s.  We find the first i (by a tiny O(n) scan from 1…n) which would push us out of bounds, we simulate the first (i−1) steps one‐by‐one (updating x,y, counting any visits to (0,0)), then at step i we “flip” the offending dimension’s bit (LR or UD), do not move, and continue at the same s‐index i with the new flip‐state.  
+ 4.  It can be shown that after at most a couple of these “first‐hit‐and‐flip” partial passes we reach a flip‐state for which the whole script becomes safe and we bulk finish all remaining r in one O(1) move.  
+
+Since each of the partial “walk until first hit” scans across at most n commands, and we do only O(1) such partial scans (after that we bulk‐finish), the total is O(n) per test.  All of the bookkeeping (prefix sums, min/max, hash‐maps) is O(n), and we only loop linearly through s a small constant number of times.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final long INF = (long)1e18;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(new BufferedWriter(new OutputStreamWriter(System.out)));
+
+        int T = Integer.parseInt(in.readLine());
+        while (T-- > 0) {
+            String[] tok = in.readLine().split(" ");
+            int n = Integer.parseInt(tok[0]);
+            int k = Integer.parseInt(tok[1]);
+            int w = Integer.parseInt(tok[2]);
+            int h = Integer.parseInt(tok[3]);
+            String s = in.readLine();
+
+            // We will build for each of the 4 flip‐states S = 0..3
+            // state bit0 = flipLR, bit1 = flipUD
+            long[][] dx = new long[4][n+1], dy = new long[4][n+1];
+            long[] minDx = new long[4], maxDx = new long[4], minDy = new long[4], maxDy = new long[4];
+            long[] sumDx = new long[4], sumDy = new long[4];
+            @SuppressWarnings("unchecked")
+            HashMap<Long,Integer>[] zeroCnt = new HashMap[4];
+
+            // Precompute for each state
+            for (int st = 0; st < 4; st++) {
+                boolean fLR = (st & 1) != 0;
+                boolean fUD = (st & 2) != 0;
+                zeroCnt[st] = new HashMap<>();
+                minDx[st] = minDy[st] = 0;
+                maxDx[st] = maxDy[st] = 0;
+                dx[st][0] = 0;
+                dy[st][0] = 0;
+                for (int i = 1; i <= n; i++) {
+                    char c = s.charAt(i-1);
+                    long ddx=0, ddy=0;
+                    switch(c) {
+                        case 'L': ddx = fLR ? +1 : -1; break;
+                        case 'R': ddx = fLR ? -1 : +1; break;
+                        case 'U': ddy = fUD ? -1 : +1; break;
+                        case 'D': ddy = fUD ? +1 : -1; break;
+                    }
+                    dx[st][i] = dx[st][i-1] + ddx;
+                    dy[st][i] = dy[st][i-1] + ddy;
+                    if (dx[st][i] < minDx[st]) minDx[st] = dx[st][i];
+                    if (dx[st][i] > maxDx[st]) maxDx[st] = dx[st][i];
+                    if (dy[st][i] < minDy[st]) minDy[st] = dy[st][i];
+                    if (dy[st][i] > maxDy[st]) maxDy[st] = dy[st][i];
+
+                    // record how many times this prefix sums to (dx,dy)
+                    long key = (dx[st][i]<<32) ^ (dy[st][i]&0xffffffffL);
+                    zeroCnt[st].put(key, zeroCnt[st].getOrDefault(key,0) + 1);
+                }
+                sumDx[st] = dx[st][n];
+                sumDy[st] = dy[st][n];
+            }
+
+            // Now we actually walk.
+            long ans = 0;
+            long x = 0, y = 0;
+            int state = 0;    // no flips yet
+            int runs = k;     // how many full s‐runs remain
+
+            // We'll do a tiny loop of at most a few partial‐scan passes;
+            // after that, we expect to be in a state where the WHOLE script is "safe"
+            // i.e. minDx[state]>= -x, maxDx[state]<= w-x, etc., and then we bulk finish remaining runs in O(1).
+            for (int pass = 0; pass < 3 && runs > 0; pass++) {
+                // Is the entire script s safe from going out of bounds if we start at (x,y) in "state"?
+                if (x + minDx[state] >= 0 && x + maxDx[state] <= w
+                 && y + minDy[state] >= 0 && y + maxDy[state] <= h) {
+                    // Yes: bulk‐apply all runs at once
+                    long key = ((-x)<<32) ^ ((-y)&0xffffffffL);
+                    int oneRunHits = zeroCnt[state].getOrDefault(key, 0);
+                    ans += (long)oneRunHits * runs;
+                    x += sumDx[state] * runs;
+                    y += sumDy[state] * runs;
+                    runs = 0;
+                    break;
+                }
+                // Otherwise we must do exactly one partial‐scan of s until the first boundary-hit.
+                // We find the smallest i in [1..n] that forces out‐of‐bounds.
+                int flipDim = -1; // 0=L/R boundary (x), 1=U/D boundary (y)
+                int hitI = -1;
+                for (int i = 1; i <= n; i++) {
+                    long xx = x + dx[state][i];
+                    long yy = y + dy[state][i];
+                    if (xx < 0 || xx > w) {
+                        flipDim = 0;
+                        hitI = i;
+                        break;
+                    }
+                    if (yy < 0 || yy > h) {
+                        flipDim = 1;
+                        hitI = i;
+                        break;
+                    }
+                }
+                // Everything up to hitI-1 is valid movement; simulate them
+                for (int i = 1; i < hitI; i++) {
+                    x += dx[state][i] - dx[state][i-1];
+                    y += dy[state][i] - dy[state][i-1];
+                    if (x == 0 && y == 0) ans++;
+                }
+                // Now at i = hitI we would go out of bounds; so we flip that dimension's bit,
+                // do NOT move, and continue with the same i=hitI (still within the same run of s).
+                if (flipDim == 0) {
+                    state ^= 1;  // flip L<->R
+                } else {
+                    state ^= 2;  // flip U<->D
+                }
+                // We do NOT advance x,y, we do NOT consume a "run" yet,
+                // we remain at the same pass, same run, next iteration will re-scan from i=1.
+            }
+
+            // If there's still runs left, we must now certainly be in a "safe" state,
+            // so just bulk‐apply them all:
+            if (runs > 0) {
+                long key = ((-x)<<32) ^ ((-y)&0xffffffffL);
+                int oneRunHits = zeroCnt[state].getOrDefault(key, 0);
+                ans += (long)oneRunHits * runs;
+                // x += sumDx[state] * runs;  // we don't really need final x,y anymore
+                // y += sumDy[state] * runs;
+                runs = 0;
+            }
+
+            out.println(ans);
+        }
+        out.flush();
+    }
+}
+```
+
+Explanation of the key points:
+
+1. We never actually mutate the string s.  Instead we remember two bits `flipLR` and `flipUD` that tell us whether we should interpret an `L` as `R`, etc.  That allows us to precompute in O(4n) all 4 possible “flip‐states” of s.
+
+2. For each state `S` we store  
+   – `dx[S][i], dy[S][i]`: the prefix sums after `i` commands,  
+   – `minDx[S], maxDx[S], minDy[S], maxDy[S]`: the global min/max over those prefixes,  
+   – `sumDx[S]=dx[S][n], sumDy[S]=dy[S][n]` the total displacement,  
+   – a hash map counting how many prefixes land you at exactly `(dx,dy)`.  In particular prefixes that land you at `(-x,-y)` correspond to visits to `(0,0)` when your start was `(x,y)`.
+
+3. In the actual walk we keep current `(x,y)`, current flip‐state `S`, and how many full copies of `s` remain, `runs=k`.
+
+4. We do at most a constant (say 3) partial passes through `s` where each pass finds the first illegal step, simulates up to that point, flips one bit and restarts the pass.  After that at least one of the 4 states must become “completely safe” (i.e. the whole script from  start to end never goes out of the box).  Once we detect that full‐safety we jump in O(1)—we look up in our precomputed map how many visits to `(0,0)` a single run would produce, multiply by the remaining runs, and finish.
+
+Since each partial pass is O(n) and we do only a few of them, plus the O(n) precomputation, the overall time per test is O(n).  Under the easy constraint `k≤n` and sum of all `n` up to 10^6 this runs in time.

@@ -1,0 +1,144 @@
+**Analysis**
+
+We have a tree of \(n\) vertices (numbered \(1\) through \(n\)), each vertex \(i\) carrying a monster of attack value \(a_i\).  We will fight in rounds.  In each round:
+
+1. All *living* monsters attack us (we lose health equal to the sum of their attack values).
+2. We choose an *independent set* of the still‐alive vertices (no two chosen vertices are adjacent in the tree) and kill all those monsters.
+
+Once a monster is killed, it never attacks again in future rounds.  We want to continue for \(10^{100}\) rounds (effectively “as long as we like!”) so that eventually all monsters are dead, and we want to minimize the total health we lose.
+
+---
+
+**Reformulation.**  
+Label each vertex \(i\) with the *round* \(t_i\) in which we kill monster \(i\).  Since we only get attacked *before* each round’s killing, monster \(i\) attacks us in rounds
+\[
+1,2,\dots,\,t_i\,,
+\]
+so it contributes \(a_i\times t_i\) to the total damage.  We must have \(t_i\ge1\), and because we cannot kill both ends of any edge \((u,v)\) in the same round, \(t_u\neq t_v\) for every edge \((u,v)\).  Our goal becomes
+
+\[
+\min\;\sum_{i=1}^n a_i\,t_i
+\quad\text{subject to}\quad
+t_i\in\mathbb{Z}_{\ge1},\quad
+t_u\neq t_v\;\forall (u,v)\in E.
+\]
+
+A connected tree is a bipartite graph, so we can 2‐color its vertices (say colors 0 and 1) so that every edge has one end in color 0 and the other in color 1.  If we **only** use rounds 1 and 2, we have exactly two valid ways to kill:
+
+- Kill all color-0 vertices in round 1, and all color-1 vertices in round 2.
+- Kill all color-1 vertices in round 1, and all color-0 vertices in round 2.
+
+In the first scenario the total damage is
+\[
+\sum_{i=1}^n a_i
+\;+\;\sum_{\substack{i\colon\text{color}(i)=1}} a_i
+\;=\;\bigl(\sum_{i=1}^n a_i\bigr)\;+\;S_1,
+\]
+where \(S_1\) is the sum of \(a_i\) over the color-1 part.  In the second scenario we get
+\[
+\sum_{i=1}^n a_i + S_0,
+\]
+where \(S_0\) is the sum over the color-0 part.  We pick the smaller of the two, namely
+\[
+\sum_{i=1}^n a_i \;+\;\min\{S_0,S_1\}.
+\]
+
+One shows (by a simple parity‐compression or exchange argument) that no scheme using more than two rounds can do better than this 2‐color solution.  Hence the answer is
+
+ **Answer** = (sum over all \(a_i\)) + min(sum of \(a_i\) on color 0, sum of \(a_i\) on color 1).
+
+We implement:
+
+1. Read \(n\) and the array \(a\).
+2. Read the \(n-1\) edges, build an adjacency list.
+3. 2‐color the tree (e.g.\ by DFS), accumulating the partial sums \(S_0\) and \(S_1\).
+4. Print \(\sum_{i}a_i\;+\;\min(S_0,S_1)\).
+
+This runs in \(O(n)\) per test, which is fine for \(\sum n\le 3\times10^5\). 
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        int t = Integer.parseInt(br.readLine().trim());
+
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            long[] a = new long[n+1];
+            st = new StringTokenizer(br.readLine());
+            long totalSum = 0;
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+                totalSum += a[i];
+            }
+
+            // Build adjacency list for the tree
+            List<Integer>[] adj = new ArrayList[n+1];
+            for (int i = 1; i <= n; i++) {
+                adj[i] = new ArrayList<>();
+            }
+            for (int i = 0; i < n-1; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                adj[u].add(v);
+                adj[v].add(u);
+            }
+
+            // We will 2-color by a simple DFS from node 1.
+            boolean[] color = new boolean[n+1];
+            // color[i] == false -> color 0, true -> color 1
+            long sum0 = 0, sum1 = 0;
+
+            // Iterative DFS stack: we store (node, parent)
+            Deque<int[]> stack = new ArrayDeque<>();
+            stack.push(new int[]{1, 0});  // start at node 1, parent = 0
+            color[1] = false;
+
+            while (!stack.isEmpty()) {
+                int[] top = stack.pop();
+                int u = top[0], p = top[1];
+
+                // Accumulate into the appropriate color sum
+                if (!color[u]) sum0 += a[u];
+                else           sum1 += a[u];
+
+                // Visit children
+                for (int v : adj[u]) {
+                    if (v == p) continue;
+                    color[v] = !color[u];  // alternate color
+                    stack.push(new int[]{v, u});
+                }
+            }
+
+            // The answer is totalSum + min(sum0, sum1)
+            long ans = totalSum + Math.min(sum0, sum1);
+            sb.append(ans).append('\n');
+        }
+
+        // Output all answers
+        System.out.print(sb.toString());
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Reading Input**: We read \(t\) test cases.  For each, we read \(n\), then the array \(a[1..n]\), then the \(n-1\) edges to build an adjacency list for the tree.
+2. **2-Coloring the Tree**:  
+   - A tree is bipartite; we pick any root (say node 1) and color it 0.
+   - We do a DFS (iterative stack) or BFS; whenever we go from a node of color \(c\) to a neighbor, we assign it color \(1-c\).
+3. **Summation**: Keep two running sums, `sum0` for all nodes colored 0 and `sum1` for those colored 1.
+4. **Compute & Print**:  
+   \[
+     \text{answer}
+     \;=\;\bigl(\sum_{i=1}^n a_i\bigr)\;+\;\min(\text{sum0},\,\text{sum1}).
+   \]
+This runs in \(O(n)\) time per test, \(O(\sum n)\) overall, which is efficient for \(n\) up to \(3\times10^5\).

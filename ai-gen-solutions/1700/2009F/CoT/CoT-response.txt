@@ -1,0 +1,160 @@
+**Analysis**
+
+We have an array \(a\) of length \(n\).  Define the \(k\)-th cyclic shift
+\[
+c_k = (a_k,a_{k+1},\dots,a_n,a_1,\dots,a_{k-1})
+\]
+and then form the big array
+\[
+b = c_1 \;+\; c_2 \;+\;\cdots+\; c_n,
+\]
+where each \(c_i\) has length \(n\), so \(\lvert b\rvert = n^2\).
+
+We are given \(q\) queries \([l,r]\) (with \(1\le l\le r\le n^2\)), and we must compute
+\[
+\sum_{i=l}^r b_i.
+\]
+Of course \(n^2\) can be up to \((2\cdot 10^5)^2=4\cdot 10^{10}\), so we cannot build \(b\) explicitly.  We must do everything by arithmetic on indices.
+
+**Key observations**:
+
+1.  The array \(b\) consists of \(n\) back-to-back blocks, each of length \(n\).  Block \(k\) is exactly \(c_k\).  
+2.  The total sum of each block \(c_k\) is the same, namely
+   \[
+     S \;=\;\sum_{i=1}^n a_i.
+   \]
+3.  A query interval \([l,r]\) may span:
+   - the tail of one block,
+   - zero or more *complete* blocks, each contributing \(S\), 
+   - and the head of a final block.
+
+Hence for each query \([l,r]\) we:
+
+- Compute
+  \[
+    \text{block}_\ell = \bigl\lfloor (l-1)/n\rfloor+1,\quad
+    \text{pos}_\ell = (l-1)\bmod n + 1,
+  \]
+  and similarly \(\text{block}_r,\;\text{pos}_r\).
+  
+- If \(\text{block}_\ell=\text{block}_r\), the entire query lies inside a single cyclic shift.  We extract the corresponding segment of that shift in \(O(1)\) time (using prefix sums on \(a\)).
+
+- Otherwise we split the sum into:
+  1. The suffix of block \(\text{block}_\ell\) from position \(\text{pos}_\ell\) to \(n\).
+  2. The prefix of block \(\text{block}_r\) from \(1\) to \(\text{pos}_r\).
+  3. Any fully covered blocks in between, each contributing exactly \(S\).
+
+Extracting a sub-sum from a cyclic shift \(c_k\) also takes \(O(1)\) time with prefix sums on the original \(a\), by reducing it to one or two contiguous subvectors of \(a\).
+
+Overall each query is answered in constant time, so \(O(n + q)\) per test case, which is more than fast enough for \(\sum n,\sum q\le 2\cdot 10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            int q = in.nextInt();
+            long[] a = new long[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = in.nextLong();
+            }
+            // Build prefix sums of a: psa[i] = sum of a[0..i-1]
+            long[] psa = new long[n + 1];
+            for (int i = 1; i <= n; i++) {
+                psa[i] = psa[i - 1] + a[i - 1];
+            }
+            long S = psa[n];  // total sum of a
+
+            // Helper to get sum of a segment of length len in the k-th cyclic shift, 
+            // from block-position lpos..rpos (1-based).
+            // We convert that to at most two contiguous segments of a[].
+            // k is 1-based (which cyclic shift).
+            class SumBlock {
+                long get(int k, int lpos, int rpos) {
+                    int len = rpos - lpos + 1;
+                    // 0-based index in a where this segment starts:
+                    int startIdx = ( (k - 1) + (lpos - 1) ) % n;
+                    if (startIdx + len <= n) {
+                        // no wrap
+                        return psa[startIdx + len] - psa[startIdx];
+                    } else {
+                        // wraps around the end of a[]
+                        int firstPart = n - startIdx;
+                        long sum1 = psa[n] - psa[startIdx];
+                        int rem = len - firstPart;
+                        long sum2 = psa[rem]; 
+                        return sum1 + sum2;
+                    }
+                }
+            }
+            SumBlock sb = new SumBlock();
+
+            while (q-- > 0) {
+                long l = in.nextLong();
+                long r = in.nextLong();
+                // which block contains position l?
+                long blockL = (l - 1) / n + 1;
+                int posL = (int)((l - 1) % n) + 1;
+                long blockR = (r - 1) / n + 1;
+                int posR = (int)((r - 1) % n) + 1;
+
+                long ans;
+                if (blockL == blockR) {
+                    // Entire query inside one cyclic shift
+                    ans = sb.get((int)blockL, posL, posR);
+                } else {
+                    // suffix of blockL
+                    long part1 = sb.get((int)blockL, posL, n);
+                    // prefix of blockR
+                    long part2 = sb.get((int)blockR, 1, posR);
+                    // fully covered blocks in between
+                    long fullBlocks = blockR - blockL - 1;
+                    long partMid = fullBlocks > 0 ? fullBlocks * S : 0;
+                    ans = part1 + partMid + part2;
+                }
+                out.println(ans);
+            }
+        }
+
+        out.flush();
+        out.close();
+    }
+
+    // Fast I/O
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader() {
+            br = new BufferedReader(new InputStreamReader(System.in));
+        }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens())
+                st = new StringTokenizer(br.readLine());
+            return st.nextToken();
+        }
+        int nextInt() throws IOException { return Integer.parseInt(next()); }
+        long nextLong() throws IOException { return Long.parseLong(next()); }
+    }
+}
+```
+
+**Explanation of the `SumBlock.get(...)`**  
+To extract the subarray \([lpos..rpos]\) from the \(k\)-th cyclic shift \(c_k\),
+
+1.  Compute the 0-based starting index in the original array:
+   \[
+     \text{startIdx} = \bigl((k-1) + (lpos-1)\bigr)\bmod n.
+   \]
+2.  If the requested length fits entirely before the end of \(a\), we do one prefix-sum lookup.
+3.  Otherwise the segment “wraps” around the end of \(a\).  We split it into the tail of \(a\) plus a head of \(a\), each of which is answered in \(O(1)\) with the prefix sums.
+
+Every query thus takes \(O(1)\) time, and building prefix sums is \(O(n)\).  Overall we achieve \(O(n + q)\) per test, easily within the limits.

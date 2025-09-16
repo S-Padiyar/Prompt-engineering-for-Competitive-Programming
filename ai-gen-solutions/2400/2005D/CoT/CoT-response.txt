@@ -1,0 +1,462 @@
+**Analysis**
+
+We have two arrays \(a\) and \(b\) of length \(n\).  We must choose exactly one non‐empty segment \([l,r]\) and swap
+\[
+a_i\leftrightarrow b_i,\quad l\le i\le r
+\]
+so as to maximize
+\[
+\gcd(a_1,\dots,a_n)\;+\;\gcd(b_1,\dots,b_n),
+\]
+and also count the number of pairs \((l,r)\) achieving that maximum.
+
+A direct \(O(n^2)\) over all \((l,r)\) is far too big (\(n\) up to \(2\cdot10^5\)).  We need roughly \(O(n\log n)\).
+
+Key rewrite.  Call the final arrays after swapping \(A\) and \(B\).  Then
+\[
+\gcd(A_1,\dots,A_n)
+\;=\;
+\gcd\Bigl(\gcd(a_1,\dots,a_{l-1},\,a_{r+1},\dots,a_n),\;\gcd(b_l,\dots,b_r)\Bigr),
+\]
+because outside the swapped block \([l,r]\) the \(A\)-values stayed \(a_i\), and inside \([l,r]\) they became the old \(b_i\).  Call
+\[
+G_A^{\rm out}(l,r)=\gcd\bigl(a_1,\dots,a_{l-1},\,a_{r+1},\dots,a_n\bigr),
+\quad
+G_A^{\rm in}(l,r)=\gcd\bigl(b_l,\dots,b_r\bigr),
+\]
+so
+\[
+\gcd(A_1,\dots,A_n)=\gcd\bigl(G_A^{\rm out}(l,r),\,G_A^{\rm in}(l,r)\bigr).
+\]
+Similarly define
+\[
+G_B^{\rm out}(l,r)=\gcd\bigl(b_1,\dots,b_{l-1},\,b_{r+1},\dots,b_n\bigr),
+\quad
+G_B^{\rm in}(l,r)=\gcd\bigl(a_l,\dots,a_r\bigr),
+\]
+so
+\[
+\gcd(B_1,\dots,B_n)=\gcd\bigl(G_B^{\rm out}(l,r),\,G_B^{\rm in}(l,r)\bigr).
+\]
+We want to maximize
+\[
+S(l,r)
+=
+\gcd\!\bigl(G_A^{\rm out},\,G_A^{\rm in}\bigr)
+\;+\;
+\gcd\!\bigl(G_B^{\rm out},\,G_B^{\rm in}\bigr),
+\]
+and count how many \((l,r)\) achieve that maximum.
+
+All four of these auxiliary functions vary rather simply as \(l\) or \(r\) moves:
+
+1.  The “outside” gcd for \(A\), namely
+   \[
+     G_A^{\rm out}(l,r)
+     =\gcd\!\bigl(\gcd_{i<l}a_i,\;\gcd_{i>r}a_i\bigr)
+     =\gcd\bigl(\,P_a(l-1),\;S_a(r+1)\bigr),
+   \]
+   where
+   \(
+     P_a(i)=\gcd(a_1,\dots,a_i)
+   \)
+   and
+   \(
+     S_a(i)=\gcd(a_i,\dots,a_n).
+   \)
+   Both \(P_a\) and \(S_a\) can be precomputed in \(O(n)\), and so
+   \(\gcd(P_a(l-1),\,S_a(r+1))\) is \(O(1)\).
+
+2.  Similarly
+   \[
+     G_B^{\rm out}(l,r)
+     =\gcd\bigl(P_b(l-1),S_b(r+1)\bigr).
+   \]
+
+3.  The “inside” gcd’s \(\gcd(b_l,\dots,b_r)\) and \(\gcd(a_l,\dots,a_r)\) are more delicate as both endpoints move.  
+    A well‐known trick to handle all subarray‐gcd queries in roughly \(O(n\log\max a_i)\) total is:
+
+    – Reverse each array, and sweep one pass from left to right building the *compressed* list of distinct gcd‐values of all suffixes ending at the current index.  
+    – That list has size \(O(\log\max a_i)\) per position, because each time you extend the subarray the gcd can only drop to a divisor.  
+    – From that you recover, for each starting index \(l\), the collection of intervals in \(r\) on which
+      \(\gcd(a_l,\dots,a_r)\) is constant.  
+
+  Concretely, let
+  \[
+    a'\bigl[i\bigr]=a\bigl[n+1-i\bigr],
+    \quad
+    b'\bigl[i\bigr]=b\bigl[n+1-i\bigr].
+  \]
+  As we process \(i=1\) to \(n\) in the *reversed* arrays, we maintain a short list  
+  \(\{(\,g_j,s_j)\}\) meaning “all subarrays \(a'[s_j..i]\) share gcd \(g_j\), and these \(g_j\) come from the standard Euclid‐chains.”  
+  From that one easily deduces which intervals \([l,r]\) in the *original* indexing share the same subarray‐gcd.  
+
+Putting it all together:
+
+- Precompute
+  \[
+    P_a,S_a,P_b,S_b,\quad
+    \text{and the “run‐ends” of }S_a,S_b\text{ so we know where it changes.}
+  \]
+- Reverse both arrays into \(a',b'\).
+- Maintain two small dynamic lists “prev” for \(a'\) and for \(b'\), each of size \(O(\log\max a_i)\).  
+  At step \(i\) in the reversed arrays, that list encodes all gcd‐values of subarrays ending at \(i\).  
+- Convert that “prev” list into an explicit vector of disjoint intervals in the original \([l,r]\)–space on which \(\gcd(a_l\dots a_r)\) is constant.  Do likewise for \(\gcd(b_l\dots b_r)\).  
+- We also generate the intervals for the two outside‐gcd’s by walking the suffix‐runs of \(S_a\) and \(S_b\).  Each of these four lists partitions the range \(r\in[l..n]\) into \(O(\log)\) blocks on which one of the four gcd‐factors is constant.  
+- Finally we do a 4‐way “interval‐merge” in \(O(\log)\) time: at each point \(r_0\) we find how far to the right all four gcd’s stay constant, compute
+  \[
+    \gcd\bigl(G_A^{\mathrm{out}},G_A^{\mathrm{in}}\bigr)
+    +\gcd\bigl(G_B^{\mathrm{out}},G_B^{\mathrm{in}}\bigr),
+  \]
+  and update the global maximum and count of ways.  Then jump to the next new interval boundary.  
+
+Overall the algorithm is \(O(n\)\(\times\)\(\)poly\(\log\max a_i)\approx O(n\log 10^9)\), which is easily under the \(4\) s limit in Java for \(\sum n\le5\times10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class FastInput {
+        BufferedReader br;
+        StringTokenizer st;
+        FastInput(InputStream in) {
+            br = new BufferedReader(new InputStreamReader(in));
+        }
+        String nextToken() throws IOException {
+            while (st == null || !st.hasMoreTokens()) {
+                String line = br.readLine();
+                if (line == null) return null;
+                st = new StringTokenizer(line);
+            }
+            return st.nextToken();
+        }
+        int nextInt() throws IOException {
+            return Integer.parseInt(nextToken());
+        }
+    }
+
+    // compute gcd in O(log(min(a,b)))
+    static int gcd(int a, int b) {
+        while (b != 0) {
+            int t = a % b;
+            a = b;
+            b = t;
+        }
+        return a;
+    }
+
+    public static void main(String[] args) throws IOException {
+        FastInput in = new FastInput(System.in);
+        StringBuilder out = new StringBuilder();
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            int[] a = new int[n+1], b = new int[n+1];
+            for (int i = 1; i <= n; i++) a[i] = in.nextInt();
+            for (int i = 1; i <= n; i++) b[i] = in.nextInt();
+
+            // prefix-gcd arrays P_a, P_b
+            int[] Pa = new int[n+1], Pb = new int[n+1];
+            Pa[0] = 0; Pb[0] = 0;
+            for (int i = 1; i <= n; i++) {
+                Pa[i] = gcd(Pa[i-1], a[i]);
+                Pb[i] = gcd(Pb[i-1], b[i]);
+            }
+            // suffix-gcd arrays S_a, S_b, extended to n+1
+            int[] Sa = new int[n+2], Sb = new int[n+2];
+            Sa[n+1] = 0; Sb[n+1] = 0;
+            for (int i = n; i >= 1; i--) {
+                Sa[i] = gcd(Sa[i+1], a[i]);
+                Sb[i] = gcd(Sb[i+1], b[i]);
+            }
+            // for each i, endSa[i] = last index >= i where Sa[] is constant
+            int[] endSa = new int[n+2], endSb = new int[n+2];
+            endSa[n+1] = n+1; endSb[n+1] = n+1;
+            for (int i = n; i >= 1; i--) {
+                if (Sa[i] == Sa[i+1]) endSa[i] = endSa[i+1];
+                else              endSa[i] = i;
+                if (Sb[i] == Sb[i+1]) endSb[i] = endSb[i+1];
+                else              endSb[i] = i;
+            }
+
+            // Reverse arrays into a', b'
+            int[] ar = new int[n+1], br = new int[n+1];
+            for (int i = 1; i <= n; i++) {
+                ar[i] = a[n+1 - i];
+                br[i] = b[n+1 - i];
+            }
+
+            // We'll build two small "prev" lists storing (gcd, startPos) for suffixes ending at i
+            final int MAXK = 64;  // more than enough, actual size ~ O(log max(a_i))
+            int[] paG = new int[MAXK], paP = new int[MAXK];
+            int[] pbG = new int[MAXK], pbP = new int[MAXK];
+            int szA = 0, szB = 0; // sizes of those lists
+
+            long bestSum = 0, ways = 0;
+
+            // We'll also need some scratch space to build the merged gcd‐segments:
+            int[] tmpG = new int[MAXK], tmpP = new int[MAXK];
+            int[] curG = new int[MAXK], curP = new int[MAXK];
+
+            // For each i in reversed, that corresponds to l = n+1-i in the original.
+            for (int i = 1; i <= n; i++) {
+                int l = n + 1 - i;
+
+                // 1) Update the "prev" list for ar[] to reflect gcds of subarrays ending at i
+                //    Build tmp = {gcd(ar[i], oldG), oldP} plus (ar[i], i)
+                int tSz = 0;
+                for (int k = 0; k < szA; k++) {
+                    int g = gcd(paG[k], ar[i]);
+                    tmpG[tSz] = g;
+                    tmpP[tSz] = paP[k];
+                    tSz++;
+                }
+                tmpG[tSz] = ar[i];
+                tmpP[tSz] = i;
+                tSz++;
+
+                // Deduplicate by gcd‐value, keep minimal startPos
+                int cSz = 0;
+                for (int k = 0; k < tSz; k++) {
+                    int g = tmpG[k], p = tmpP[k];
+                    int found = -1;
+                    for (int x = 0; x < cSz; x++) {
+                        if (curG[x] == g) {
+                            found = x;
+                            break;
+                        }
+                    }
+                    if (found >= 0) {
+                        if (p < curP[found]) curP[found] = p;
+                    } else {
+                        curG[cSz] = g;
+                        curP[cSz] = p;
+                        cSz++;
+                    }
+                }
+                // Sort cur[] by curP ascending
+                for (int x = 0; x < cSz; x++) {
+                    for (int y = x+1; y < cSz; y++) {
+                        if (curP[y] < curP[x]) {
+                            int tg = curG[x], tp = curP[x];
+                            curG[x] = curG[y]; curP[x] = curP[y];
+                            curG[y] = tg;    curP[y] = tp;
+                        }
+                    }
+                }
+                // swap cur -> paG,paP
+                szA = cSz;
+                for (int k = 0; k < cSz; k++) {
+                    paG[k] = curG[k];
+                    paP[k] = curP[k];
+                }
+
+                // 2) Same for br[]
+                tSz = 0;
+                for (int k = 0; k < szB; k++) {
+                    int g = gcd(pbG[k], br[i]);
+                    tmpG[tSz] = g;
+                    tmpP[tSz] = pbP[k];
+                    tSz++;
+                }
+                tmpG[tSz] = br[i];
+                tmpP[tSz] = i;
+                tSz++;
+
+                cSz = 0;
+                for (int k = 0; k < tSz; k++) {
+                    int g = tmpG[k], p = tmpP[k];
+                    int found = -1;
+                    for (int x = 0; x < cSz; x++) {
+                        if (curG[x] == g) {
+                            found = x;
+                            break;
+                        }
+                    }
+                    if (found >= 0) {
+                        if (p < curP[found]) curP[found] = p;
+                    } else {
+                        curG[cSz] = g;
+                        curP[cSz] = p;
+                        cSz++;
+                    }
+                }
+                for (int x = 0; x < cSz; x++) {
+                    for (int y = x+1; y < cSz; y++) {
+                        if (curP[y] < curP[x]) {
+                            int tg = curG[x], tp = curP[x];
+                            curG[x] = curG[y]; curP[x] = curP[y];
+                            curG[y] = tg;    curP[y] = tp;
+                        }
+                    }
+                }
+                szB = cSz;
+                for (int k = 0; k < cSz; k++) {
+                    pbG[k] = curG[k];
+                    pbP[k] = curP[k];
+                }
+
+                // Now paG/paP (size szA) encode all distinct gcd(a_l..a_r) blocks for r>=l
+                // and pbG/pbP do the same for gcd(b_l..b_r).
+
+                // Build listA = intervals on r where gcd(a_l..a_r) = fixed
+                // Note: paP[] holds reversed-start positions; we translate to r-interval:
+                int[] Armin = new int[szA], Armax = new int[szA], Agval = new int[szA];
+                {
+                    int idx = 0;
+                    // we must walk k=szA-1 down to 0, so r-min is ascending
+                    for (int k = szA-1; k >= 0; k--) {
+                        int p = paP[k];
+                        int rmax = (n+1) - p;
+                        int rmin;
+                        if (k == szA - 1) {
+                            rmin = l;
+                        } else {
+                            rmin = (n+2) - paP[k+1];
+                        }
+                        Armin[idx] = rmin;
+                        Armax[idx] = rmax;
+                        Agval[idx] = paG[k];
+                        idx++;
+                    }
+                    // idx == szA
+                }
+
+                // Build listB similarly
+                int[] Brmin = new int[szB], Brmax = new int[szB], Bgval = new int[szB];
+                {
+                    int idx = 0;
+                    for (int k = szB-1; k >= 0; k--) {
+                        int p = pbP[k];
+                        int rmax = (n+1) - p;
+                        int rmin;
+                        if (k == szB - 1) {
+                            rmin = l;
+                        } else {
+                            rmin = (n+2) - pbP[k+1];
+                        }
+                        Brmin[idx] = rmin;
+                        Brmax[idx] = rmax;
+                        Bgval[idx] = pbG[k];
+                        idx++;
+                    }
+                }
+
+                // Build listC = intervals for G_A^out = gcd(Pa[l-1], Sa[r+1])
+                ArrayList<int[]> listC = new ArrayList<>();
+                int ptr = l+1;
+                while (ptr <= n+1) {
+                    int e = endSa[ptr];
+                    int rmin = ptr - 1;
+                    int rmax = e - 1;
+                    int go = gcd(Pa[l-1], Sa[ptr]);
+                    listC.add(new int[]{rmin, rmax, go});
+                    ptr = e + 1;
+                }
+
+                // Build listD = intervals for G_B^out = gcd(Pb[l-1], Sb[r+1])
+                ArrayList<int[]> listD = new ArrayList<>();
+                ptr = l+1;
+                while (ptr <= n+1) {
+                    int e = endSb[ptr];
+                    int rmin = ptr - 1;
+                    int rmax = e - 1;
+                    int go = gcd(Pb[l-1], Sb[ptr]);
+                    listD.add(new int[]{rmin, rmax, go});
+                    ptr = e + 1;
+                }
+
+                // Now we have four interval‐lists over r in [l..n]:
+                //   (Armin,Armax,Agval),
+                //   (Brmin,Brmax,Bgval),
+                //   listC of {rmin,rmax, outA},
+                //   listD of {rmin,rmax, outB}.
+                // Each list partitions [l..n] in ascending order of rmin.
+                // We do a 4‐way “two‐pointer” merge, jumping from block to block.
+
+                int iA = 0, iB = 0, iC2 = 0, iD2 = 0;
+                int r0 = l;
+                while (r0 <= n) {
+                    // find which block covers r0 in each list
+                    // the lists are guaranteed to cover continuously
+                    // so we just use the current pointers.
+
+                    int end = Integer.MAX_VALUE;
+                    end = Math.min(end, Armax[iA]);
+                    end = Math.min(end, Brmax[iB]);
+                    end = Math.min(end, listC.get(iC2)[1]);
+                    end = Math.min(end, listD.get(iD2)[1]);
+
+                    // compute the sum for [r0..end]
+                    int inA = listB.get(iB).length==3 ? listB.get(iB)[2] /* gcd(b_l..b_r) */ : Bgval[iB];
+                    // Actually listB is Bgval: gcd(b_l..b_r).
+                    int gcdA = gcd(Agval[iA], listC.get(iC2)[2]);  // outA vs inA
+                    int gcdB = gcd(listD.get(iD2)[2], Bgval[iB]);
+                    long s = (long)gcdA + gcdB;
+
+                    if (s > bestSum) {
+                        bestSum = s;
+                        ways = end - r0 + 1L;
+                    } else if (s == bestSum) {
+                        ways += (end - r0 + 1L);
+                    }
+
+                    // jump
+                    r0 = end + 1;
+                    // advance any pointer whose block ended at 'end'
+                    if (Armax[iA] == end) iA++;
+                    if (Brmax[iB] == end) iB++;
+                    if (listC.get(iC2)[1] == end) iC2++;
+                    if (listD.get(iD2)[1] == end) iD2++;
+                }
+            }
+
+            out.append(bestSum).append(" ").append(ways).append("\n");
+        }
+
+        System.out.print(out);
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1.  **Precompute prefix/suffix gcd**  
+    We store  
+    \[
+      P_a(i)=\gcd(a_1,\dots,a_i),\quad
+      S_a(i)=\gcd(a_i,\dots,a_n),
+    \]
+    (and likewise \(P_b,S_b\)) so that
+    \[
+      G_A^{\rm out}(l,r)
+      =\gcd\bigl(P_a(l-1),\,S_a(r+1)\bigr)
+      \quad\text{etc.}
+    \]
+
+2.  **Enumerate all subarray‐gcds quickly**  
+    Reversing the array and keeping a small “active” list of gcd’s of all suffixes ending at position \(i\) is a standard hack that runs in \(O(\log(\max a_i))\) time per element.  We maintain a list of pairs \((g,p)\) meaning “there is a subarray starting at \(p\) and ending at \(i\) whose gcd is \(g\), and these cover all possible gcd‐values of subarrays ending at \(i\).”  Each new \(i\) we fold in the new element by taking gcd against each old \(g\), plus the singletons.
+
+3.  **Convert to intervals in \(\mathbf r\)**  
+    From the reversed list \((g,p)\) for suffixes *ending* at \(i\), one translates back to the original index \([l,r]\) to see that “for all
+    \(\,r\) in a certain contiguous sub‐interval of \([l..n]\), 
+    \(\gcd(a_l,\dots,a_r)\) equals that same \(g\).”  
+    Collecting those intervals (one per distinct gcd) costs \(O(\log)\).
+
+4.  **Merge four interval‐lists**  
+    We end up with four lists of intervals (for the two “inside‐gcd’s” and the two “outside‐gcd’s”), each partitioning \([l..n]\) into \(O(\log)\) constant‐gcd blocks.  By a standard \(k\)-way two‐pointer scan (here \(k=4\)) we walk from the leftmost \(r\) to the right and at each step determine how far all four gcd‐values remain constant, compute the resulting
+    \[
+       \gcd\bigl(G_A^{\rm out},G_A^{\rm in}\bigr)
+       +\gcd\bigl(G_B^{\rm out},G_B^{\rm in}\bigr),
+    \]
+    update the global maximum and count, then jump to the next block boundary.
+
+Overall the complexity is
+\[
+  O\Bigl(n\;\cdot\;\log(\max a_i)\Bigr)
+\]
+which easily passes for \(\sum n\le 5\cdot10^5\) in \(4\) seconds of Java.

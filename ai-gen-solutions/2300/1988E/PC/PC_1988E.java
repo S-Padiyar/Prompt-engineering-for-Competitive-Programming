@@ -1,0 +1,110 @@
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int T = Integer.parseInt(br.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+        while (T-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            int[] a = new int[n+1];
+            StringTokenizer st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+            // 1) find for each i: l[i]=prev smaller index, r[i]=next smaller index
+            int[] l = new int[n+1], r = new int[n+1];
+            Deque<Integer> stack = new ArrayDeque<>();
+            for (int i = 1; i <= n; i++) {
+                while (!stack.isEmpty() && a[stack.peek()] > a[i]) {
+                    stack.pop();
+                }
+                l[i] = stack.isEmpty() ? 0 : stack.peek();
+                stack.push(i);
+            }
+            stack.clear();
+            for (int i = n; i >= 1; i--) {
+                while (!stack.isEmpty() && a[stack.peek()] >= a[i]) {
+                    stack.pop();
+                }
+                r[i] = stack.isEmpty() ? n+1 : stack.peek();
+                stack.push(i);
+            }
+            // 2) total sum of minima f(a)
+            long total = 0;
+            for (int i = 1; i <= n; i++) {
+                long leftCount = i - l[i];
+                long rightCount = r[i] - i;
+                total += (long)a[i] * leftCount * rightCount;
+            }
+            // 3) we will build F[k] = sum of minima of all subarrays that include k.
+            //    Then answer[k] = total - F[k].
+            //    We decompose F[k] into two linear‐in‐k range‐adds over i.
+            Fenwick bitC = new Fenwick(n+2);
+            Fenwick bitD = new Fenwick(n+2);
+            for (int i = 1; i <= n; i++) {
+                int Li = l[i] + 1;
+                int Ri = r[i] - 1;
+                // part A: ranges k in [Li .. i]
+                if (Li <= i) {
+                    // contribution = a[i] * (R_i - i + 1) * (k - (L_i-1))
+                    long coef = (long)a[i] * (Ri - i + 1);      // multiplies k
+                    long cons = - coef * (Li - 1);               // constant term
+                    // add coef*k + cons over k ∈ [Li..i]
+                    bitC.rangeAdd(Li, i, coef);
+                    bitD.rangeAdd(Li, i, cons);
+                }
+                // part B: ranges k in [i+1 .. Ri]
+                if (i + 1 <= Ri) {
+                    // contribution = a[i] * (i - L_i + 1) * ((R_i+1) - k)
+                    long coef = - (long)a[i] * (i - Li + 1);    // multiplies k
+                    long cons =  (long)a[i] * (i - Li + 1) * (Ri + 1);
+                    // add coef*k + cons over k ∈ [i+1..Ri]
+                    bitC.rangeAdd(i+1, Ri, coef);
+                    bitD.rangeAdd(i+1, Ri, cons);
+                }
+            }
+            // 4) answer for each k
+            for (int k = 1; k <= n; k++) {
+                long C = bitC.pointQuery(k);
+                long D = bitD.pointQuery(k);
+                long Fk = C * k + D;
+                long ans = total - Fk;
+                sb.append(ans).append(' ');
+            }
+            sb.append('\n');
+        }
+        System.out.print(sb);
+    }
+
+    // Fenwick supporting range-add, point-query
+    static class Fenwick {
+        int n;
+        long[] bit;
+        Fenwick(int size) {
+            n = size;
+            bit = new long[n+1];
+        }
+        // add v to index i
+        void add(int i, long v) {
+            for (; i <= n; i += i & -i) bit[i] += v;
+        }
+        // prefix sum [1..i]
+        long sum(int i) {
+            long s = 0;
+            for (; i > 0; i -= i & -i) s += bit[i];
+            return s;
+        }
+        // range add v on [l..r]
+        void rangeAdd(int l, int r, long v) {
+            if (l > r) return;
+            add(l, v);
+            add(r+1, -v);
+        }
+        // point query at i after range-adds
+        long pointQuery(int i) {
+            return sum(i);
+        }
+    }
+}

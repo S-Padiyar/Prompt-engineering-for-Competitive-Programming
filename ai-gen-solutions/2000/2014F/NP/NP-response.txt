@@ -1,0 +1,212 @@
+**Analysis**
+
+We have a tree of \(n\) camps (nodes) connected by \(n-1\) edges.  Each camp \(i\) has initial gold \(a_i\).  We may choose any subset \(S\) of camps to **strengthen**.  Strengthening camp \(v\) does not change \(v\)'s own gold, but it *subtracts* exactly \(c\) gold from _each_ neighbor of \(v\).  After Robin Hood's attack, *only* the strengthened camps survive, and we sum up their (possibly reduced) gold.
+
+Let us denote by \(S\) the set of strengthened camps.  What is the total gold of the surviving (i.e.\ strengthened) camps?
+
+1.  If \(v\in S\), its own gold contribution is its original \(a_v\), **minus** \(c\) for *each* neighbor \(u\in S\) who also strengthened.  (Because when \(u\) is strengthened, it takes \(c\) gold from each of its neighbors, including \(v\).)
+
+2.  Equivalently, the total we get from the chosen set \(S\) is
+\[
+   \sum_{v\in S} a_v \;-\; c\!\!\sum_{\substack{(u,v)\in E\\u,v\in S}} 1.
+\]
+But each edge \((u,v)\) with both endpoints in \(S\) causes \(c\) to be taken from \(u\) and \(c\) from \(v\), i.e.\ a total of \(2c\) penalty per such edge.  Hence the overall score of a strengthened set \(S\) is
+
+\[
+   \sum_{v\in S} a_v \;-\; 2c \times \bigl|\{\text{edges both of whose endpoints are in }S\}\bigr|.
+\]
+
+We want to choose \(S\) to **maximize** this quantity.
+
+On a tree, one can do a classic DP.  Root the tree at node \(1\).  For each node \(v\), let
+
+- \(\mathrm{dp0}[v]\) = the maximum total we can obtain in the subtree of \(v\), _given that_ \(v\) **is not** chosen (not in \(S\)).
+- \(\mathrm{dp1}[v]\) = the maximum total we can obtain in the subtree of \(v\), _given that_ \(v\) **is** chosen (in \(S\)).
+
+Transitions: suppose \(v\) has children \(u_1,u_2,\dots\).  Then
+
+1. If \(v\) is **not** chosen, its children may be chosen or not chosen independently, and no edge \((v,u)\) contributes a \(-2c\) penalty (since \(v\notin S\)).  Thus
+   \[
+     \mathrm{dp0}[v]
+       = \sum_{u\text{ child of }v}
+           \max\bigl(\mathrm{dp0}[u],\,\mathrm{dp1}[u]\bigr).
+   \]
+
+2. If \(v\) **is** chosen, each child \(u\) if chosen also incurs a \(-2c\) penalty ( because that edge \((v,u)\) lies inside \(S\) ).  So for each child \(u\) we choose
+   \[
+     \max\!\bigl(\mathrm{dp0}[u],\,\mathrm{dp1}[u] - 2c \bigr),
+   \]
+   and we add \(a_v\) for choosing \(v\) itself.  Thus
+   \[
+     \mathrm{dp1}[v]
+       = a_v
+         + \sum_{u\text{ child of }v}
+             \max\bigl(\mathrm{dp0}[u],\,\mathrm{dp1}[u] - 2c\bigr).
+   \]
+
+Finally, the answer for the whole tree is
+\[
+   \max\bigl(\mathrm{dp0}[1],\,\mathrm{dp1}[1]\bigr),
+\]
+because the root may be chosen or not chosen, and empty choice (i.e.\ choosing nobody) yields zero, which is covered by \(\mathrm{dp0}[1]\).  Since all DP values can be negative, the \(\mathrm{dp0}[1]\) path can produce 0 by effectively choosing none in the entire subtree.
+
+We implement this in \(O(n)\) time per test by
+
+- reading the tree,
+- rooting it at 1 with a BFS to record parent and a topological (BFS) order,
+- processing nodes in reverse BFS order (from leaves upward) to fill dp0,dp1,
+- printing \(\max(\mathrm{dp0}[1],\mathrm{dp1}[1])\).
+
+Overall complexity is \(O(\sum n)\), which is \(O(2\times10^5)\) over all test cases, easily within the 2-second limit.
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 200_000;
+    static int[] head = new int[MAXN + 5];
+    static int[] to   = new int[2 * MAXN + 5];
+    static int[] nxt  = new int[2 * MAXN + 5];
+    static long[] dp0 = new long[MAXN + 5];
+    static long[] dp1 = new long[MAXN + 5];
+    static int[] parent = new int[MAXN + 5];
+    static int[] order  = new int[MAXN + 5];
+    static int[] queue  = new int[MAXN + 5];
+    static long[] A     = new long[MAXN + 5];
+    static int edgeCnt;
+
+    public static void main(String[] args) throws IOException {
+        FastReader fr = new FastReader();
+        PrintWriter pw = new PrintWriter(System.out);
+
+        int t = fr.nextInt();
+        while (t-- > 0) {
+            int n = fr.nextInt();
+            long c = fr.nextLong();
+
+            // initialize adjacency
+            for (int i = 1; i <= n; i++) {
+                head[i] = -1;
+            }
+            edgeCnt = 0;
+
+            // read gold amounts
+            for (int i = 1; i <= n; i++) {
+                A[i] = fr.nextLong();
+            }
+
+            // read edges
+            for (int i = 0; i < n - 1; i++) {
+                int u = fr.nextInt();
+                int v = fr.nextInt();
+                addEdge(u, v);
+                addEdge(v, u);
+            }
+
+            // BFS to root at 1, record parent and BFS order
+            int front = 0, back = 0;
+            queue[back++] = 1;
+            parent[1] = 0;
+            order[0] = 1;
+            int ordSize = 1;
+
+            while (front < back) {
+                int v = queue[front++];
+                for (int e = head[v]; e != -1; e = nxt[e]) {
+                    int u = to[e];
+                    if (u == parent[v]) continue;
+                    parent[u] = v;
+                    queue[back++] = u;
+                    order[ordSize++] = u;
+                }
+            }
+
+            // DP in reverse BFS order (children before parent)
+            for (int idx = ordSize - 1; idx >= 0; idx--) {
+                int v = order[idx];
+                long take0 = 0;         // v not chosen
+                long take1 = A[v];      // v chosen
+
+                for (int e = head[v]; e != -1; e = nxt[e]) {
+                    int u = to[e];
+                    if (u == parent[v]) continue;
+                    // if v not chosen, child u may be chosen or not
+                    take0 += Math.max(dp0[u], dp1[u]);
+                    // if v chosen, edge (v,u) penalizes 2c if u is also chosen
+                    long option0 = dp0[u];
+                    long option1 = dp1[u] - 2 * c;
+                    take1 += Math.max(option0, option1);
+                }
+
+                dp0[v] = take0;
+                dp1[v] = take1;
+            }
+
+            long ans = Math.max(dp0[1], dp1[1]);
+            pw.println(ans);
+        }
+
+        pw.close();
+    }
+
+    static void addEdge(int u, int v) {
+        to[edgeCnt] = v;
+        nxt[edgeCnt] = head[u];
+        head[u] = edgeCnt++;
+    }
+
+    // Fast I/O
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+
+        public FastReader() throws IOException {
+            br = new BufferedReader(
+                   new InputStreamReader(System.in));
+        }
+
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens()) {
+                String s = br.readLine();
+                if (s == null) return null;
+                st = new StringTokenizer(s);
+            }
+            return st.nextToken();
+        }
+
+        int nextInt() throws IOException {
+            return Integer.parseInt(next());
+        }
+
+        long nextLong() throws IOException {
+            return Long.parseLong(next());
+        }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Transforming the Problem**  
+   Picking a subset \(S\) of nodes yields total gold  
+   \[
+     \sum_{v\in S} a_v \;-\; 2c\,\bigl|\{\text{edges fully inside }S\}\bigr|.
+   \]
+
+2. **Tree DP**  
+   - \(\mathrm{dp0}[v]\) = best sum in \(v\)'s subtree if \(v\notin S\).  
+   - \(\mathrm{dp1}[v]\) = best sum in \(v\)'s subtree if \(v\in S\).  
+   We combine children carefully to account for the \(-2c\) penalty whenever both ends of an edge are chosen.
+
+3. **Implementation Details**  
+   - We root at node 1.  
+   - Run a BFS to determine parent pointers and to get an array of nodes in BFS order.  
+   - Process the nodes in _reverse_ BFS order so that when we process a node \(v\), all its children have already been processed.  
+   - Each node \(v\) merges the DP values of its children according to whether \(v\) is chosen or not.  
+
+This runs in \(O(n)\) per test, and since the total \(n\) over all tests does not exceed \(2\times10^5\), it easily fits the time and memory limits.

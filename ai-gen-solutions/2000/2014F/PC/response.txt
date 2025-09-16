@@ -1,0 +1,180 @@
+**Analysis**
+
+We have a tree of \(n\) camps (nodes) with exactly \(n-1\) trails (edges).  Each camp \(i\) starts with \(a_i\) gold (possibly negative).  We may choose any subset \(S\) of camps to **strengthen**.  Strengthening a camp \(u\in S\) does **not** change its own gold, but it **subtracts** \(c\) gold from each of its neighbors (whether those neighbors are in \(S\) or not).  After the attack, *only* the strengthened camps \(S\) survive, and we sum their final gold.  The neighbors’ gold—possibly driven negative—does not count since they are destroyed if they were not strengthened.
+
+If we select a set \(S\), then:
+
+- Each node \(v\in S\) contributes its original \(a_v\).
+- But for each edge \((u,v)\) with both \(u\in S\) and \(v\in S\), we have subtracted \(c\) from \(u\) when strengthening \(v\) and subtract \(c\) from \(v\) when strengthening \(u\).  Thus each internal edge in the induced subgraph on \(S\) costs us a total of \(2c\).
+
+Hence the total gold kept is
+\[
+\sum_{v\in S} a_v \;-\; 2c\,\bigl|\{\text{edges with both ends in }S\}\bigr|.
+\]
+We want to choose \(S\subseteq\{1,2,\dots,n\}\) (possibly empty) to **maximize** this quantity.  If we take \(S=\emptyset\), the sum is \(0\), so the answer is never below 0.
+
+This is a classic dynamic-programming‐on‐trees problem.  Root the tree arbitrarily (say at node 1).  For each node \(u\), we keep two DP values:
+
+- \(\text{dp0}[u]\) = the maximum total we can obtain in the subtree of \(u\) if **we do not select** (strengthen) \(u\).
+- \(\text{dp1}[u]\) = the maximum total we can obtain in the subtree of \(u\) if **we do select** \(u\).
+
+Transitions:  
+Let the children of \(u\) be \(v_1,v_2,\dots\).  Then
+
+1.  If \(u\) is **not** selected, its children are free to be selected or not, but we do **not** pay any \(-2c\) penalty on the edge \((u,v)\) (because at least one endpoint, namely \(u\), is outside \(S\)).
+   
+   \[
+   \text{dp0}[u]
+   = \sum_{v\;:\;\text{child of }u}\;\max\bigl(\text{dp0}[v],\,\text{dp1}[v]\bigr).
+   \]
+
+2.  If \(u\) **is** selected, then for each child \(v\) we have a choice:
+   - We leave \(v\) unselected, gaining \(\text{dp0}[v]\) with no penalty,
+   - Or we select \(v\), gaining \(\text{dp1}[v]\) but paying a penalty of \(2c\) for the edge \((u,v)\).
+   
+   Hence
+   \[
+   \text{dp1}[u]
+   = a_u \;+\;
+     \sum_{v\;:\;\text{child of }u}
+       \max\!\bigl(\text{dp0}[v],\,\text{dp1}[v]-2c\bigr).
+   \]
+
+We do a single DFS to obtain a topological (parent‐before‐child) ordering, then process the nodes in **reverse** order (children before parents).  Finally the answer for the entire tree is
+\[
+\max\bigl(\text{dp0}[1],\,\text{dp1}[1]\bigr),
+\]
+and we clamp to at least 0 (but our DP never goes below 0 if leaving selection empty is an option).
+
+This runs in \(O(n)\) per test.  Since the sum of \(n\) over all test cases is up to \(2\cdot10^5,\) it easily fits the time limit.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    // Maximum total nodes across all tests
+    static final int MAXN = 200_000 + 5;
+    
+    // Adjacency via edge‐lists
+    static int[] head = new int[MAXN];
+    static int[] to   = new int[2 * MAXN];
+    static int[] nxt  = new int[2 * MAXN];
+    static int edgeCnt;
+
+    // Tree DP arrays
+    static long[] a   = new long[MAXN];
+    static long[] dp0 = new long[MAXN];
+    static long[] dp1 = new long[MAXN];
+    static int[] parent = new int[MAXN];
+    static int[] order  = new int[MAXN];
+    static int[] stack  = new int[MAXN];
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br  = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter    out = new PrintWriter(System.out);
+        StringTokenizer st = new StringTokenizer(br.readLine());
+        int t = Integer.parseInt(st.nextToken());
+
+        while (t-- > 0) {
+            // Read n and c
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            long c = Long.parseLong(st.nextToken());
+
+            // Read the gold at each node
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+            }
+
+            // Build the adjacency lists
+            // Clear old lists
+            for (int i = 1; i <= n; i++) {
+                head[i] = -1;
+            }
+            edgeCnt = 0;
+
+            // Read edges
+            for (int i = 0; i < n - 1; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                addEdge(u, v);
+                addEdge(v, u);
+            }
+
+            // 1) Build a DFS order (parent pointers + an array 'order' in preorder)
+            int sp = 0;
+            stack[sp++] = 1;
+            parent[1] = 0;
+            int ordSz = 0;
+            while (sp > 0) {
+                int u = stack[--sp];
+                order[ordSz++] = u;
+                for (int e = head[u]; e != -1; e = nxt[e]) {
+                    int v = to[e];
+                    if (v != parent[u]) {
+                        parent[v] = u;
+                        stack[sp++] = v;
+                    }
+                }
+            }
+
+            // 2) Process in reverse order: children before parents
+            for (int i = ordSz - 1; i >= 0; i--) {
+                int u = order[i];
+
+                // If we do NOT select u
+                long best0 = 0;
+                // If we DO select u
+                long best1 = a[u];
+
+                for (int e = head[u]; e != -1; e = nxt[e]) {
+                    int v = to[e];
+                    if (v == parent[u]) continue;
+
+                    // for dp0[u], we can pick v or not pick v without penalty
+                    best0 += Math.max(dp0[v], dp1[v]);
+
+                    // for dp1[u], if we pick v we pay 2c for the edge (u,v)
+                    long pickV = dp1[v] - 2 * c;
+                    best1 += Math.max(dp0[v], pickV);
+                }
+
+                dp0[u] = best0;
+                dp1[u] = best1;
+            }
+
+            // The answer is max(dp0[1], dp1[1]), clamped >= 0
+            long ans = Math.max(dp0[1], dp1[1]);
+            if (ans < 0) ans = 0;
+            out.println(ans);
+        }
+
+        out.flush();
+    }
+
+    static void addEdge(int u, int v) {
+        to[edgeCnt] = v;
+        nxt[edgeCnt] = head[u];
+        head[u]     = edgeCnt++;
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Modeling the Penalty**  
+   Choosing a node \(u\) in the surviving set \(S\) gives us \(a_u\) gold, but every neighbor \(v\in S\) also wears a subtraction of \(c\) when \(u\) was strengthened, and another \(c\) when \(v\) was strengthened—totaling \(2c\) per **internal** edge of \(S\).
+
+2. **Tree DP States**  
+   - `dp0[u]`: best total in \(u\)'s subtree if \(u\) is **not** chosen.  
+   - `dp1[u]`: best total in \(u\)'s subtree if \(u\) **is** chosen.  
+
+   Transitions follow by summing over children and accounting for the \(-2c\) penalty on edges where both endpoints are chosen.
+
+3. **Overall Complexity**  
+   Each test runs in \(O(n)\) time, and the sum of all \(n\) is \(\le2\cdot10^5\).  Thus it comfortably fits within the 2-second limit in Java.

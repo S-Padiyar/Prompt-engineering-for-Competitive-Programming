@@ -1,0 +1,135 @@
+**Analysis**
+
+We have an array a of length n and a positive integer k.  At each step, if the current length of the array is still greater than k we must delete a contiguous block of exactly k elements.  Eventually the array shrinks to length
+
+  m =  
+    n,      if n ≤ k  
+    n mod k, if n > k and n mod k > 0  
+    k,     if n > k and n mod k = 0  
+
+(One checks that when n > k, deleting exactly t = ⌈(n−k)/k⌉ blocks of size k leaves m = n − t·k elements, and this m is exactly what the formula above gives.)
+
+We then must choose exactly one element to keep from each of the first m residue‐classes modulo k (namely positions whose 1-based index is ≡1,2,…,m (mod k)).  One can show that *any* valid sequence of k-deletions that ends with exactly **m** survivors has picked exactly one surviving element from each of these m residue‐classes.  Hence the final array of size m consists of exactly one element from each class.
+
+We now want the resulting **median** of that final m-element array to be as large as possible.  Since the final array has length m, its median index is
+
+  med_idx = ⌊(m+1)/2⌋  (1‐based)
+
+but the condition “median ≥ X” means that *all* of the first med_idx elements (after sorting) are ≥ X.  Equivalently, the number of survivors ≥ X must be at least
+
+  need = m − med_idx + 1 = ⌈(m+1)/2⌉  
+  (which is equal to ⌊m/2⌋+1).
+
+To maximize that median, we simply look *within each residue class* to see the largest element we could choose from that class.  Denote
+
+  M[j] = the maximum of all a[i] with i ≡ j (mod k),
+
+for j = 1,2,…,m.  We must pick exactly one survivor from each class, and in as many of them as possible we’d like to pick something ≥ X.  Thus to test a candidate X we count how many of the M[j] ≥ X;  we need at least **need** of them.  
+
+But instead of binary‐searching X, we observe that the best we can do is to sort the array M[1…m] in descending order and pick the **need-th largest** of the M[j].  That value is our answer.
+
+Overall each test case takes:
+
+- O(n) to bucket into the k classes (but we only need the first m ≤ k).
+- O(m log m) to sort the m maxima.
+- Constant extra.
+
+Since ∑n ≤ 5·10^5 over all test cases, this runs easily in time.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader();
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt();
+            int k = in.nextInt();
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = in.nextInt();
+            }
+
+            // Compute final size m
+            int m;
+            if (n <= k) {
+                m = n;
+            } else {
+                int r = n % k;
+                m = (r == 0 ? k : r);
+            }
+
+            // For j = 1..m, find the maximum in positions i ≡ j (mod k)
+            // We'll store them in an array of length m, 0-based indexed.
+            int[] M = new int[m];
+            Arrays.fill(M, Integer.MIN_VALUE);
+            for (int j = 0; j < m; j++) {
+                // class (j+1) mod k => positions j, j+k, j+2k, ...
+                for (int pos = j; pos < n; pos += k) {
+                    M[j] = Math.max(M[j], a[pos]);
+                }
+            }
+
+            // We need at least `need = floor(m/2) + 1` classes whose max >= X
+            // Sorting M descending and taking the need-th largest does the job.
+            Arrays.sort(M);        // ascending
+            int need = (m / 2) + 1;
+            // the need-th largest in an ascending array is at index m - need
+            int answer = M[m - need];
+
+            out.println(answer);
+        }
+
+        out.flush();
+    }
+
+    // Fast input reader
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader() {
+            br = new BufferedReader(new InputStreamReader(System.in));
+        }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens()) {
+                String s = br.readLine();
+                if (s == null) return null;
+                st = new StringTokenizer(s);
+            }
+            return st.nextToken();
+        }
+        int nextInt() throws IOException {
+            return Integer.parseInt(next());
+        }
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Final array length `m`.**  
+   One can show that if you must keep deleting blocks of size k until the length is at most k, you end up with  
+   &nbsp;&nbsp;• m = n if n ≤ k  
+   &nbsp;&nbsp;• otherwise m = n mod k, unless n mod k = 0 in which case you get exactly k survivors.
+
+2. **Residue classes.**  
+   A standard “block‐removal” argument shows that *exactly one* element survives in each of the first m residue classes of the form { i ∣ i≡1,2,…,m (mod k) }.
+
+3. **Max per class.**  
+   In class j (1-based), the best choice of a survivor is simply  
+     \( M[j] = \max\{\,a[i]\mid i\equiv j\pmod k\}\,. \)
+
+4. **Finding the maximum median.**  
+   A final array of size m has median index `floor((m+1)/2)`.  In order for that median to be at least X, at least  
+   \[
+     \text{need} \;=\;\bigl\lceil\frac{m+1}{2}\bigr\rceil
+   \]
+   of the survivors must be ≥ X.  Hence to get the largest possible X, we sort the m values `M[1…m]` in descending order and pick the `need`-th largest.
+
+This runs in O(n + m log m) per test, and ∑n≤5⋅10^5 ensures it is fast enough for the given limits.

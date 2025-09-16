@@ -1,0 +1,217 @@
+**Problem Restatement**
+
+Alice starts with card type 1 and wants to obtain card type n. There are three other players—Queen, King, and Jack—each holding exactly one of every card type 1‥n initially. Each player has a strict preference (a permutation) over card types. A player \(P\) with preference array \(p_P\) will agree to trade away card \(b\) to Alice in exchange for card \(a\) *iff*
+
+1. Alice strictly prefers \(b\) over \(a\) (that is, \(b > a\)),  
+2. Player \(P\) strictly prefers \(a\) over \(b\) (i.e.\ \(p_P[a] > p_P[b]\)).
+
+Alice may only trade when she strictly increases her card’s type.  We need to determine whether Alice can reach card \(n\) by a sequence of valid trades, and if so, output one such sequence.
+
+**Input**
+
+- \(t\) (number of test cases),  
+- For each test case:  
+  - \(n\) (number of card types),  
+  - Three lines each with a permutation of length \(n\): the Queen’s, King’s, and Jack’s preferences.
+
+Constraints:
+- \(1 \le t \le 10^4\),
+- Sum of all \(n\) over test cases \(\le 2\times10^5\),
+- \(2 \le n \le 2\times10^5\).
+
+**Output**
+
+For each test case:
+- Print “YES” or “NO”.
+- If YES, on the next line print \(k\) = number of trades, followed by \(k\) lines each of the form “\<player\> x”, meaning “trade with \<player\> to get card \(x\)”.  The last trade must yield \(x=n\). Players are denoted by `q`, `k`, or `j` (case‐insensitive).
+
+---
+
+**Solution Overview**
+
+We model the process as a BFS (breadth‐first search) on the space of Alice’s current card type \(a\in[1..n]\).  From a state \(a\), Alice can move to a strictly larger card \(b\) if there exists a player \(P\in\{\mathrm{Q},\mathrm{K},\mathrm{J}\}\) such that:
+1. \(b>a\), and  
+2. \(p_P[a] > p_P[b]\).
+
+We must avoid re‐visiting the same card \(b\) to prevent infinite loops.  Because \(n\) can be up to \(2\cdot10^5\), we cannot explicitly list all edges.  Instead, for each player \(P\) we maintain a segment tree (over indices \(1..n\)) that stores, at position \(b\), the value \(p_P[b]\) if \(b\) is still “unvisited”, or \(\mathrm{INF}\) if already taken by Alice in an earlier step.  
+
+In BFS, when we pop a state \(a\), for each player \(P\) we repeatedly query:
+
+  — “Find the smallest index \(b>a\) such that \(p_P[b] < p_P[a]\).”
+
+We implement that by a segment‐tree `findFirst` operation on the range \([a+1..n]\), looking for a leaf whose stored value \(\le p_P[a]-1\).  Each successful find yields a new reachable card \(b\); we record the parent pointer `par[b]=a` and which player `parP[b]=P` we used, then set that tree leaf to INF (marking \(b\) visited) and enqueue \(b\).  We repeat the query on the same range until no more such \(b\) exist.  Once the BFS completes (or once we visit \(n\)), we can reconstruct the path back from \(n\) to \(1\).
+
+Each card type is enqueued and processed at most once per player, leading to \(O(n)\) tree deletions and \(O(n)\) “findFirst” calls, each costing \(O(\log n)\).  Hence overall complexity \(O(n\log n)\) per test, which is acceptable for \( \sum n \le 2\cdot10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int INF = Integer.MAX_VALUE;
+
+    // Segment Tree supporting:
+    //  - point updates: set position i to value v
+    //  - range-min queries + "find first index in [ql..qr] with value <= thresh"
+    static class SegmentTree {
+        int n;
+        int[] st;
+
+        SegmentTree(int size) {
+            n = size;
+            st = new int[4 * n];
+        }
+
+        // Build from array arr[1..n]
+        void build(int node, int l, int r, int[] arr) {
+            if (l == r) {
+                st[node] = arr[l];
+            } else {
+                int mid = (l + r) >>> 1;
+                build(node << 1, l, mid, arr);
+                build(node << 1 | 1, mid + 1, r, arr);
+                st[node] = Math.min(st[node << 1], st[node << 1 | 1]);
+            }
+        }
+
+        // Point update: set position pos to value val
+        void update(int node, int l, int r, int pos, int val) {
+            if (l == r) {
+                st[node] = val;
+            } else {
+                int mid = (l + r) >>> 1;
+                if (pos <= mid) update(node << 1, l, mid, pos, val);
+                else           update(node << 1 | 1, mid + 1, r, pos, val);
+                st[node] = Math.min(st[node << 1], st[node << 1 | 1]);
+            }
+        }
+
+        // Find first index in [ql..qr] whose stored value <= thresh.
+        // Returns -1 if none.
+        int findFirst(int node, int l, int r, int ql, int qr, int thresh) {
+            if (qr < l || r < ql || st[node] > thresh) {
+                return -1;
+            }
+            if (l == r) {
+                return l;
+            }
+            int mid = (l + r) >>> 1;
+            int res = findFirst(node << 1, l, mid, ql, qr, thresh);
+            if (res != -1) return res;
+            return findFirst(node << 1 | 1, mid + 1, r, ql, qr, thresh);
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+
+            // Read preferences for Q, K, J
+            int[][] pref = new int[3][n + 1];
+            for (int p = 0; p < 3; p++) {
+                StringTokenizer st = new StringTokenizer(br.readLine());
+                for (int i = 1; i <= n; i++) {
+                    pref[p][i] = Integer.parseInt(st.nextToken());
+                }
+            }
+
+            // Build segment trees for each player
+            SegmentTree[] seg = new SegmentTree[3];
+            for (int p = 0; p < 3; p++) {
+                seg[p] = new SegmentTree(n);
+                seg[p].build(1, 1, n, pref[p]);
+            }
+
+            // BFS structures
+            boolean[] visited = new boolean[n + 1];
+            int[] parent = new int[n + 1];
+            int[] parentPlayer = new int[n + 1];  // 0->Q,1->K,2->J
+
+            Deque<Integer> dq = new ArrayDeque<>();
+            visited[1] = true;
+            dq.addLast(1);
+
+            // BFS: from card 'a', try to take all b>a s.t. pref[p][a] > pref[p][b]
+            while (!dq.isEmpty()) {
+                int a = dq.removeFirst();
+                for (int p = 0; p < 3; p++) {
+                    // We want pref[p][b] <= pref[p][a] - 1
+                    int threshold = pref[p][a] - 1;
+                    while (true) {
+                        int b = seg[p].findFirst(1, 1, n, a + 1, n, threshold);
+                        if (b == -1) break;
+                        // Mark visited: we can now reach card b
+                        visited[b] = true;
+                        parent[b] = a;
+                        parentPlayer[b] = p;
+                        dq.addLast(b);
+                        // Remove b from further consideration in player p's tree
+                        seg[p].update(1, 1, n, b, INF);
+                    }
+                }
+            }
+
+            if (!visited[n]) {
+                out.println("NO");
+            } else {
+                out.println("YES");
+                // Reconstruct path from n back to 1
+                List<Integer> moves = new ArrayList<>();
+                List<Integer> who = new ArrayList<>();
+                int cur = n;
+                while (cur != 1) {
+                    moves.add(cur);
+                    who.add(parentPlayer[cur]);
+                    cur = parent[cur];
+                }
+                Collections.reverse(moves);
+                Collections.reverse(who);
+
+                out.println(moves.size());
+                char[] playerChar = {'q','k','j'};
+                for (int i = 0; i < moves.size(); i++) {
+                    out.printf("%c %d\n", playerChar[who.get(i)], moves.get(i));
+                }
+            }
+        }
+
+        out.flush();
+        out.close();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Graph Model**  
+   - Nodes: Alice’s current card type \(1\ldots n\).  
+   - Directed edge \(a\to b\) labeled by player \(P\) exists iff \(b>a\) and \(p_P[a] > p_P[b]\).  
+   - We perform a BFS starting from node \(1\), marking nodes as visited when first reached.  
+
+2. **Avoiding \(O(n^2)\) Edges**  
+   - Explicitly listing all edges is infeasible for large \(n\).  
+   - Instead, for each current \(a\) and player \(P\), we want *all* \(b > a\) with \(p_P[b] < p_P[a]\).  
+   - We maintain a segment tree on indices \(1..n\), storing for each leaf \(b\) the value \(p_P[b]\) if \(b\) is not yet visited, or \(\mathrm{INF}\) if already used.  
+   - To extract all valid \(b\), we repeatedly query:
+     “Find the first index \(b\in[a+1..n]\) whose value \(\le p_P[a]-1\).”  
+   - After each find, we mark that \(b\) visited and set its leaf to \(\mathrm{INF}\), so we won’t pick it again.
+
+3. **Reconstruction**  
+   - We store for each newly visited card \(b\) its parent `parent[b]=a` and which player `parentPlayer[b]` completed the trade.  
+   - Once BFS reaches \(n\), we back‐track from \(n\) to \(1\) collecting the sequence of trades, then reverse it.
+
+**Time and Space Complexity**
+
+- Let \(N=\sum n\) over all test cases (\(N \le 2\times10^5\)).  
+- Each card type enters the BFS queue at most once.  
+- For each card \(a\) and each of the three players, we perform a series of „findFirst + update“ operations, but the total number of successful finds across the entire BFS is at most \(n-1\) per player (once per card).  
+- Each `findFirst` or `update` on the segment tree costs \(O(\log n)\).  
+- Hence overall \(O(n\log n)\) per test, and total \(O(N\log N)\), which is efficient for \(N\le2\cdot10^5\).
+
+This completes a correct and efficient solution.

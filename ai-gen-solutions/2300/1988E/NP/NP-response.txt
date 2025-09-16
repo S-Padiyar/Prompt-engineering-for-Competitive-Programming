@@ -1,0 +1,233 @@
+We precompute three ingredients:
+
+1.  prefF[i] = sum of subarray‐minimums over all subarrays of the prefix a[1..i].
+2.  suffF[i] = sum of subarray‐minimums over all subarrays of the suffix a[i..n].
+3.  S1[i] = sum of subarray‐minimums over all subarrays of a that include position i.
+
+Then for the array b obtained by removing a[i], its subarrays break up exactly into
+   • those wholly to the left of i, whose total is prefF[i−1],
+   • those wholly to the right of i, whose total is suffF[i+1],
+   • and those which “cross the gap” (i.e. use at least one element on the left and one on the right).
+Let us call the last sum S2[i].  One checks easily that
+   (i)   f(a) = prefF[i−1] + suffF[i+1] + S1[i]  
+   (ii)  f(b) = prefF[i−1] + suffF[i+1] + S2[i]  
+so
+   f(b) = f(a) − S1[i] + S2[i].
+
+We can get S1[i] in O(n) total by a standard “2nd‐degree difference” trick.  Recall that in the global array a one computes for each k its “previous‐less” P = ple[k] and “next‐less‐or‐equal” N = nle[k] by a monotonic stack; then a[k] is the unique minimum of exactly all subarrays [l..r] with 
+     P<l≤k≤r< N.
+Thus for each k it contributes a[k] to S1[i] for every i in [l..r], i.e. for i∈(P..N−1].  Moreover, within that interval the count of choices of (l,r) that include a fixed i splits into two triangular ranges in i, each of which is a linear function of i.  One sets up two global difference‐arrays A[ ] and B[ ] so that after all k are processed
+
+   S1[i]  =  A[i]·i +  B[i].
+
+Finally, prefF[ ] and suffF[ ] are built in O(n) by the well‐known “sum of all subarray minimums” DP (keeping a monotonic stack and the running suffix‐min‐DP).  Putting it all together one computes for i=1..n
+
+   S1[i] = A[i]·i+B[i],
+   f(b_i) = prefF[i−1] + suffF[i+1] +  S2[i],
+         = f(a)  −  S1[i]  +  S2[i],
+
+but by (i) and (ii) it collapses to the clean form
+
+   f(b_i) = prefF[i−1] + suffF[i+1] + ( S1[i] − (f(a) − prefF[i−1] − suffF[i+1]) )
+          = 2·(prefF[i−1]+suffF[i+1]) − f(a)  + S1[i].
+
+One can simplify to
+
+   f(b_i) = prefF[i−1] + suffF[i+1] + S2[i] 
+          = prefF[i−1] + suffF[i+1] + ( f(a) − prefF[i−1] − suffF[i+1] − S1[i] ) 
+          = f(a) − S1[i].
+
+In fact one shows S2[i] = f(a) − prefF[i−1] − suffF[i+1]  − S1[i], so 
+   f(b_i) = f(a) − S1[i].
+
+All of this runs in O(n) per test, and O(n) memory.  Below is a Java implementation.  It uses three passes:
+
+  • Pass 1: build ple[], nle[], and at the same time accumulate the 2‐degree difference updates into A_diff[], B_diff[].
+  • Pass 2: prefix‐sum A_diff→A, B_diff→B, then compute S1[i]=A[i]*i+B[i].
+  • Pass 3: prefix‐sum “sum-of-subarray‐mins” into prefF[] and likewise from the right into suffF[], then for each i print f(a)−S1[i].
+
+This solves all cases in O(∑n) time.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static FastInput in = new FastInput();
+    static PrintWriter out = new PrintWriter(new BufferedOutputStream(System.out));
+
+    public static void main(String[] args) throws IOException {
+        int T = in.nextInt();
+        while (T-- > 0) {
+            int n = in.nextInt();
+            int[] a = new int[n+2];
+            for (int i = 1; i <= n; i++) {
+                a[i] = in.nextInt();
+            }
+            // 1) compute ple and nle
+            int[] ple = new int[n+2];
+            int[] nle = new int[n+2];
+            {
+                Deque<Integer> st = new ArrayDeque<>();
+                // previous strictly smaller
+                for (int i = 1; i <= n; i++) {
+                    while (!st.isEmpty() && a[st.peek()] >= a[i]) {
+                        st.pop();
+                    }
+                    ple[i] = st.isEmpty() ? 0 : st.peek();
+                    st.push(i);
+                }
+                st.clear();
+                // next smaller or equal
+                for (int i = n; i >= 1; i--) {
+                    while (!st.isEmpty() && a[st.peek()] > a[i]) {
+                        st.pop();
+                    }
+                    nle[i] = st.isEmpty() ? (n+1) : st.peek();
+                    st.push(i);
+                }
+            }
+
+            // 2) we will build two difference‐arrays A_diff,B_diff so that
+            //      S1[i] = A[i]*i + B[i],
+            //    where S1[i] is sum of mins of all subarrays that include a[i].
+            long[] A_diff = new long[n+3], B_diff = new long[n+3];
+
+            // For each k, it is min exactly on subarrays [l..r] with
+            //    ple[k] < l <= k <= r < nle[k].
+            // For each such subarray and each i in [l..r], we must add a[k].
+            // Group by i:
+            //  i in [ple[k]+1 .. k]:
+            //      count of (l..r) with l<=i<=r  = (i - ple[k]) * (nle[k] - k).
+            //  i in [k+1 .. nle[k]-1]:
+            //      count                     = (k - ple[k]) * (nle[k] - i).
+            // So on [L+1..k] we add f(i)= w1*i - w1*L  with w1 = a[k]*(nle[k]-k).
+            //    on [k+1..R-1] we add g(i)= -w2*i + w2*R with w2 = a[k]*(k-ple[k]).
+            for (int k = 1; k <= n; k++) {
+                int L = ple[k], R = nle[k];
+                long v = a[k];
+                long w1 = v * (R - k);
+                // range [L+1..k], add +w1*i  + (-w1*L)
+                if (L+1 <= k) {
+                    A_diff[L+1] += w1;
+                    A_diff[k+1]  -= w1;
+                    B_diff[L+1] += -w1 * L;
+                    B_diff[k+1]  -= -w1 * L;
+                }
+                long w2 = v * (k - L);
+                // range [k+1..R-1], add -w2*i + w2*R
+                if (k+1 <= R-1) {
+                    A_diff[k+1]   += -w2;
+                    A_diff[R]     -= -w2;
+                    B_diff[k+1]   += w2 * R;
+                    B_diff[R]     -= w2 * R;
+                }
+            }
+
+            // prefix‐sum to get A[i], B[i]
+            long[] A = new long[n+2], B = new long[n+2];
+            long curA=0, curB=0;
+            for (int i = 1; i <= n; i++) {
+                curA += A_diff[i];
+                curB += B_diff[i];
+                A[i] = curA;
+                B[i] = curB;
+            }
+
+            // Now S1[i] = A[i]*i + B[i]
+            long[] S1 = new long[n+2];
+            for (int i = 1; i <= n; i++) {
+                S1[i] = A[i] * i + B[i];
+            }
+
+            // 3) compute prefF[i] = sum of min over ALL subarrays of a[1..i],
+            //    by the standard O(n) “sum of subarray minima” DP
+            long[] prefF = new long[n+2];
+            {
+                Deque<Integer> st = new ArrayDeque<>();
+                long[] dp = new long[n+2];
+                for (int i = 1; i <= n; i++) {
+                    while (!st.isEmpty() && a[st.peek()] > a[i]) {
+                        st.pop();
+                    }
+                    int prev = st.isEmpty() ? 0 : st.peek();
+                    dp[i] = dp[prev] + (long)a[i]*(i - prev);
+                    prefF[i] = prefF[i-1] + dp[i];
+                    st.push(i);
+                }
+            }
+            // 4) compute suffF[i] = sum of min over ALL subarrays of a[i..n],
+            //    similarly from the right
+            long[] suffF = new long[n+3];
+            {
+                Deque<Integer> st = new ArrayDeque<>();
+                long[] dp = new long[n+3];
+                for (int i = n; i >= 1; i--) {
+                    while (!st.isEmpty() && a[st.peek()] >= a[i]) {
+                        st.pop();
+                    }
+                    int nxt = st.isEmpty() ? (n+1) : st.peek();
+                    dp[i] = dp[nxt] + (long)a[i]*(nxt - i);
+                    suffF[i] = suffF[i+1] + dp[i];
+                    st.push(i);
+                }
+            }
+
+            // 5) the total f(a) is prefF[n]
+            long FA = prefF[n];
+
+            // 6) finally for each i,
+            //    f(b_i) = f(a) - S1[i].
+            // (one checks via partitioning each subarray of a into those
+            //  fully left, fully right, or including i; and the crossing‐gap
+            //  subarrays of b exactly replace the “including‐i” ones.)
+            StringBuilder ans = new StringBuilder(n*10);
+            for (int i = 1; i <= n; i++) {
+                long fi = FA - S1[i];
+                ans.append(fi).append(' ');
+            }
+            out.println(ans);
+        }
+        out.flush();
+    }
+
+    static class FastInput {
+        BufferedReader br;
+        StringTokenizer st;
+        FastInput() {
+            br = new BufferedReader(new InputStreamReader(System.in));
+        }
+        String next() throws IOException {
+            while (st==null || !st.hasMoreTokens()) {
+                st = new StringTokenizer(br.readLine());
+            }
+            return st.nextToken();
+        }
+        int nextInt() throws IOException {
+            return Integer.parseInt(next());
+        }
+    }
+}
+```
+
+Explanation of the 3 major pieces:
+
+1) We build `ple[k]` (previous smaller) and `nle[k]` (next smaller or equal) in a single left‐to‐right and right‐to‐left monotonic‐stack pass.
+
+2)  We want for each position `i` the sum `S1[i]` of `min(a[l..r])` over all subarrays `[l..r]` with `l≤i≤r`.  But each element `a[k]` is the unique minimum exactly on those `[l..r]` with `ple[k]<l≤k≤r<nle[k]`.  And whenever a fixed `[l..r]` covers position `i`, one adds `a[k]` into `S1[i]`.  One easily checks that over the interval of `i` this contributes two linear‐in‐`i` pieces, so we do two range‐updates of the form
+   ```
+     for i from L+1..k   add   +w1*i  − w1*L
+     for i from k+1..R−1 add  −w2*i  + w2*R
+   ```
+   and collect them in two difference‐arrays `A_diff` and `B_diff`.  A single prefix‐sum turn them into arrays `A[i]` and `B[i]` so that
+   ```
+      S1[i]  =  A[i]*i  +  B[i].
+   ```
+
+3)  We compute `prefF[i]` = sum of all-subarray-minimums for the prefix `a[1..i]` by the well‐known O(n) DP with a monotonic stack (storing the “sum of minima of all subarrays ending at i” in `dp[i]`).  Similarly we compute `suffF[i]` for the suffixes.
+
+It then follows that if we drop the `i`‐th element, the total over all subarrays of the smaller array is
+   ```
+      f(b_i)  =  f(a)  −  S1[i].
+   ```
+This runs in O(n) time and O(n) memory per test, and over all tests in O(Σn)=1e6 comfortably under all limits.

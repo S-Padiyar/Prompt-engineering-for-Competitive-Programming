@@ -1,0 +1,140 @@
+Here is a Java solution that runs in O(n·m) time per test, or O(Σ n·m) overall, which is acceptable since the sum of n·m over all tests is at most 2·10^5.  The idea is:
+
+1.  Read the two matrices a and b of size n×m, and record, for each value x (from 1 to n·m), its position in a and its position in b:
+      posA_row[x], posA_col[x] and posB_row[x], posB_col[x].
+2.  We claim that b can be obtained from a by permuting rows and columns if and only if there exists a row‐permutation p of {1…n} and a column‐permutation q of {1…m} such that
+      for every x,  posB_row[x] = p(posA_row[x])   and   posB_col[x] = q(posA_col[x]).
+3.  Equivalently, within each fixed row i of a, all elements x in that row must go to the same row in b; this determines p(i) uniquely, or else it is impossible.  Finally p must be a bijection, which we check by seeing that no two distinct a‐rows map to the same b‐row.  We do the same for columns.
+
+This takes only one pass through the nm entries to build the mappings, and then O(n+m) to check injectivity.  Below is the full code.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader(InputStream in) { br = new BufferedReader(new InputStreamReader(in)); }
+        String next() throws IOException {
+            while (st == null || !st.hasMoreTokens())
+                st = new StringTokenizer(br.readLine());
+            return st.nextToken();
+        }
+        int nextInt() throws IOException { return Integer.parseInt(next()); }
+    }
+
+    public static void main(String[] args) throws IOException {
+        FastReader fr = new FastReader(System.in);
+        StringBuilder sb = new StringBuilder();
+        int T = fr.nextInt();
+        // Maximum total n*m over all tests is <= 2e5
+        // We'll allocate these once, of size a bit above 2e5.
+        final int MAXNM = 200_000 + 5;
+        int[] posArow = new int[MAXNM], posAcol = new int[MAXNM];
+        int[] posBrow = new int[MAXNM], posBcol = new int[MAXNM];
+
+        while (T-- > 0) {
+            int n = fr.nextInt();
+            int m = fr.nextInt();
+            int N = n * m;
+
+            // Read matrix a and record positions
+            for (int i = 1; i <= n; i++) {
+                for (int j = 1; j <= m; j++) {
+                    int x = fr.nextInt();
+                    posArow[x] = i;
+                    posAcol[x] = j;
+                }
+            }
+            // Read matrix b and record positions
+            for (int i = 1; i <= n; i++) {
+                for (int j = 1; j <= m; j++) {
+                    int x = fr.nextInt();
+                    posBrow[x] = i;
+                    posBcol[x] = j;
+                }
+            }
+
+            // Try to build a consistent row‐mapping p: a‐row -> b‐row
+            int[] p = new int[n+1];
+            boolean[] seenBrow = new boolean[n+1];
+            Arrays.fill(p, -1);
+            boolean ok = true;
+            for (int x = 1; x <= N; x++) {
+                int ra = posArow[x];
+                int rb = posBrow[x];
+                if (p[ra] == -1) {
+                    p[ra] = rb;
+                } else if (p[ra] != rb) {
+                    ok = false;
+                    break;
+                }
+            }
+            // Check that p is injective (hence bijective, since domain & codomain size n)
+            if (ok) {
+                for (int i = 1; i <= n; i++) {
+                    if (p[i] < 1 || p[i] > n) {
+                        ok = false;
+                        break;
+                    }
+                    if (seenBrow[p[i]]) {
+                        ok = false;
+                        break;
+                    }
+                    seenBrow[p[i]] = true;
+                }
+            }
+
+            // Now do the same for columns
+            if (ok) {
+                int[] q = new int[m+1];
+                boolean[] seenBcol = new boolean[m+1];
+                Arrays.fill(q, -1);
+                for (int x = 1; x <= N; x++) {
+                    int ca = posAcol[x];
+                    int cb = posBcol[x];
+                    if (q[ca] == -1) {
+                        q[ca] = cb;
+                    } else if (q[ca] != cb) {
+                        ok = false;
+                        break;
+                    }
+                }
+                if (ok) {
+                    for (int j = 1; j <= m; j++) {
+                        if (q[j] < 1 || q[j] > m) {
+                            ok = false;
+                            break;
+                        }
+                        if (seenBcol[q[j]]) {
+                            ok = false;
+                            break;
+                        }
+                        seenBcol[q[j]] = true;
+                    }
+                }
+            }
+
+            sb.append(ok ? "YES\n" : "NO\n");
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+Explanation of the key steps:
+
+- We store for each integer value `x` its row and column in `a` (`posArow[x]`, `posAcol[x]`) and similarly in `b`.
+-  If there is a row‐permutation `p` taking `a` to `b`, then for each `x`,  
+     `posBrow[x]` must equal `p(posArow[x])`.  
+  Thus, all elements in the same row `i` of `a` must go to the same row `p(i)` of `b`.  
+-  We scan `x` from 1 to `n*m`; whenever we see `x` in `(ra, ca)` in `a` and `(rb, cb)` in `b`, we check/assign
+     `p[ra] = rb`,  
+  failing if it contradicts a previous assignment.  Then we check afterwards that no two distinct rows of `a` mapped to the same row of `b` (injectivity), which is equivalent to being a bijection since both sets have size `n`.
+-  We do the same for columns (mapping `q[ca] = cb`), checking consistency and injectivity.  
+-  If both pass, the answer is "YES", otherwise "NO".
+
+This runs in O(n·m) per test, comfortably within the 3‐second limit for total sum of n·m up to 2·10^5.

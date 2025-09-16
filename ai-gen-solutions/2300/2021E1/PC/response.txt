@@ -1,0 +1,265 @@
+**Analysis**
+
+We have an undirected connected graph of \(n\) nodes (houses) and \(m\) edges (cables) with latencies \(w_i\).  A subset \(S\) of \(p\) of these nodes require internet service.  We may place up to \(k\) servers (for \(k=1,2,\dots,n\)) on any nodes, and each special node \(s\in S\) will connect to the chosen server \(c\) that minimizes the _maximum_ edge‐latency along the path from \(s\) to \(c\).  We want, for each \(k\), the minimum possible sum of those per‐special‐node maximum‐edge latencies.
+
+---
+
+**Key observations**
+
+1.  **Minimax path metric = minimum‐spanning‐tree metric**  
+    The latency a node experiences when it connects to a server is the minimum over all paths of the _maximum_ edge on that path.  It is well known that this _minimax_ distance between any two nodes in a connected graph is realized on its Minimum Spanning Tree (MST).  Hence we can discard all but an MST of the original graph, without changing any of these minimax distances.
+
+2.  **Kruskal “reconstruction tree”**  
+    If we run Kruskal’s algorithm (sorting edges ascending by weight, then union‐find to keep the MST), we can build a _binary_ tree (sometimes called the Kruskal reconstruction tree):  
+      -  Each original vertex \(1\ldots n\) becomes a leaf (with weight \(0\)).  
+      -  Whenever in Kruskal we unite two components (roots \(u,v\)) by an edge of weight \(w\), we create a new internal node \(x\) of weight \(w\) and make its two children be \(u\) and \(v\).  The new component’s representative is \(x\).  
+    After all \(n-1\) unions, we end up with a tree of size \(2n-1\), whose leaves are the original nodes, and each internal node has a weight equal to the edge‐latency that united its two children.  
+    In that tree, the maximum‐edge on the path between two leaves \(a,b\) is exactly the weight of their LCA in the reconstruction tree.
+
+3.  **DP on the reconstruction tree**  
+    We must choose up to \(k\) leaves to be “servers.”  Each special leaf \(s\) travels _up_ the tree until it hits the first ancestor that has at least one server in its subtree; the cost for \(s\) is that ancestor’s weight.  We sum over all special \(s\).  
+
+    We do a bottom‐up DP on that binary tree.  At each node \(u\) we keep an array
+    \[
+       \mathrm{dp}[u][j]
+       =\min_{\substack{\text{ways to pick exactly \(j\) servers}\\
+                       \text{in the subtree of \(u\)}}}
+       \Bigl(\sum\text{costs of those special nodes that get served at or below \(u\)}\Bigr),
+    \]
+    and also
+    \[
+       t[u][j]
+       =\text{number of special nodes in \(u\)’s subtree \emph{not yet served}}
+         \text{ by any of those \(j\) servers.}
+    \]
+    When we combine two children \(v,w\) under an internal node \(u\) of weight \(W\), we do the usual knapsack‐convolution:
+    \[
+      \text{for each }j_1\le \bigl|\text{leaves}(v)\bigr|,\;
+        j_2\le \bigl|\text{leaves}(w)\bigr|,\;
+        j=j_1+j_2,
+    \]
+    we form
+    \[
+      \mathrm{dpTemp}=\mathrm{dp}[v][j_1]+\mathrm{dp}[w][j_2],\quad
+      tTemp=t[v][j_1]+t[w][j_2].
+    \]
+    If \(j>0\), we have placed at least one server in \(u\)’s subtree, so _all_ those \(tTemp\) as yet unserved special nodes will now be served _at_ node \(u\), each at cost \(W\).  Hence
+    \[
+      \mathrm{dpNew}
+        = \mathrm{dpTemp} + tTemp\times W,
+      \quad
+      tNew = 0.
+    \]
+    If \(j=0\), we still have no server in \(u\)’s whole subtree, so nobody gets served here, and
+    \[
+      \mathrm{dpNew}=\mathrm{dpTemp},\quad
+      tNew=tTemp.
+    \]
+    We take the minimum over all splits \((j_1,j_2)\).
+
+    At a leaf \(u\):  
+      – If \(u\) is special, then
+        \(\mathrm{dp}[u][0]=0,\;t[u][0]=1\),  
+        \(\mathrm{dp}[u][1]=0,\;t[u][1]=0\).  
+      – If \(u\) is not special,
+        \(\mathrm{dp}[u][0]=0,\;t[u][0]=0\) and
+        \(\mathrm{dp}[u][1]=0,\;t[u][1]=0\).
+
+4.  **Extracting the answers**  
+    After processing the root \(R\), we get \(\mathrm{dp}[R][k]\) = minimum sum of latencies using _exactly_ \(k\) servers.  The problem allows _up to_ \(k\) servers, so for each \(k\) we must take 
+    \(\min_{1\le i\le k}\mathrm{dp}[R][i]\).  
+    (Once \(k\ge p\), we can serve every special node with its own server at cost 0, so the suffix of answers is all \(0\).)
+
+The reconstruction‐tree has size \(2n-1\)\(\le 799\) for \(n\le 400\).  The DP at each internal node is a double loop over the sizes of the two children’s leaf‐counts.  In the worst case that is \(\sum(\text{leaves in left})\times(\text{leaves in right})\), bounded by \(O(n^2)\) overall.  Repeated over all testcases, the total work is \(O(\sum n^3)\), which the problem guarantees is \(\le10^8\).  This easily runs within the 2‐second limit in Java.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXN = 400;
+    static final int MAXNODES = 2*MAXN;        // up to 2n-1
+    static final long INF = (long)1e18;
+
+    // The reconstruction tree
+    static int leftCh[] = new int[MAXNODES+1], rightCh[] = new int[MAXNODES+1];
+    static long  nodeWeight[] = new long[MAXNODES+1];
+    static int   dsuParent[] = new int[MAXNODES+1];
+    static int   leafCount[] = new int[MAXNODES+1];
+    static boolean isSpecial[] = new boolean[MAXNODES+1];
+
+    // DP arrays
+    // dp[u][j] = minimal cost to serve all special nodes within u's subtree
+    //            that are actually served at or below u, using exactly j servers in u's subtree.
+    // t[u][j]  = how many special nodes in u's subtree remain unserved if we used j servers.
+    static long  dp[][] = new long[MAXNODES+1][MAXN+1];
+    static int   t [][] = new int [MAXNODES+1][MAXN+1];
+
+    // Edge for Kruskal
+    static class Edge implements Comparable<Edge> {
+        int u, v;
+        long w;
+        Edge(int _u, int _v, long _w) { u=_u; v=_v; w=_w; }
+        public int compareTo(Edge o) {
+            return Long.compare(this.w, o.w);
+        }
+    }
+
+    // DSU find
+    static int findp(int x) {
+        if (dsuParent[x] != x) 
+            dsuParent[x] = findp(dsuParent[x]);
+        return dsuParent[x];
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+        int T = Integer.parseInt(br.readLine().trim());
+        StringBuilder output = new StringBuilder();
+
+        while (T-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            int p = Integer.parseInt(st.nextToken());
+
+            // read specials
+            st = new StringTokenizer(br.readLine());
+            for (int i = 1; i <= n; i++) {
+                isSpecial[i] = false;
+            }
+            for (int i = 0; i < p; i++) {
+                int s = Integer.parseInt(st.nextToken());
+                isSpecial[s] = true;
+            }
+
+            // read edges
+            ArrayList<Edge> edges = new ArrayList<>();
+            for (int i = 0; i < m; i++) {
+                st = new StringTokenizer(br.readLine());
+                int u = Integer.parseInt(st.nextToken());
+                int v = Integer.parseInt(st.nextToken());
+                long w = Long.parseLong(st.nextToken());
+                edges.add(new Edge(u, v, w));
+            }
+            Collections.sort(edges);
+
+            // initialize DSU
+            int maxNode = 2*n - 1;
+            for (int i = 1; i <= maxNode; i++) {
+                dsuParent[i] = i;
+                leftCh[i] = rightCh[i] = 0;
+                nodeWeight[i] = 0;
+            }
+
+            // build Kruskal‐reconstruction‐tree
+            int nxt = n;
+            for (Edge e : edges) {
+                int ru = findp(e.u), rv = findp(e.v);
+                if (ru != rv) {
+                    nxt++;
+                    nodeWeight[nxt] = e.w;
+                    leftCh [nxt] = ru;
+                    rightCh[nxt] = rv;
+                    dsuParent[ru] = nxt;
+                    dsuParent[rv] = nxt;
+                    dsuParent[nxt] = nxt;
+                    if (nxt == maxNode) break;
+                }
+            }
+            int root = nxt; // should be 2n-1
+
+            // compute leafCount[] = number of original‐node leaves under u
+            for (int u = 1; u <= root; u++) {
+                if (u <= n) {
+                    leafCount[u] = 1;
+                } else {
+                    leafCount[u] = leafCount[leftCh[u]] + leafCount[rightCh[u]];
+                }
+            }
+
+            // DP bottom‐up
+            for (int u = 1; u <= root; u++) {
+                int sz = leafCount[u];
+                if (u <= n) {
+                    // a leaf
+                    // dp[u][0], t[u][0]
+                    dp[u][0] = 0;
+                    t [u][0] = isSpecial[u] ? 1 : 0;
+                    // dp[u][1], t[u][1]
+                    dp[u][1] = 0;
+                    t [u][1] = 0;
+                } else {
+                    // an internal node
+                    int L = leftCh[u], R = rightCh[u];
+                    int lsz = leafCount[L], rsz = leafCount[R];
+
+                    // initialize dp[u][*]
+                    for (int j = 0; j <= sz; j++) {
+                        dp[u][j] = INF;
+                    }
+
+                    // knapsack‐style combine
+                    for (int j1 = 0; j1 <= lsz; j1++) {
+                        for (int j2 = 0; j2 <= rsz; j2++) {
+                            int j = j1 + j2;
+                            long baseCost = dp[L][j1] + dp[R][j2];
+                            int  unserved = t[L][j1] + t[R][j2];
+                            long newCost;
+                            int  newUnserved;
+                            if (j > 0) {
+                                // we do have at least one server in this subtree
+                                newCost = baseCost + unserved * nodeWeight[u];
+                                newUnserved = 0;
+                            } else {
+                                // still zero servers
+                                newCost = baseCost;
+                                newUnserved = unserved;
+                            }
+                            if (newCost < dp[u][j]) {
+                                dp[u][j] = newCost;
+                                t [u][j] = newUnserved;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // dp[root][k] = cost with exactly k servers.
+            // problem wants "up to k" servers, so we take prefix‐min.
+            long best = INF;
+            for (int k = 1; k <= n; k++) {
+                best = Math.min(best, dp[root][k]);
+                if (k > 1) output.append(' ');
+                output.append(best);
+            }
+            output.append('\n');
+
+            // clear specials for next test
+            for (int i = 1; i <= n; i++) {
+                isSpecial[i] = false;
+            }
+        }
+
+        System.out.print(output.toString());
+    }
+}
+```
+
+**Explanation of the main steps**:
+
+1. **Read input**.  We read \(n,m,p\), then the \(p\) special nodes, then the \(m\) edges.
+
+2. **Build an MST‐reconstruction tree** using Kruskal’s algorithm plus a DSU (union‐find).  Each time we unite two DSU components \(u,v\) by an edge of weight \(w\), we create a new node \(x\) whose children are the roots of those components, and store its weight as \(w\).  In the end we have exactly \(2n-1\) nodes.
+
+3. **Bottom‐up DP** on the reconstruction tree.  
+   - For a leaf \(u\), either we pick \(0\) or \(1\) server there; if that leaf is special, then with 0 servers it remains unserved (\(t[u][0]=1\)), and with 1 server it is served (\(t[u][1]=0\)), all with zero immediate cost.  
+   - For an internal node \(u\) of weight \(W\), with children \(L,R\), we convolve the two DPs exactly as one does knapsack‐style, summing the costs and unserved counts, and _if_ we place at least one server in the combined subtree, we serve all remaining unserved specials at this node for cost \(W\) each.
+
+4. **Answer retrieval**.  
+   At the root we have `dp[root][k]` = best cost with _exactly_ \(k\) servers.  The problem asks for “up to \(k\) servers,” so we form a prefix‐minimum over \(k=1\ldots n\).
+
+This runs in \(O(n^2)\) per test case (the convolution over all internal nodes) and fits easily within the problem’s \(2\)-second limit for \(n\le400\).

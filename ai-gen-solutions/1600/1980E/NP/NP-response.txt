@@ -1,0 +1,129 @@
+**Analysis**
+
+We have two \(n\times m\) matrices \(A\) and \(B\), each containing the numbers \(1,2,\dots,nm\) exactly once in total.  We are allowed to permute (i.e.\ swap) entire rows of \(A\), and separately to permute entire columns of \(A\).  We want to know if by doing a sequence of row-swaps and column-swaps we can turn \(A\) into \(B\).
+
+Because all entries are distinct, each value \(v\in\{1,\dots,nm\}\) occurs exactly once in \(A\).  Let
+
+\[
+\text{rowA}[v],\;\text{colA}[v]
+\]
+
+be the row and column (zero-based) in which \(v\) appears in \(A\).  
+
+When we permute the rows of \(A\) by some row-permutation \(P\) and the columns by some column-permutation \(Q\), the element originally at \((r,c)\) in \(A\) moves to \(\bigl(P^{-1}(r),\,Q^{-1}(c)\bigr)\) in the resulting matrix.  (One can check carefully how applying a permutation to rows or columns reindexes things.)  An equivalent viewpoint is:
+
+>  After permuting the rows of \(A\), the \(i\)-th row of the new matrix is exactly the old \(\,P(i)\)-th row of \(A\).  
+>  After permuting columns by \(Q\), the \(j\)-th column of the result is the old \(Q(j)\)-th column of \(A\).  
+
+Thus if in the final matrix at position \((i,j)\) we have value \(v\), then in the original \(A\) that same \(v\) must have been in row \(P(i)\) and column \(Q(j)\).  In particular
+
+- *all* entries of row \(i\) of \(B\) must have come from the *same* row of \(A\);  
+- *all* entries of column \(j\) of \(B\) must have come from the *same* column of \(A\).
+
+Concretely, we do the following:
+
+1.  Scan through \(A\) and record for each value \(v\)  
+    \[
+       \text{rowA}[v],\quad \text{colA}[v].
+    \]
+
+2.  Now read \(B\) row by row.  For the \(i\)-th row of \(B\) we look at each entry \(v\) and check that \(\text{rowA}[v]\) is the *same* for every column in that row; if it is not, we cannot find a single row-permutation to make the entire \(i\)-th row come from one row of \(A\), so the answer is NO.  
+
+3.  Similarly, for each column \(j\) of \(B\), as we scan down the rows, we check that \(\text{colA}[\,B[i][j]\,]\) is the same for all \(i\).  If any column of \(B\) mixes two different original columns of \(A\), we must answer NO.
+
+4.  If *all* rows of \(B\) come from a single consistent row of \(A\), and all columns of \(B\) come from a single consistent column of \(A\), then one can simply take those two implied permutations and apply them to \(A\), reproducing exactly \(B\).  Hence we answer YES.
+
+This runs in \(O(nm)\) per test, which is fine since the sum of all \(nm\) over all test cases is at most \(2\cdot10^5\).
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int t = Integer.parseInt(in.readLine().trim());
+        StringBuilder sb = new StringBuilder();
+
+        while (t-- > 0) {
+            st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            int NM = n * m;
+
+            // rowA[v], colA[v] = position of value v in A
+            int[] rowA = new int[NM + 1];
+            int[] colA = new int[NM + 1];
+
+            // Read A and record positions
+            for (int i = 0; i < n; i++) {
+                st = new StringTokenizer(in.readLine());
+                for (int j = 0; j < m; j++) {
+                    int v = Integer.parseInt(st.nextToken());
+                    rowA[v] = i;
+                    colA[v] = j;
+                }
+            }
+
+            // We will record, for each row i of B, which row in A all its entries come from
+            // likewise for each column j of B, which column in A they come from.
+            int[] rowMap = new int[n];
+            int[] colMap = new int[m];
+            Arrays.fill(rowMap, -1);
+            Arrays.fill(colMap, -1);
+
+            boolean ok = true;
+
+            // Read B and check consistency
+            for (int i = 0; i < n; i++) {
+                st = new StringTokenizer(in.readLine());
+                for (int j = 0; j < m; j++) {
+                    int v = Integer.parseInt(st.nextToken());
+                    if (!ok) {
+                        // Still consume input tokens even if already failed
+                        continue;
+                    }
+                    int ra = rowA[v];
+                    int ca = colA[v];
+
+                    // Check row consistency for row i of B
+                    if (rowMap[i] < 0) {
+                        rowMap[i] = ra;
+                    } else if (rowMap[i] != ra) {
+                        ok = false;
+                    }
+
+                    // Check column consistency for column j of B
+                    if (colMap[j] < 0) {
+                        colMap[j] = ca;
+                    } else if (colMap[j] != ca) {
+                        ok = false;
+                    }
+                }
+            }
+
+            sb.append(ok ? "YES\n" : "NO\n");
+        }
+
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Recording positions in \(A\).**  
+   Since the matrix \(A\) contains each number \(1,2,\dots,nm\) exactly once, we can store its coordinates in two arrays `rowA[v]`, `colA[v]`.
+
+2. **Row‐consistency check.**  
+   When reading the \(i\)-th row of \(B\), every entry \(v\) in that row must have the same `rowA[v]`.  Otherwise we would need two different source‐rows in \(A\) to build a single row of \(B\), which is impossible by only swapping whole rows.
+
+3. **Column‐consistency check.**  
+   Likewise, when reading the \(j\)-th column of \(B\) (i.e.\ the \(j\)-th entry in each row of \(B\)), all those values must share the same `colA[v]`.  If they do not, then no single column‐swap can gather those entries from different columns of \(A\).
+
+4. **Conclusion.**  
+   If both checks pass for every row and column, we can construct explicitly the row‐permutation and column‐permutation that transforms \(A\) into \(B\).  Thus the answer is **YES**; otherwise **NO**.

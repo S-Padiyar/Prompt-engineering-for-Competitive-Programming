@@ -1,0 +1,102 @@
+F. Triangle Formation
+time limit per test5 seconds
+memory limit per test256 megabytes
+You are given n
+ sticks, numbered from 1
+ to n
+. The length of the i
+-th stick is ai
+.
+
+You need to answer q
+ queries. In each query, you are given two integers l
+ and r
+ (1≤l<r≤n
+, r−l+1≥6
+). Determine whether it is possible to choose 6
+ distinct sticks from the sticks numbered l
+ to r
+, to form 2
+ non-degenerate triangles∗
+.
+
+∗
+A triangle with side lengths a
+, b
+, and c
+ is called non-degenerate if:
+
+a<b+c
+,
+b<a+c
+, and
+c<a+b
+.
+Input
+The first line contains two integers n
+ and q
+ (6≤n≤105
+, 1≤q≤105
+) — the number of sticks and the number of queries respectively.
+
+The second line contains n
+ integers a1,a2,…,an
+ (1≤ai≤109
+) — ai
+ denotes the length of the i
+-th stick.
+
+Each of the following q
+ lines contains two integers l
+ and r
+ (1≤l<r≤n
+, r−l+1≥6
+) — the parameters of each query.
+
+Output
+For each query, output "YES" (without quotes) if it is possible to form 2
+ triangles, and "NO" (without quotes) otherwise.
+
+You can output the answer in any case (upper or lower). For example, the strings "yEs", "yes", "Yes", and "YES" will be recognized as positive responses.
+
+Example
+InputCopy
+10 5
+5 2 2 10 4 10 6 1 5 3
+1 6
+2 7
+2 8
+5 10
+4 10
+OutputCopy
+YES
+NO
+YES
+NO
+YES
+Note
+In the first query, the lengths of the sticks are [5,2,2,10,4,10]
+. Two sets of sticks [2,4,5]
+ and [2,10,10]
+ can be selected to form 2
+ non-degenerate triangles.
+
+In the second query, the lengths of the sticks are [2,2,10,4,10,6]
+. It can be shown that it is impossible to form 2
+ non-degenerate triangles.
+
+In the third query, the lengths of the sticks are [2,2,10,4,10,6,1]
+. Two sets of sticks [1,2,2]
+ and [4,10,10]
+ can be selected to form 2
+ non-degenerate triangles.
+
+In the fourth query, the lengths of the sticks are [4,10,6,1,5,3]
+. It can be shown that it is impossible to form 2
+ non-degenerate triangles.
+
+In the fifth query, the lengths of the sticks are [10,4,10,6,1,5,3]
+. Two sets of sticks [1,10,10]
+ and [3,4,5]
+ can be selected to form 2
+ non-degenerate triangles.

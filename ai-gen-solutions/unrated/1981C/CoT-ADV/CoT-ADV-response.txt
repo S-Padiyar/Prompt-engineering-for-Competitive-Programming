@@ -1,0 +1,284 @@
+**Problem Restatement**  
+We have an array \(a'\) of length \(n\), where some entries are “missing” (marked \(-1\)) and the rest are positive.  We want to fill in the \(-1\) positions to obtain a positive array \(b\) (all \(1 \le b_i \le 10^9\)) such that:
+
+1. Wherever \(a'_i\neq -1\), we must have \(b_i = a'_i\).  
+2. For every adjacent pair \((b_i,b_{i+1})\), **at least one** of
+   - \(b_i = \left\lfloor \dfrac{b_{i+1}}2\right\rfloor\), or  
+   - \(b_{i+1} = \left\lfloor \dfrac{b_i}2\right\rfloor\)  
+   holds.
+
+If no such completion exists, print \(-1\).  Otherwise print any valid \(b\).
+
+**Key Observation**  
+Define a graph on the positive integers where each positive integer \(x\) has edges
+- to its “parent” \(\lfloor x/2\rfloor\) (if that is \(\ge1\)), and
+- to its two “children” \(2x\) and \(2x+1\) (provided they do not exceed \(10^9\)).
+
+One checks easily that an edge \((x,y)\) in this graph is exactly a pair that satisfies 
+\[
+x = \lfloor y/2\rfloor\quad\text{or}\quad y = \lfloor x/2\rfloor,
+\]
+and the problem’s adjacency condition is exactly that consecutive \(b_i\) must be adjacent in that infinite binary‐tree graph.
+
+Therefore any “chunk” of the array between two *known* anchors \(a_i\neq -1\) and \(a_j\neq -1\) must realize a walk in this graph of length \(j-i\).  In a tree, the shortest path length between two nodes \(u,v\) is 
+\[
+\mathsf{dist}(u,v) \;=\; \text{(number of up‐edges)} + \text{(number of down‐edges)}.
+\]
+Since we can always insert back‐and‐forth loops of length 2 (e.g.\ \(x\to 2x\to x\)), one can lengthen any walk beyond the minimum, by any even number.  Hence feasibility between two known anchors \((i,u)\) and \((j,v)\) is
+
+1. \(j-i \ge \mathsf{dist}(u,v)\), and  
+2. \((\,j-i - \mathsf{dist}(u,v)\,)\bmod 2 = 0.\)
+
+At the two ends (before the first known anchor, and after the last), there is no fixed endpoint, so we can choose an appropriate “virtual anchor” to match parity and length constraints, and we again solve a “between‐anchors” problem in the same way.
+
+**Solution Outline**
+
+1. Read the input array \(a'\).  Collect the indices of the *known* entries in a list `pos`.  
+2. If `pos` is empty (all entries missing), one simple valid fill is
+   \[
+     b_i = 
+       \begin{cases}
+         1,& i\text{ odd},\\[6pt]
+         2,& i\text{ even},
+       \end{cases}
+   \]
+   because \((1,2)\) and \((2,1)\) each satisfy the adjacency rule.  
+3. Otherwise:
+
+   a. **Precheck** each consecutive pair of known anchors \((i, a'_i)\), \((j, a'_j)\).  
+      Compute the shortest‐path distance \(\mathsf{dist}(a'_i,a'_j)\) in the binary‐tree graph (by climbing to LCA), and verify \(j-i \ge \mathsf{dist}\) and same parity.  If any check fails, print \(-1\) and move on to the next test case.  
+   
+   b. **Fill segments** one by one with a function `fillSegment(lpos,lval,rpos,rval)` that constructs a walk of length `gap = rpos - lpos` from `lval` to `rval`, padding with 2‐cycles \((x\to 2x\to x)\) at the start as needed to match the exact length.  
+   
+   c. **Before the first known** and **after the last known**, we create appropriate “virtual anchors” so that the gap and parity match, then call the same `fillSegment` procedure and write into the array.  
+
+4. Output the completed array \(b\).
+
+This runs in \(O(n\log(\max a_i))\) time overall, which is acceptable for \(n\le 2\times 10^5\).
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final long MAXV = 1_000_000_000L;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        int t = Integer.parseInt(in.readLine().trim());
+        while (t-- > 0) {
+            int n = Integer.parseInt(in.readLine().trim());
+            long[] a = new long[n+1];
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            List<Integer> pos = new ArrayList<>();
+            for (int i = 1; i <= n; i++) {
+                a[i] = Long.parseLong(st.nextToken());
+                if (a[i] != -1) pos.add(i);
+            }
+
+            // Case 1: everything is -1 => simple alternating fill 1,2,1,2,...
+            if (pos.isEmpty()) {
+                for (int i = 1; i <= n; i++) {
+                    sb.append((i % 2 == 1 ? 1 : 2)).append(' ');
+                }
+                sb.append('\n');
+                continue;
+            }
+
+            // Prepare result array, copy known entries
+            long[] b = new long[n+2];
+            for (int p : pos) b[p] = a[p];
+
+            // Pre‐check feasibility between known anchors
+            boolean ok = true;
+            for (int i = 0; i + 1 < pos.size(); i++) {
+                int p1 = pos.get(i), p2 = pos.get(i+1);
+                long v1 = a[p1], v2 = a[p2];
+                int gap = p2 - p1;
+                int d = distanceInBinaryTree(v1, v2);
+                if (d > gap || ((gap - d) & 1) != 0) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (!ok) {
+                sb.append("-1\n");
+                continue;
+            }
+
+            // A helper to fill a gap between two anchors (lpos, lval) => (rpos, rval)
+            // with exactly (rpos - lpos) steps in the tree, padding by 2‐cycles at the start.
+            // We then write into b[] for all positions in [lpos..rpos].
+            class SegmentFiller {
+                List<Long> fill(int lp, long lv, int rp, long rv) {
+                    int gap = rp - lp;
+                    // 1) build the shortest path from lv to rv
+                    List<Long> basePath = getShortestPath(lv, rv);
+                    int baseLen = basePath.size() - 1;     // number of edges
+                    int extra = gap - baseLen;
+                    // pad by 2‐cycles at lv
+                    List<Long> walk = new ArrayList<>(gap + 1);
+                    walk.add(lv);
+                    for (int k = 0; k < extra/2; k++) {
+                        walk.add(2*lv);
+                        walk.add(lv);
+                    }
+                    // append the remainder of the path
+                    for (int i = 1; i < basePath.size(); i++) {
+                        walk.add(basePath.get(i));
+                    }
+                    return walk;
+                }
+            }
+            SegmentFiller sf = new SegmentFiller();
+
+            // Fill the segment before the first known anchor, if any
+            int first = pos.get(0);
+            if (first > 1) {
+                long rv = a[first];
+                int gap = first - 0;
+                // choose an X so that (gap, dist(X, rv)) match parity
+                long lv = (gap % 2 == 0 ? rv : makeNeighbor(rv));
+                List<Long> walk = sf.fill(0, lv, first, rv);
+                // write walk[1..first] into b[1..first]
+                for (int i = 1; i <= first; i++) {
+                    b[i] = walk.get(i);
+                }
+            }
+
+            // Fill between known anchors
+            for (int i = 0; i + 1 < pos.size(); i++) {
+                int lpos = pos.get(i), rpos = pos.get(i+1);
+                long lval = b[lpos], rval = b[rpos];
+                List<Long> walk = sf.fill(lpos, lval, rpos, rval);
+                for (int k = 0; k < walk.size(); k++) {
+                    int idx = lpos + k;
+                    b[idx] = walk.get(k);
+                }
+            }
+
+            // Fill after the last known anchor, if any
+            int last = pos.get(pos.size()-1);
+            if (last < n) {
+                long lv = b[last];
+                int gap = (n+1) - last;
+                long rv = (gap % 2 == 0 ? lv : makeNeighbor(lv));
+                List<Long> walk = sf.fill(last, lv, n+1, rv);
+                // assign walk[1..n-last] into b[last+1..n]
+                for (int k = 1; k < walk.size() && last + k <= n; k++) {
+                    b[last + k] = walk.get(k);
+                }
+            }
+
+            // Output result
+            for (int i = 1; i <= n; i++) {
+                sb.append(b[i]).append(' ');
+            }
+            sb.append('\n');
+        }
+
+        System.out.print(sb.toString());
+    }
+
+    /**  
+     * Compute the distance between two positive integers u,v in the infinite
+     * binary‐tree graph (parent = floor(x/2), children = 2x,2x+1).
+     */
+    static int distanceInBinaryTree(long u, long v) {
+        // climb ancestors of u
+        Map<Long,Integer> distU = new HashMap<>();
+        long x = u;
+        int d = 0;
+        while (x >= 1) {
+            distU.put(x, d++);
+            if (x == 1) break;
+            x /= 2;
+        }
+        // climb from v until we find a common ancestor
+        long y = v;
+        int d2 = 0;
+        while (y >= 1) {
+            if (distU.containsKey(y)) {
+                return distU.get(y) + d2;
+            }
+            y /= 2;
+            d2++;
+        }
+        // should never happen, the root=1 is common
+        return Integer.MAX_VALUE;
+    }
+
+    /**
+     * Construct the shortest path (list of nodes) in that tree from u to v.
+     * We find the LCA by marking ancestors of u, then climb v.
+     */
+    static List<Long> getShortestPath(long u, long v) {
+        // mark ancestors of u
+        Map<Long,Integer> distU = new HashMap<>();
+        List<Long> ancU = new ArrayList<>();
+        long x = u;
+        int d = 0;
+        while (x >= 1) {
+            distU.put(x, d++);
+            ancU.add(x);
+            if (x == 1) break;
+            x /= 2;
+        }
+        // climb from v to find LCA
+        long y = v;
+        int d2 = 0;
+        while (y >= 1 && !distU.containsKey(y)) {
+            y /= 2;
+            d2++;
+        }
+        long lca = y;
+        int du = distU.get(lca);
+        int dv = d2;
+
+        // build path u -> ... -> lca
+        List<Long> path = new ArrayList<>();
+        // ancU[0] = u, ancU[1] = u/2, ..., ancU[du] = lca
+        for (int i = 0; i <= du; i++) {
+            path.add(ancU.get(i));
+        }
+
+        // build path from lca down to v by retracing v's climb
+        List<Long> down = new ArrayList<>();
+        y = v;
+        while (y != lca) {
+            down.add(y);
+            y /= 2;
+        }
+        Collections.reverse(down);
+
+        // append
+        path.addAll(down);
+        return path;
+    }
+
+    /**  
+     * Pick one neighbor of x (parent if >=1, otherwise a valid child)
+     * so as to shift parity of distance by exactly one
+     */
+    static long makeNeighbor(long x) {
+        long p = x/2;
+        if (p >= 1) return p;
+        // if x=1, parent=0 not valid, go to child 2*1=2
+        return 2*x;
+    }
+}
+```
+
+**How It Works**  
+- We view valid pairs \((b_i,b_{i+1})\) as edges in an infinite binary‐tree (“parent = \(\lfloor x/2\rfloor\), two children = \(2x\), \(2x+1\)”).  
+- Between any two *known* anchors \((i,u)\) and \((j,v)\) we must realize a walk of exactly \(j-i\) edges in that tree.  The minimum (shortest‐path) distance \(\mathsf{dist}(u,v)\) is found by climbing to the lowest common ancestor (LCA).  We allow padding by back‐and‐forth loops of length 2, so any even surplus beyond the shortest distance is also realizable.  
+- At the array boundaries (before the first known, after the last known) we introduce a “virtual anchor” chosen so that length & parity match, then use the very same segment‐filling machinery.  
+- If no known anchors exist at all, we simply alternate \(\;1,2,1,2,\dots\), which trivially satisfies every adjacency.
+
+**Complexity**  
+- Each test:  
+  - We do at most \(O(n)\) segments.  
+  - Computing \(\mathsf{dist}\) and a base path between two values \(\le 10^8\) costs \(O(\log(\max a_i))\).  
+  - Walking and writing out at most \(O(n)\) entries.  
+- Overall \(O\bigl(\sum n\cdot \log(\max a_i)\bigr)\), well within the \(2\times10^5\) total constraint.

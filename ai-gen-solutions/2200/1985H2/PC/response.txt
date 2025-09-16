@@ -1,0 +1,338 @@
+**Analysis**
+
+We have an \(n\times m\) grid of `'#'` (black) and `'.'` (white) cells.  We may do at most one operation:
+
+– Choose a row \(r\) and a column \(c\).  
+– Paint every cell in row \(r\) and every cell in column \(c\) black (`'#'`).
+
+After that (or doing nothing), we look at the sizes of connected components of black cells (4-connected) and want the size of the largest component.
+
+Even with a single operation, it is not obvious which row/column to pick, nor how to quickly evaluate the resulting component size for every \((r,c)\).  A brute force scanning all \(n\cdot m\) possibilities and doing a graph traversal each time would be far too expensive when \(n\cdot m\) can be up to \(10^6\).
+
+Instead we observe:
+
+1.  **Initial components**  
+    First we find the connected components of `'#'` in the original grid by a single union-find (DSU) pass.  Let
+    \[
+      \text{compSize}[i]=\text{size of component }i,\quad i=1\ldots K.
+    \]
+    We also record the maximum of these initial sizes, call it \(\text{bestNoOp}\), because we always have the *option* to do no operation.
+
+2.  **Contribution of an operation**  
+    Suppose we do pick row \(r\) and column \(c\).  Then every cell in that entire row and column becomes black.  Let
+    \[
+       S_r=\{(r,0),(r,1),\dots,(r,m-1)\},\quad
+       S_c=\{(0,c),(1,c),\dots,(n-1,c)\}.
+    \]
+    The new black cells can connect some original components together (and also add brand-new black cells where there were dots).
+
+3.  **Counting efficiently**  
+    It turns out one can show that the size of the merged component that contains all of \(S_r\cup S_c\) is
+    \[
+      \sum_{\substack{\text{original comp }i\\\text{that touches}\\(S_r\cup S_c)}} \!\!\!\text{compSize}[i]
+      \;+\;
+      \bigl(\#\hbox{ of originally-white cells in }S_r\cup S_c\bigr).
+    \]
+    We must be careful not to double-count the cells of an original component that happen to lie *in* \(S_r\cup S_c\); those are already counted in \(\text{compSize}[i]\).  Instead we simply add in the *number of dots* in row \(r\) plus the number of dots in column \(c\), minus one if the \((r,c)\) cell was a dot (so as not to double-count that intersection).
+
+4.  **Data structures**  
+   - Let
+     \[
+       s_r[r]\;=\;\sum_{\substack{\text{comp }i\\\text{ that has a cell}\\\text{in row }r\pm1}}
+                     \!\!\!\text{compSize}[i],
+       \]
+     i.e.\ the total size of all original components that touch row \(r\), row \(r-1\), or row \(r+1\).  
+     
+     Similarly define
+     \[
+       s_c[c]\;=\;\sum_{\substack{\text{comp }i\\\text{ that has a cell}\\\text{in col }c\pm1}}
+                     \!\!\!\text{compSize}[i].
+     \]
+   - Let \(\text{dotRow}[r]\) = # of dots in row \(r\), and \(\text{dotCol}[c]\) = # of dots in column \(c\).
+   - If we naïvely added \(s_r[r]+s_c[c]\) we would double-count exactly the sum of those components that touch *both* row \(r\pm1\) and column \(c\pm1\).  We call that overlap \(\text{cross}[r][c]\).  
+   - Finally
+     \[
+       \text{result}(r,c)
+         =\;s_r[r]+s_c[c]
+          +(\hbox{dotRow}[r]+\hbox{dotCol}[c] - [\hbox{grid}[r][c]=='.'?1:0])
+         \;-\;\text{cross}[r][c].
+     \]
+     We maximize this over all \((r,c)\), and also compare with the no‐op answer \(\text{bestNoOp}\).
+
+5.  **Building \(\text{cross}[\,]\)**  
+   Let each component \(i\) “influences” the set of rows
+   \[
+     R_i=\{\,r-1,r,r+1\;\mid\text{component \(i\) has any cell in row }r\}\cap[0,n-1],
+   \]
+   and the set of columns
+   \[
+     C_i=\{\,c-1,c,c+1\;\mid\text{component \(i\) has any cell in col }c\}\cap[0,m-1].
+   \]
+   Then for every \((r,c)\in R_i\times C_i\) we add \(\text{compSize}[i]\) to \(\text{cross}[r][c]\).  
+   
+   Concretely, we collect all raw pairs \((i,r')\) and \((i,c')\) as 64-bit keys, sort & unique them, then for each component gather its small list \(R_i\) and \(C_i\) and do the double loop \(\forall r\in R_i,\forall c\in C_i:\)
+   ```  
+      cross[r*m + c] += compSize[i];
+   ```
+   This total work sums over all components of \(|R_i|\times|C_i|\), which in the worst case is still \(O(nm)\) or a few times \(nm\).  Since \(nm\le10^6\), it runs in time.
+
+Overall time per test is
+     – one DSU pass: \(O(nm)\).  
+     – computing \(s_r,s_c,\text{dotRow},\text{dotCol}\): \(O(nm)\).  
+     – sorting the raw “row‐pairs” and “col‐pairs”: each of size up to \(3\cdot(\#\text{black cells})\le3nm\), so \(O(nm\log(nm))\).  
+     – filling the cross array by “per‐component double loops” \(\sum_i|R_i|\cdot|C_i|\), again \(O(nm)\).  
+     – final scan of all \((r,c)\) in \(O(nm)\).  
+
+Since \(\sum nm\le10^6\) over all test cases, this comfortably fits in 2 s in Java.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static int[] parent, sz, rootToComp;
+    static int findRoot(int x) {
+        // path compression
+        if (parent[x] != x) parent[x] = findRoot(parent[x]);
+        return parent[x];
+    }
+    static void union(int a, int b) {
+        a = findRoot(a);
+        b = findRoot(b);
+        if (a == b) return;
+        // union by size
+        if (sz[a] < sz[b]) {
+            parent[a] = b;
+            sz[b] += sz[a];
+        } else {
+            parent[b] = a;
+            sz[a] += sz[b];
+        }
+    }
+    public static void main(String[] args) throws IOException {
+        BufferedReader   br = new BufferedReader(new InputStreamReader(System.in));
+        BufferedWriter   bw = new BufferedWriter(new OutputStreamWriter(System.out));
+        StringTokenizer  st = new StringTokenizer(br.readLine());
+        int t = Integer.parseInt(st.nextToken());
+        while (t-- > 0) {
+            // read n, m
+            st = new StringTokenizer(br.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int m = Integer.parseInt(st.nextToken());
+            int N = n*m;
+
+            // read grid into a flat char array
+            char[] grid = new char[N];
+            int[] dotRow = new int[n], dotCol = new int[m];
+            int cellCount = 0;  // number of '#' cells
+            for (int i=0; i<n; i++) {
+                String row = br.readLine();
+                for (int j=0; j<m; j++) {
+                    char c = row.charAt(j);
+                    grid[i*m + j] = c;
+                    if (c == '.') {
+                        dotRow[i]++;
+                        dotCol[j]++;
+                    } else {
+                        cellCount++;
+                    }
+                }
+            }
+
+            // 1) Build DSU of all '#' cells
+            parent = new int[N];
+            sz     = new int[N];
+            for (int i=0; i<N; i++) {
+                if (grid[i]=='#') {
+                    parent[i] = i;
+                    sz[i]     = 1;
+                } else {
+                    parent[i] = -1;  // mark white cells
+                }
+            }
+            // union horizontally and vertically
+            for (int i=0; i<n; i++) {
+                for (int j=0; j<m; j++) {
+                    if (grid[i*m+j]=='#') {
+                        int p = i*m+j;
+                        if (i+1<n && grid[(i+1)*m+j]=='#') union(p,(i+1)*m+j);
+                        if (j+1<m && grid[i*m+(j+1)]=='#') union(p,i*m+(j+1));
+                    }
+                }
+            }
+
+            // 2) remap each root to a component index 1..K
+            rootToComp = new int[N];
+            int compCnt=0;
+            // compSizes[1..compCnt]
+            int[] compSize = new int[N+1];
+            int bestNoOp = 0;
+            for (int i=0; i<N; i++) {
+                if (grid[i]=='#') {
+                    int r = findRoot(i);
+                    if (rootToComp[r]==0) {
+                        rootToComp[r] = ++compCnt;
+                        compSize[compCnt] = sz[r];
+                        bestNoOp = Math.max(bestNoOp, sz[r]);
+                    }
+                }
+            }
+
+            // 3) We will build 2 big arrays of raw (compID, row') and (compID, col')
+            //    Each '#' cell contributes up to 3 row' and 3 col' entries.
+            long[] rowRaw = new long[3*cellCount];
+            long[] colRaw = new long[3*cellCount];
+            int rptr=0, cptr=0;
+
+            // We'll also compute s_r, s_c in one pass
+            int[] s_r = new int[n], s_c = new int[m];
+            int[] lastR = new int[n], lastC = new int[m];
+            // lastR[r] == compID means we already added compID to s_r[r]
+
+            for (int i=0; i<n; i++) {
+                for (int j=0; j<m; j++) {
+                    if (grid[i*m+j]=='#') {
+                        int compID = rootToComp[ findRoot(i*m+j) ];
+                        // mark row-range
+                        for (int dr=-1; dr<=1; dr++) {
+                            int rr = i+dr;
+                            if (rr>=0 && rr<n) {
+                                if (lastR[rr]!=compID) {
+                                    lastR[rr] = compID;
+                                    s_r[rr] += compSize[compID];
+                                }
+                                // also record the raw pair
+                                rowRaw[rptr++] = (((long)compID)<<32) | (rr & 0xffffffffL);
+                            }
+                        }
+                        // mark col-range
+                        for (int dc=-1; dc<=1; dc++) {
+                            int cc = j+dc;
+                            if (cc>=0 && cc<m) {
+                                if (lastC[cc]!=compID) {
+                                    lastC[cc] = compID;
+                                    s_c[cc] += compSize[compID];
+                                }
+                                // raw pair
+                                colRaw[cptr++] = (((long)compID)<<32) | (cc & 0xffffffffL);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 4) Sort & unique rowRaw[0..rptr) and colRaw[0..cptr)
+            Arrays.sort(rowRaw, 0, rptr);
+            {
+                int w=0;
+                for (int i=0; i<rptr; i++){
+                    if (i==0 || rowRaw[i]!=rowRaw[i-1])
+                        rowRaw[w++] = rowRaw[i];
+                }
+                rptr = w;
+            }
+
+            Arrays.sort(colRaw, 0, cptr);
+            {
+                int w=0;
+                for (int i=0; i<cptr; i++){
+                    if (i==0 || colRaw[i]!=colRaw[i-1])
+                        colRaw[w++] = colRaw[i];
+                }
+                cptr = w;
+            }
+
+            // 5) Build the cross array by walking each compID's chunk
+            int[] cross = new int[N];  // cross[r*m + c]
+            int pR=0, pC=0;
+
+            for (int compID=1; compID<=compCnt; compID++){
+                // gather that comp's row-list
+                ArrayList<Integer> rowsList = new ArrayList<>();
+                while (pR<rptr && (int)(rowRaw[pR]>>>32) < compID) pR++;
+                while (pR<rptr && (int)(rowRaw[pR]>>>32) == compID){
+                    int rr = (int)(rowRaw[pR] & 0xffffffffL);
+                    rowsList.add(rr);
+                    pR++;
+                }
+                // gather that comp's col-list
+                ArrayList<Integer> colsList = new ArrayList<>();
+                while (pC<cptr && (int)(colRaw[pC]>>>32) < compID) pC++;
+                while (pC<cptr && (int)(colRaw[pC]>>>32) == compID){
+                    int cc = (int)(colRaw[pC] & 0xffffffffL);
+                    colsList.add(cc);
+                    pC++;
+                }
+
+                // do the double loop
+                int add = compSize[compID];
+                for (int rr: rowsList) {
+                    int base = rr*m;
+                    for (int cc: colsList) {
+                        cross[base + cc] += add;
+                    }
+                }
+            }
+
+            // 6) Precompute F[r]=s_r[r]+dotRow[r], G[c]=s_c[c]+dotCol[c]
+            int[] F = new int[n], G = new int[m];
+            for (int i=0; i<n; i++) F[i] = s_r[i] + dotRow[i];
+            for (int j=0; j<m; j++) G[j] = s_c[j] + dotCol[j];
+
+            // 7) Scan all (r,c), compute
+            //    val = F[r] + G[c] - cross[r*m+c] - (grid[r*m+c]=='.'?1:0)
+            //    and keep max
+            int answer = bestNoOp;
+            for (int i=0; i<n; i++){
+                int rowBase = i*m;
+                for (int j=0; j<m; j++){
+                    int v = F[i] + G[j] - cross[rowBase+j]
+                                - (grid[rowBase+j]=='.' ? 1 : 0);
+                    if (v>answer) answer=v;
+                }
+            }
+
+            // output
+            bw.write(answer+"\n");
+        }
+
+        bw.flush();
+    }
+}
+```
+
+**Explanation of the Key Steps**
+
+1. **Union‐Find (DSU)**  
+   We first merge all adjacent `'#'` cells into components in one pass (looking right and down only).  After that we compress and give each root a small index `1..K`.
+
+2. **Row/Column Influence**  
+   A component of size \(S\) that has any cell in row \(r\) will, after the operation, connect to the cross formed by row \(r-1,r,r+1\).  Hence it contributes \(S\) to `s_r[r-1]`, `s_r[r]`, and `s_r[r+1]` (if in range).  We do exactly the same for columns to build `s_c[c]`.
+
+3. **Dots Count**  
+   We also count how many dots lie in each row/column; those will become newly painted black if we paint that row/column.
+
+4. **Avoiding Double Counting**  
+   If we simply added `s_r[r] + s_c[c]`, any component appearing in both would be counted twice.  We subtract out exactly those overlaps into a matrix `cross[r][c]`, computed by  
+   \[
+     \text{for each component }i:\quad
+       \forall r'\in\{r-1,r,r+1\},\forall c'\in\{c-1,c,c+1\}: 
+       \quad
+       \text{cross}[\,r'\,,\,c'\,] \;+=\;\text{compSize}[i].
+   \]
+   Implementing that naïvely for each component’s full set of row\(×\)col pairs is still \(O(nm)\) overall, since each component’s row‐set and column‐set are small (at most 3 times the number of distinct rows or columns it originally touched).
+
+5. **Final Scan**  
+   At the end
+   \[
+     \text{result}(r,c)
+       =\;s_r[r]+s_c[c]
+        +( \mathrm{dotRow}[r]+\mathrm{dotCol}[c]
+           -[\text{if }(r,c)\text{ was a dot }?1:0] )
+        -\text{cross}[r][c].
+   \]
+   We maximize this over all \(0\le r<n,\;0\le c<m\), and also compare with the best “no operation” size.
+
+This runs in \(O(nm\log(nm))\) overall and easily fits under the given limits for \(\sum nm\le10^6\).

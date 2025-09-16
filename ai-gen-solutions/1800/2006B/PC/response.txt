@@ -1,0 +1,346 @@
+**Analysis**
+
+We have a rooted tree on \(n\) vertices (rooted at \(1\)), given in the special “DFS‐order” labeling: each node \(i>1\) has a parent \(p_i<i\), and the labels of each subtree form a contiguous interval \([i,r_i]\).  The edge \((p_i,i)\) has weight \(t_i\).  Initially all \(t_i\) are unknown nonnegative integers summing to
+\[
+ \sum_{i=2}^n t_i = w.
+\]
+We then receive \(n-1\) events, each revealing a single edge‐weight \(t_x=y\).  After each reveal, for each \(i=1,\dots,n\) we wish to know
+\[
+\max\; \mathrm{dist}(i,i\!+\!1\pmod n)
+\]
+subject only to
+
+- the already‐revealed edges keep their known weights,
+- the remaining (unknown) edges are nonnegative integers summing to the remaining total \(w-\sum_{\rm known}t_x\),
+- we may re‐choose the unknown weights *independently for each pair* to maximize that single distance.
+
+Finally we output the *sum* of those \(n\) maxima for each event.
+
+---
+
+**Key observations**
+
+1.  The distance between two nodes \(u,v\) is the sum of edge‐weights along the unique path \(P(u,v)\).  For any path, the maximum possible sum is
+\[
+\bigl(\sum_{\substack{e\in P\cap \text{(known edges)}}}t_e\bigr)
+\;+\;
+\bigl(\sum_{\substack{e\in P\cap \text{(unknown edges)}}}t_e\bigr)
+\;\le\;
+\bigl(\sum_{\substack{e\in P\cap \text{(known)}}}t_e\bigr)
+\;+\;
+\bigl(\sum_{\substack{e\text{ unknown}}}t_e\bigr).
+\]
+And we *can* achieve equality as long as \(P\) contains at least one unknown edge (we dump the entire remaining unknown‐sum onto one edge of \(P\)).
+
+2.  Let
+   - \(S_{\rm known}=\sum\) of all revealed \(t_x\),
+   - \(R=w-S_{\rm known}\) = remaining total of the unknown edges,
+   - For each consecutive pair \((i,i+1)\) (with \(n+1\equiv 1\)), let
+     \[
+       F_i=\sum_{e\in P(i,i+1)\cap\mathrm{known}} t_e,
+     \]
+     and let \(\mathbf{1}_i\) be the indicator that \(P(i,i+1)\) has *at least* one unknown edge.
+
+   Then
+   \[
+     \max\mathrm{dist}(i,i+1)
+     \;=\;F_i \;+\;\mathbf{1}_i\,R.
+   \]
+   Summing over \(i=1\ldots n\) gives
+   \[
+     \sum_{i=1}^n \Bigl(F_i + \mathbf{1}_i\,R\Bigr)
+     = \Bigl(\sum_{i=1}^n F_i\Bigr)\;+\;R\cdot\Bigl(\sum_{i=1}^n \mathbf{1}_i\Bigr).
+   \]
+
+3.  One checks (by a small “DFS‐order adjacency argument”) that *each edge* \((p_x,x)\) appears in exactly *two* of the paths \(P(i,i+1)\).  Hence
+   \[
+     \sum_{i=1}^n F_i
+     =\sum_{x\text{ known}}2\,t_x
+     = 2\,S_{\rm known}.
+   \]
+   Also
+   \[
+     \sum_{i=1}^n \mathbf{1}_i
+     = n \;-\;(\text{# of pairs whose path is *entirely* known}).
+   \]
+   We maintain a counter \(\mathrm{cnt}\) of how many of the \(n\) pairs are already fully known.  Then
+   \[
+     \sum_{i=1}^n \mathbf{1}_i
+     =n-\mathrm{cnt},
+   \]
+   and the total answer after revealing some edges is
+   \[
+     2S_{\rm known}\;+\;(w - S_{\rm known})\,(n-\mathrm{cnt}).
+   \]
+
+4.  **Dynamic maintenance of \(\mathrm{cnt}\).**  Each time we reveal edge \(x\), exactly two of the \(n\) pairs \((i,i+1)\) *use* edge \(x\).  Concretely these two are
+   \[
+     (x-1,x)\quad\text{and}\quad (\,r_x,\;r_x+1\!\bmod n\,),
+   \]
+   where \(r_x\) is the right‐end of \(x\)’s subtree (\(r_x=x+\mathrm{subtree\_size}[x]-1\)).  A pair \((i,i+1)\) becomes *fully known* exactly when its path’s *last* unknown edge is just revealed.  Equivalently, just *before* we mark \(x\) known, that path had exactly one unknown edge (namely \(x\)).  
+
+   Hence for these two pairs we do a quick test:
+
+   – Let \(\mathrm{sumUnknown}(u,v)\) = how many unknown edges remain on \(P(u,v)\).  
+   – If \(\mathrm{sumUnknown}(u,v)=1\), *that* unknown must be \(x\), so this pair now becomes fully known, increment \(\mathrm{cnt}\).
+
+5.  **Data‐structure for \(\mathrm{sumUnknown}(u,v)\).**  We store each edge‐state (“unknown”=1, “known”=0) in a Fenwick tree (BIT) over a Heavy‐Light decomposition of the tree.  An edge \((p_x,x)\) is stored at the position of node \(x\).  Querying the sum of those bits on the path \(u\to v\) is then a standard HLD‐path‐sum.
+
+Each event does two HLD path‐sum queries and one point‐update in the Fenwick tree, plus constant work.  Since we have \(\le2\times10^5\) total vertices/events, overall \(O((n+\!Q)\,\log^2n)\) easily runs in a few seconds in Java.
+
+---
+
+**Implementation in Java**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static int N;
+    static long W;
+    static int[] parent, depth, sz, heavy, head, pos, rightEnd;
+    static List<Integer>[] children;
+    static Fenwick bit;
+    static int curt;
+    static long sumKnown;
+    static int fullyKnownCnt;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer st;
+
+        int T = Integer.parseInt(br.readLine().trim());
+        StringBuilder out = new StringBuilder();
+
+        while (T-- > 0) {
+            st = new StringTokenizer(br.readLine());
+            N = Integer.parseInt(st.nextToken());
+            W = Long.parseLong(st.nextToken());
+
+            parent = new int[N+1];
+            depth  = new int[N+1];
+            sz      = new int[N+1];
+            heavy   = new int[N+1];
+            head    = new int[N+1];
+            pos     = new int[N+1];
+            rightEnd= new int[N+1];
+            children= new List[N+1];
+
+            for (int i = 1; i <= N; i++) {
+                children[i] = new ArrayList<>();
+                sz[i] = 1;
+            }
+
+            // read parents p[2..N]
+            st = new StringTokenizer(br.readLine());
+            for (int i = 2; i <= N; i++) {
+                int p = Integer.parseInt(st.nextToken());
+                parent[i] = p;
+                children[p].add(i);
+            }
+            parent[1] = 0;
+            depth[1] = 0;
+            // depths come easily since p[i] < i
+            for (int i = 2; i <= N; i++) {
+                depth[i] = depth[parent[i]] + 1;
+            }
+
+            // compute subtree sizes
+            for (int i = N; i >= 2; i--) {
+                sz[parent[i]] += sz[i];
+            }
+            // compute rightEnd = i + subtree_size[i] - 1
+            for (int i = 1; i <= N; i++) {
+                rightEnd[i] = i + sz[i] - 1;
+            }
+
+            // find heavy child
+            for (int u = 1; u <= N; u++) {
+                int maxSize = 0, hv = 0;
+                for (int v : children[u]) {
+                    if (sz[v] > maxSize) {
+                        maxSize = sz[v];
+                        hv = v;
+                    }
+                }
+                heavy[u] = hv;
+            }
+
+            // HLD: assign head[] and pos[]
+            curt = 0;
+            bit  = new Fenwick(N);
+            dfsDecompose();
+
+            // initially all edges unknown => BIT[x]=1 for x>1
+            for (int x = 2; x <= N; x++) {
+                bit.update(pos[x], 1);
+            }
+
+            sumKnown = 0L;
+            fullyKnownCnt = 0;
+
+            // process the n-1 events
+            int events = N - 1;
+            for (int e = 0; e < events; e++) {
+                st = new StringTokenizer(br.readLine());
+                int x = Integer.parseInt(st.nextToken());
+                long y = Long.parseLong(st.nextToken());
+
+                // the two pairs that use edge x:
+                //   (x-1,x)   and   (r_x, r_x+1 mod n)
+                int u1 = x - 1, v1 = x;
+                if (pathSum(u1, v1) == 1) {
+                    fullyKnownCnt++;
+                }
+                int r = rightEnd[x];
+                int u2 = r;
+                int v2 = (r == N ? 1 : r + 1);
+                if (pathSum(u2, v2) == 1) {
+                    fullyKnownCnt++;
+                }
+
+                // now mark edge x as known
+                bit.update(pos[x], -1);
+                sumKnown += y;
+
+                // compute answer
+                // 2*sumKnown + (W - sumKnown)*(N - fullyKnownCnt)
+                long rem = W - sumKnown;
+                long ans = 2L*sumKnown + rem*(N - fullyKnownCnt);
+                out.append(ans).append(' ');
+            }
+            out.append('\n');
+        }
+
+        System.out.print(out);
+    }
+
+    // Heavy-Light Decomposition: assign head[u], pos[u] by a manual stack
+    static void dfsDecompose() {
+        Stack<Frame> st = new Stack<>();
+        st.push(new Frame(1, 1, 0, 0));
+
+        while (!st.isEmpty()) {
+            Frame f = st.pop();
+            int u = f.u;
+            if (f.state == 0) {
+                // first time at u
+                head[u] = f.h;
+                pos[u]  = ++curt;
+                // process heavy child first
+                if (heavy[u] != 0) {
+                    // after heavy, return to light‐child stage
+                    st.push(new Frame(u, f.h, 1, 0));
+                    st.push(new Frame(heavy[u], f.h, 0, 0));
+                } else {
+                    // no heavy, proceed to light
+                    st.push(new Frame(u, f.h, 1, 0));
+                }
+            } else {
+                // state==1 => do light children in order
+                int szc = children[u].size();
+                boolean pushed = false;
+                for (int i = f.nextChild; i < szc; i++) {
+                    int v = children[u].get(i);
+                    if (v == heavy[u]) continue;
+                    // resume at nextChild = i+1
+                    st.push(new Frame(u, f.h, 1, i+1));
+                    st.push(new Frame(v, v, 0, 0));
+                    pushed = true;
+                    break;
+                }
+                // if none left, we pop off f
+            }
+        }
+    }
+
+    // sum of the "unknown" bits on the path u->v
+    static int pathSum(int u, int v) {
+        int res = 0;
+        while (head[u] != head[v]) {
+            if (depth[head[u]] >= depth[head[v]]) {
+                res += bit.rangeSum(pos[head[u]], pos[u]);
+                u = parent[head[u]];
+            } else {
+                res += bit.rangeSum(pos[head[v]], pos[v]);
+                v = parent[head[v]];
+            }
+        }
+        // now on same chain
+        if (u != v) {
+            if (depth[u] > depth[v]) {
+                // sum from pos[v]+1 .. pos[u]
+                res += bit.rangeSum(pos[v]+1, pos[u]);
+            } else {
+                // sum from pos[u]+1 .. pos[v]
+                res += bit.rangeSum(pos[u]+1, pos[v]);
+            }
+        }
+        return res;
+    }
+
+    // Fenwick (BIT) for point‐update, prefix‐sum
+    static class Fenwick {
+        int n;
+        int[] f;
+        Fenwick(int n) { this.n = n; f = new int[n+1]; }
+        void update(int i, int d) {
+            for (; i <= n; i += i&-i) f[i] += d;
+        }
+        int query(int i) {
+            int s = 0;
+            for (; i > 0; i -= i&-i) s += f[i];
+            return s;
+        }
+        int rangeSum(int l, int r) {
+            if (l>r) return 0;
+            return query(r) - query(l-1);
+        }
+    }
+
+    // a little helper for the manual‐stack HLD
+    static class Frame {
+        int u, h, state, nextChild;
+        Frame(int _u, int _h, int _st, int _nc) {
+            u = _u; h = _h; state = _st; nextChild = _nc;
+        }
+    }
+}
+```
+
+**Explanation of the main parts**
+
+1. **Preprocessing**  
+   We read the parent array `p[2..n]`.  We build the children‐lists and compute
+   - `sz[u]` = size of subtree rooted at `u` (by accumulating children in reverse order  `n..2`),
+   - `rightEnd[u] = u + sz[u] - 1`, so the DFS‐interval of `u` is `[u,\,rightEnd[u]]`.
+
+2. **Heavy‐Light Decomposition**  
+   We pick each node’s “heavy child” = the one child of maximum subtree‐size, then do a standard HLD to assign each node
+   - `head[u]` = the head of the current heavy‐path containing `u`,
+   - `pos[u]` = a global index from \(1\) to \(n\).  
+   We store the “unknown‐flag” of edge \((p_u,u)\) at position `pos[u]` in a Fenwick tree; node `1` has no parent‐edge so is always 0.
+
+3. **Fenwick Tree**  
+   We start with all edges unknown, so we initialize the Fenwick with 1’s at `pos[2..n]`.  An update to “reveal” edge `x` does `update(pos[x], -1)`.
+
+4. **Counting fully‐known pairs**  
+   Each edge `x` appears in exactly two of the consecutive‐label pairs:
+   - between vertex `x-1` and `x`,
+   - between `rightEnd[x]` and `(rightEnd[x] mod n)+1`.  
+   *Before* we mark `x` known, we query how many “unknown” edges remain on each of these two paths.  If exactly 1 is left, it *must* be `x`, so that pair now becomes fully known (increment `fullyKnownCnt`).
+
+5. **Answer formula**  
+   Let
+   - `sumKnown` = sum of all revealed \(t_x\),
+   - `rem = W - sumKnown`,
+   - `fullyKnownCnt` = how many of the \(n\) pairs have zero unknown edges,
+   - so `n - fullyKnownCnt` = how many pairs still have ≥1 unknown edge.
+   Then the total sum of maxima is
+   \[
+     2\cdot\text{sumKnown}
+     \;+\;(W - \text{sumKnown})\;\bigl(n - \text{fullyKnownCnt}\bigr).
+   \]
+
+All operations (Fenwick queries/updates and HLD path‐sums) run in \(O(\log n)\) each, with two path‐sums per event, so overall \(O((n+Q)\log^2n)\). This easily handles up to \(2\times10^5\) total vertices/events in a few seconds.

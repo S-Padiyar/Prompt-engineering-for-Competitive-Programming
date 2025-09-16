@@ -1,0 +1,148 @@
+**Restatement**
+
+We have an \(n\times n\) grid where row \(i\) has its first \(a_i\) cells black (columns \(1,2,\dots,a_i\)), and the rest white. We want to turn *every* cell white using two kinds of operations, each costing 1:
+
+1. **2×2 subgrid-whitening**: Choose any consecutive rows \(i,i+1\) and columns \(j,j+1\); paint those 4 cells white.
+2. **Whole-row whitening**: Choose any row \(i\) and paint *all* \(n\) cells of that row white.
+
+We need the minimum total number of these operations to make the entire grid white.
+
+**Key Observations and Reduction**
+
+1. **Rows with \(a_i\ge5\) are always cheaper to clear by the single‐row operation.**  
+   A 2×2 op clears at most 2 black cells in that row (it covers two rows). To clear \(\ge5\) black cells by only 2×2 blocks (using blocks both above and below) would cost \(\ge3\) such blocks, i.e.\ \(\ge3\) operations, whereas a single‐row operation costs only 1.  
+   Hence every row \(i\) with \(a_i\ge5\) we *must* pay 1 for a whole-row op; blocks on its edges would only increase cost.
+
+2. **All other \(a_i\le4\) form independent “segments” in the row-index.**  
+   We split the rows into maximal contiguous runs where \(a_i\le4\). Across each boundary where \(a_i\ge5\), we forcibly pay +1 and cannot place any 2×2 blocks that cross that boundary. Thus the problem reduces to solving each segment of rows with \(0\le a_i\le4\), plus a simple count of how many rows \(a_i\ge5\).
+
+3. **Within a segment, we use a small DP.**  
+   - Each row \(i\) in the segment has between 0 and 4 black cells; define  
+     \[
+       b_i \;=\;\Bigl\lceil \frac{a_i}{2}\Bigr\rceil
+       \quad(\text{the number of “pairs” of black cells it has}).
+     \]  
+   - A 2×2 block placed between rows \(i\) and \(i+1\) reduces each of those two rows by 2 black cells; think of it as “giving 1 unit” of coverage toward both row \(i\) and row \(i+1\).  
+   - We can place at most one such block between rows \(i\) and \(i+1\) *if and only if* both \(a_i\ge2\) and \(a_{i+1}\ge2\).  (Since \(a_i\le4\), we never need more than 1 block there.)
+   - If for row \(i\) the total coverage from the block above \((c_{i-1})\) plus the block below \((c_i)\) is \(\ge b_i\), then row \(i\) is fully cleared by those blocks and needs *no* whole‐row op; otherwise we pay +1 to do the whole‐row op.
+
+   Thus in each segment we do a linear DP over rows \(i\), carrying in a state \(prev\in\{0,1\}\) = “did we place a block between \(i-1\) and \(i\)?”.  At step \(i\) we decide whether to place the block \((c_i=0\text{ or }1)\) between \(i\) and \(i+1\) (if allowed), pay cost \(c_i\), and possibly pay +1 if \((prev+c_i)<b_i\).  We pass `prev = c_i` to the next row.  At the segment ends we force the “outside” block‐placement to be 0.  This DP runs in \(O(\text{segment length}\times2\times2)\).
+
+Summing over all segments and adding the count of rows with \(a_i\ge5\) gives the global optimum in \(O(n)\) per test.
+
+---
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(br.readLine().trim());
+        StringBuilder output = new StringBuilder();
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            int[] a = new int[n];
+            StringTokenizer st = new StringTokenizer(br.readLine(), " ");
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(st.nextToken());
+            }
+
+            int answer = 0;
+            // First, any row with a[i] >= 5 must be row‐dyed at cost 1, and
+            // it breaks any block‐placement across that boundary.
+            for (int i = 0; i < n; i++) {
+                if (a[i] >= 5) {
+                    answer++;
+                }
+            }
+
+            // Process each maximal contiguous segment where 0 <= a[i] <= 4 by DP
+            int i = 0;
+            while (i < n) {
+                // skip pre‐dyed rows
+                if (a[i] >= 5) {
+                    i++;
+                    continue;
+                }
+                // segment start
+                int start = i;
+                while (i < n && a[i] <= 4) {
+                    i++;
+                }
+                int end = i - 1;  // [start..end] all have a[i]<=4
+
+                // Precompute b[i] = ceil(a[i]/2), and eligibility of blocks between i and i+1
+                int len = end - start + 1;
+                int[] b = new int[len];
+                boolean[] canBlockNext = new boolean[len]; 
+                for (int j = 0; j < len; j++) {
+                    b[j] = (a[start + j] + 1) >> 1;  // ceil(a/2)
+                }
+                for (int j = 0; j + 1 < len; j++) {
+                    // we can place one 2×2 block between row (start+j) and (start+j+1)
+                    canBlockNext[j] = (a[start + j] >= 2 && a[start + j + 1] >= 2);
+                }
+                canBlockNext[len - 1] = false;  // no block beyond segment end
+
+                // dpPrev[c] = min cost up to row j-1 with prev = c (0 or 1)
+                final int INF = 1_000_000_000;
+                int[] dpPrev = new int[2], dpCur = new int[2];
+                dpPrev[0] = 0;      // before the first row, we placed no block
+                dpPrev[1] = INF;    // impossible
+
+                // Walk through the rows in this segment
+                for (int j = 0; j < len; j++) {
+                    dpCur[0] = dpCur[1] = INF;
+                    for (int prev = 0; prev <= 1; prev++) {
+                        if (dpPrev[prev] >= INF) continue;
+                        // choose c = 0 or 1 if allowed
+                        for (int c = 0; c <= 1; c++) {
+                            if (c == 1 && !canBlockNext[j]) continue;
+                            // row‐dye needed if (prev + c) < b[j]
+                            int needRowDye = (prev + c < b[j]) ? 1 : 0;
+                            int cost = dpPrev[prev] + c + needRowDye;
+                            if (cost < dpCur[c]) {
+                                dpCur[c] = cost;
+                            }
+                        }
+                    }
+                    // shift
+                    dpPrev[0] = dpCur[0];
+                    dpPrev[1] = dpCur[1];
+                }
+                // at segment end we must have placed c=0 beyond it
+                answer += dpPrev[0];
+            }
+
+            output.append(answer).append('\n');
+        }
+
+        System.out.print(output);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. **Rows with \(a_i \ge 5\)**  
+   We immediately pay +1 per such row (whole‐row op), and treat them as “boundaries” across which no 2×2 block may cross.
+
+2. **Segments with \(0\le a_i\le4\)**  
+   Within each segment, a row \(i\) has at most 4 black cells, so we define  
+   \[
+     b_i = \Bigl\lceil \frac{a_i}{2}\Bigr\rceil\quad(\in\{0,1,2\}).
+   \]  
+   We may place at most one 2×2 block between rows \(i\) and \(i+1\) if both rows have \(\ge2\) black cells (so that block actually covers black cells).  That block contributes \(1\) toward covering *each* row’s black‐pairs.  If after considering the block above \((prev)\) and block below \((c)\), the total coverage \(\ge b_i\), then row \(i\) needs no whole‐row op; otherwise we pay +1.
+
+3. **DP over each segment**  
+   We carry `dpPrev[prev]` = best cost so far with `prev ∈ {0,1}` indicating whether we placed a block immediately above the *next* row.  At row \(j\) in the segment we choose `c ∈ {0,1}` if that edge is allowed, pay `c` for that block, plus \(1\) if `(prev + c) < b[j]` (meaning we must do the whole‐row op).  We transition to `dpCur[c]`.  Finally we require that beyond the segment end we do not place a block (so only `dpPrev[0]` is valid at the last step).
+
+This runs in \(O(n)\) per test (each row enters exactly one DP pass or is pre‐dyed), which is efficient for \(\sum n\le2\cdot10^5\).
+
+**Complexity**
+
+- Let \(N=\sum n\) over all testcases.
+- We scan once to count rows \(\ge5\) (\(O(N)\)), then break into segments and do at most one DP per row (\(O(N\times\!4)\) transitions).  
+- Overall \(O(N)\) time, \(O(N)\) space for the array.

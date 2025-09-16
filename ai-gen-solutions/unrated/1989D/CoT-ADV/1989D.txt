@@ -1,0 +1,103 @@
+D. Smithing Skill
+time limit per test3 seconds
+memory limit per test256 megabytes
+You are playing a famous computer game (that just works) where you have various skills you can level up. Today, you focused on the "Smithing" skill. Your tactic is obvious: forging weapons from ingots and then melting them back to return the materials partially. For simplicity, every time you create an item, you get 1
+ experience point, and every time you melt an item, you also get 1
+ experience point.
+
+There are n
+ classes of weapons you can forge and m
+ types of metal ingots.
+
+You can create one weapon of the i
+-th class, spending ai
+ ingots of metal of the same type. Melting a weapon of the i
+-th class (which you crafted earlier) returns you bi
+ ingots of the type of metal it was made of.
+
+You have cj
+ metal ingots of the j
+-th type, and you know that you can craft a weapon of any class from any metal type. Each combination of a weapon class and a metal type can be used any number of times.
+
+What is the maximum total amount of experience you can earn by crafting and melting weapons?
+
+Input
+The first line contains two integers n
+ and m
+ (1≤n,m≤106
+) — the number of weapon classes and metal types.
+
+The second line contains n
+ integers a1,a2,…,an
+ (1≤ai≤106
+), where ai
+ is the number of ingots you need to forge one weapon of the i
+-th class.
+
+The third line contains n
+ integers b1,b2,…,bn
+ (0≤bi<ai
+), where bi
+ is the number of ingots you return by melting one weapon of the i
+-th class you forged earlier.
+
+The fourth line contains m
+ integers c1,c2,…,cm
+ (1≤cj≤109
+) — the number of ingots you have of the corresponding metal type.
+
+Output
+Print one integer — the maximum total experience points you can gain by repeatedly forging and melting weapons.
+
+Examples
+InputCopy
+5 3
+9 6 7 5 5
+8 4 5 1 2
+10 4 7
+OutputCopy
+12
+InputCopy
+3 4
+10 20 20
+0 0 0
+9 10 19 20
+OutputCopy
+8
+InputCopy
+1 5
+3
+1
+1000000000 1000000000 1000000000 1000000000 1000000000
+OutputCopy
+4999999990
+Note
+In the first example, you can do the following:
+
+craft one weapon of the 1
+-st class from the 1
+-st type of metal, spending 9
+ ingots;
+melt that weapon, returning 8
+ ingots of the 1
+-st metal type;
+again, craft and melt one weapon of the 1
+-st class from the 1
+-st metal type;
+craft and melt one weapon of the 3
+-rd class from the 1
+-st metal type;
+craft and melt one weapon of the 3
+-rd class from the 3
+-rd metal type;
+craft and melt one weapon of the 4
+-th class from the 1
+-st metal type;
+craft and melt one weapon of the 5
+-th class from the 3
+-rd metal type;
+In the end you'll have c=[2,4,2]
+ ingots left. In total, you've crafted 6
+ weapons and melted 6
+ weapons, gaining 12
+ experience points in total.

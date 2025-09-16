@@ -1,0 +1,147 @@
+**Analysis**
+
+Let’s restate the problem in our own words:
+
+We have a binary string \(s\) of length \(n\).  For every choice of an interval \([l,r]\) (where \(1\le l\le r\le n\)), we want to count the number of sub-substrings \([x,y]\) (where \(l\le x\le y\le r\)) that have an equal number of 0’s and 1’s.  Finally, we must sum these counts over *all* possible \([l,r]\), and output the result \(\bmod 10^9+7\).
+
+A direct brute-force over all \((l,r)\) and then all \((x,y)\) is clearly \(O(n^4)\), which is impossible for \(n\) up to \(2\times10^5\).  We need an \(O(n)\) or \(O(n\log n)\) strategy.
+
+---
+
+**Key re-interpretation**
+
+1.  A substring \(s_xs_{x+1}\dots s_y\) has an equal number of 0’s and 1’s exactly when its sum (if we interpret 0→−1, 1→+1) is zero.
+
+2.  Define the prefix sums
+   \[
+     P_0=0,
+     \quad
+     P_i = \sum_{k=1}^{i}\bigl(\;s_k==1\;?\;+1\;:\;-1\bigr)\quad(1\le i\le n).
+   \]
+   Then the substring from \(x\) to \(y\) has sum zero iff
+   \[
+     P_y \;-\; P_{x-1}\;=\;0
+     \quad\iff\quad
+     P_{x-1}=P_y.
+   \]
+
+3.  Suppose we list all indices \(0\le u < v\le n\) for which \(P_u=P_v\).  Each such pair \((u,v)\) corresponds to a zero-sum substring \([x,y]=[u+1,v]\).  
+
+4.  How many times does this specific substring \([u+1,v]\) get counted when we range over *all* \([l,r]\) that contain \([u+1,v]\)?  
+   - We need \(l\le u+1\) and \(v\le r\).  
+   - The number of choices for \(l\) is all integers \(1\) through \((u+1)\), i.e.\ \((u+1)\) choices.
+   - The number of choices for \(r\) is all integers \(v\) through \(n\), i.e.\ \((n-v+1)\) choices.
+   - By independence, that substring is counted \((u+1)\times(n-v+1)\) times.
+
+5.  Hence our total answer is
+   \[
+     \sum_{\substack{0\le u<v\le n\\P_u=P_v}}
+       (u+1)\,(n-v+1)
+     \;\bmod\;(10^9+7).
+   \]
+
+6.  We can group indices by their prefix-sum value.  Suppose a certain sum \(X\) appears at positions
+   \[
+     p_0 < p_1 < \cdots < p_{k-1}
+     \quad
+     (\text{these are the indices }u\text{ or }v).
+   \]
+   We want all pairs \((p_i,p_j)\) with \(i<j\).  The contribution of the pair \((p_i,p_j)\) is
+   \[
+     (p_i+1)\times\bigl(n - p_j +1\bigr).
+   \]
+   Hence for each fixed \(j\), all earlier \(i<j\) contribute
+   \[
+     \bigl(\sum_{i<j}(p_i+1)\bigr)\;\times\;(n-p_j+1).
+   \]
+   We can keep a running prefix sum
+   \[
+     S_j = \sum_{i<j}(p_i+1),
+   \]
+   and accumulate
+   \[
+     S_j\times (n-p_j+1)
+   \]
+   in one pass over the list of positions.
+
+7.  Overall algorithm per test case:
+   - Read the string \(s\) of length \(n\).
+   - Build prefix sums \(P_0,P_1,\dots,P_n\) (mapping ‘0’→−1, ‘1’→+1).
+   - Use a hashmap `map` from prefix-sum value to a list of positions where it occurs.
+   - For each list of positions \([p_0,\dots,p_{k-1}]\):
+     - Maintain `long S_left = 0`.
+     - For \(j=0\) to \(k-1\):
+       - Let `v = p_j`.  
+         If \(j>0\), add `S_left*(n - v + 1) mod M` to the answer.
+       - Then do `S_left += (v+1)` (mod \(M\)).
+   - Print the final answer mod \(10^9+7\).
+
+This runs in \(O(n)\) time per test (since summing sizes of all lists is \(n+1\)), and memory is \(O(n)\) for the lists.  The sum of \(n\) over all test cases is at most \(2\times10^5\), so this easily fits in the time limit.
+
+---
+
+**Java Implementation**
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MOD = 1_000_000_007;
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int t = Integer.parseInt(in.readLine().trim());
+
+        while (t-- > 0) {
+            String s = in.readLine().trim();
+            int n = s.length();
+
+            // Build prefix sums P_0..P_n, interpreting '0'->-1, '1'->+1
+            // And group positions by prefix sum in a hashmap.
+            Map<Integer, List<Integer>> map = new HashMap<>();
+            int sum = 0;
+            // Position 0 has prefix sum 0
+            map.computeIfAbsent(0, k -> new ArrayList<>()).add(0);
+
+            for (int i = 1; i <= n; i++) {
+                char c = s.charAt(i - 1);
+                if (c == '1') sum++;
+                else sum--;
+                map.computeIfAbsent(sum, k -> new ArrayList<>()).add(i);
+            }
+
+            long answer = 0;
+
+            // For each group of positions with the same prefix sum:
+            // positions = [p0, p1, ..., p_{k-1}]
+            // we accumulate sum over i<j of (p_i+1)*(n - p_j +1).
+            for (List<Integer> positions : map.values()) {
+                long Sleft = 0; // Sleft = sum of (p_i+1) for i<j
+                for (int j = 0; j < positions.size(); j++) {
+                    int v = positions.get(j);
+                    if (j > 0) {
+                        long waysRight = (long)(n - v + 1);
+                        answer = (answer + Sleft * waysRight) % MOD;
+                    }
+                    // Add (v+1) into Sleft for future j
+                    Sleft = (Sleft + (v + 1)) % MOD;
+                }
+            }
+
+            System.out.println(answer);
+        }
+
+        in.close();
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+1. We build an array (conceptually) of prefix sums \(P_i\).
+2. Whenever the same prefix sum appears at two different indices \(u\) and \(v\), the substring \([u+1,v]\) has equal numbers of 0’s and 1’s.
+3. That substring \([u+1,v]\) is contained in exactly \((u+1)\times(n-v+1)\) of the larger intervals \([l,r]\).
+4. We group all indices having the same prefix sum and, with one linear pass per group, accumulate their total contribution using a running sum trick.
+
+This yields an \(O(n)\)-time solution per test case, easily handling the constraints \(n\le2\times10^5\) in total.

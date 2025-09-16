@@ -1,0 +1,243 @@
+**Analysis**
+
+We have a perfect binary tree of height \(n\) (so it has \(2^n-1\) vertices, numbered in the usual heap‐style: the root is 1, its children are 2 and 3, etc.).  We start with all values \(a_v=0\), and perform exactly \(k\) “add” operations; in each add we pick some vertex \(v\) and increment by 1 every \(a\)-value on the unique path from the root down to \(v\).
+
+After those \(k\) adds we get a final nonnegative integer labeling \(a_v\).  We say that labeling is a *deterministic max‐heap* exactly if
+
+1.  (Max‐heap property)  For every internal node \(v\),  
+   \[
+     a_v \;\ge\;\max(a_{2v},\,a_{2v+1})
+   \]
+2.  (Feasibility of “x-counts”)  Equivalently, one can check that if we let
+   \[
+     x_v \;=\; a_v\;-\;\bigl(a_{2v}+a_{2v+1}\bigr)\,,
+   \]
+   then \(x_v\ge0\).  (One shows easily by induction that any \(\{a_v\}\)
+   with \(a_1=k\) and \(a_v\ge a_{2v}+a_{2v+1}\) for every internal \(v\)
+   *is* realized by choosing each vertex \(v\) exactly \(x_v\) times in the
+   “add” operations.)
+3.  (Deterministic‐pop property)  A standard heap‐pop procedure would
+   successively compare the two children of the current node and go
+   to whichever has the strictly larger \(a\)-value; it is *deterministic* exactly
+   if at every comparison along that single root–to–leaf path the two
+   children differ strictly.  Equivalently, if you let \(P\) be the unique
+   root–to–leaf path defined by always stepping into the strictly larger child,
+   one must have at each node \(v\) on \(P\), \(a_{2v}\neq a_{2v+1}\) (and in fact
+   the one on \(P\) is \(>\) the other).
+
+We wish to count, *modulo a given prime* \(p\), how many *distinct* final
+configurations \(\{a_v\}\) arise (two are the same if they agree on every \(v\))
+that satisfy all the above.
+
+---
+
+### Key idea
+
+We do a DP on subtrees.  Call a subtree of *depth* \(d\) one whose root
+is at distance \(d-1\) from its leaves.  In particular, a single leaf is
+“depth \(1\)”.  Let
+
+- \(A[d][t]\) = number of ways to label a *depth-\(d\)* subtree so that the
+  sum‐constraint \(a_v\ge a_{2v}+a_{2v+1}\) (and hence the max‐heap property
+  and feasibility) holds *everywhere*, and the root of that subtree
+  has \(a\)-value exactly \(t\).  No strict “>” is required anywhere.
+
+- \(B[d][t]\) = number of ways to label a *depth-\(d\)* subtree  
+  *under the same sum‐constraints*, but **additionally** the root’s two
+  children satisfy
+  \[
+     a_{\rm left}\;>\;a_{\rm right},
+  \]
+  thus enforcing a *strict* comparison at the root.
+
+  We will eventually use \(B[n][\,k\,]\) to count those global heaps
+  for which the *first* comparison at the true global root is strict
+  (and then we will multiply by \(2^{\,n-1}\) to account for *any* choice
+  of the first‐comparison being left‐or‐right, plus the further strict
+  comparisons down that chosen path).
+
+Recurrences:
+
+1.  **Base** \(d=1\).  A depth-1 subtree is just one leaf, so for any
+    \(t\ge0\) there is exactly one way to put \(a_{\rm leaf}=t\).  Hence
+    \[
+      A[1][t] = 1,\quad B[1][t] = 1\qquad(\forall\,t\ge0).
+    \]
+
+2.  **Step** from depth \(d-1\) up to depth \(d\).  Let the root of our
+    depth-\(d\) subtree have value \(t\).  One must choose nonnegative
+    \(L=a_{\rm left},\,R=a_{\rm right}\) with \(L+R\le t\); then the
+    left subtree contributes \(A[d-1][L]\) if there is no strict
+    requirement there, or \(B[d-1][L]\) if we *do* require a strict “left
+    > right” at that child‐root; similarly the right subtree always
+    contributes \(A[d-1][R]\) (no strict order on that side).  Finally
+    the root can soak up the remainder \(x = t - (L+R)\ge0\).  Altogether
+
+    -  **No strict requirement at root**  
+       \[
+         A[d][t]
+         \;=\;
+         \sum_{\substack{L,R\ge0\\L+R\le t}}
+            A[d-1][L]\;\times\;A[d-1][R].
+       \]
+
+    -  **Strict “left > right” at root**  
+       \[
+         B[d][t]
+         \;=\;
+         \sum_{\substack{L,R\ge0\\L+R\le t\\L>R}}
+            B[d-1][L]\;\times\;A[d-1][R].
+       \]
+
+   We implement each of these sums in \(O(t)\) or \(O(t)\) with a small
+   prefix‐sum trick, giving an \(O(nk^2)\) overall per test.
+
+3.  **Total answer.**  We want the global heap of depth \(n\) to have
+    \(a_1 = k\), the *first* comparison at the global root to be
+    strict (so we use \(B[n][k]\)), *and* that strictness could equally
+    well have been “right > left”.  By symmetry there are two choices
+    for the root comparison, and *then* in either case exactly
+    \(B[n][k]\) ways to continue.  So we multiply by \(2\).  But then
+    in the next level of the real tree we again have two choices for
+    which child we go to, each time enforcing strictness there, etc., for
+    in total \(n-1\) strict comparisons down a root‐to‐leaf path.  Hence
+    a total factor of \(2^{\,n-1}\).
+
+    Final answer \(\equiv 2^{\,n-1}\times B[n][k]\pmod p\).
+
+Since \(\sum n\le500\) and \(\sum k\le500\) over *all* testcases, even
+\(O(nk^2)\approx125\times10^6\) integer‐ops is acceptable in 3 s in Java,
+with a few constant‐factor optimizations and avoiding BigInteger.  
+
+---
+
+```java
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.IOException;
+import java.util.StringTokenizer;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        int T = Integer.parseInt(in.readLine().trim());
+        // We will read each test, do an O(n k^2) DP, and print.
+        for (int tc = 0; tc < T; tc++) {
+            StringTokenizer st = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(st.nextToken());
+            int k = Integer.parseInt(st.nextToken());
+            int p = Integer.parseInt(st.nextToken());
+            
+            // dp arrays for A[d][t] and B[d][t], we only keep two rows at once.
+            int[] A_prev = new int[k+1], A_curr = new int[k+1];
+            int[] B_prev = new int[k+1], B_curr = new int[k+1];
+            
+            // Base depth = 1
+            for (int t = 0; t <= k; t++) {
+                A_prev[t] = 1;
+                B_prev[t] = 1;
+            }
+            
+            // Repeatedly build up from depth d-1 to d
+            for (int depth = 2; depth <= n; depth++) {
+                // Build prefix sums of A_prev for fast queries
+                int[] prefixA = new int[k+1];
+                long running = 0;
+                for (int i = 0; i <= k; i++) {
+                    running += A_prev[i];
+                    if (running >= p) running %= p;
+                    prefixA[i] = (int)running;
+                }
+                
+                // Compute A_curr[t] = sum_{L+R <= t} A_prev[L] * A_prev[R]
+                for (int t = 0; t <= k; t++) {
+                    long ways = 0;
+                    // naive sum_{L=0..t} A_prev[L] * (sum_{R=0..t-L} A_prev[R])
+                    for (int L = 0; L <= t; L++) {
+                        int sumR = prefixA[t - L]; // = sum of A_prev[0..t-L]
+                        ways += (long)A_prev[L] * sumR;
+                        if (ways >= (1L<<62)) ways %= p; 
+                    }
+                    A_curr[t] = (int)(ways % p);
+                }
+                
+                // Compute B_curr[t] = sum_{L>R, L+R <= t} B_prev[L] * A_prev[R]
+                for (int t = 0; t <= k; t++) {
+                    long ways = 0;
+                    // sum L from 1..t, R from 0..min(L-1, t-L)
+                    for (int L = 1; L <= t; L++) {
+                        int maxR = t - L;       // from sum constraint
+                        int capR = L - 1;       // from L>R
+                        int Rlim = (maxR < capR) ? maxR : capR;
+                        if (Rlim < 0) continue;
+                        int sumR = prefixA[Rlim];
+                        ways += (long)B_prev[L] * sumR;
+                        if (ways >= (1L<<62)) ways %= p;
+                    }
+                    B_curr[t] = (int)(ways % p);
+                }
+                
+                // swap current<->prev
+                int[] tmpA = A_prev; A_prev = A_curr; A_curr = tmpA;
+                int[] tmpB = B_prev; B_prev = B_curr; B_curr = tmpB;
+            }
+            
+            // B_prev[k] = B[n][k].  Multiply by 2^(n-1) mod p.
+            long ans = B_prev[k];
+            long pow2 = 1, base = 2;
+            int exp = n - 1;
+            while (exp > 0) {
+                if ((exp & 1) != 0) pow2 = (pow2 * base) % p;
+                base = (base * base) % p;
+                exp >>= 1;
+            }
+            ans = (ans * pow2) % p;
+            System.out.println(ans);
+        }
+    }
+}
+```
+
+**Explanation of the main DP steps**
+
+1.  We keep two rolling arrays `A_prev`, `B_prev` for depth \(d-1\), and
+    we build `A_curr`, `B_curr` for depth \(d\).  
+
+2.  To compute
+    \[
+      A[d][t]\;=\;\sum_{L+R\le t}A[d-1][L]\;A[d-1][R],
+    \]
+    we precompute
+    \[
+      \text{prefixA}[x] \;=\;\sum_{i=0}^x A[d-1][i]\pmod p,
+    \]
+    so that \(\sum_{R=0}^{t-L}A[d-1][R] = \text{prefixA}[\,t-L\,]\).  
+    Then
+    \[
+      A[d][t]
+      = \sum_{L=0}^t A[d-1][L]\;\Bigl(\text{prefixA}[\,t-L\,]\Bigr).
+    \]
+
+3.  To compute the strict one
+    \[
+      B[d][t]\;=\;\sum_{\substack{L+R\le t\\L>R}}B[d-1][L]\;A[d-1][R],
+    \]
+    we note \(R\le t-L\) from the sum‐constraint and \(R\le L-1\) from
+    the strict \(L>R\).  Hence \(R\le\min(t-L,\;L-1)\).  Again we use the
+    same prefix sums of `A_prev` to do it in \(O(t)\).
+
+4.  At the very end we get `B_prev[k] = B[n][k]`.  But so far we have
+    enforced “strict left>right” only at the root of the depth-\(n\)
+    subtree.  In the full heap we must have a strict comparison at each
+    of the \(n-1\) levels *along the actual pop path*, and that path
+    could go either left or right at each of those \(n-1\) levels.  By
+    symmetry that gives a factor \(2^{\,n-1}\).  We multiply
+    \(B[n][k]\) by \(2^{\,n-1}\) (mod the prime \(p\)) to get the final
+    count.
+
+Because \(\sum n\le500\) and \(\sum k\le500\) across all testcases, the
+total time \(\sum O(nk^2)\) is at most about \(125\times10^6\) integer
+operations, which runs comfortably in 3 s in optimized Java.  
+
+This solves **E1. Deterministic Heap (Easy Version)** in \(O(nk^2)\)
+time per test, \(O(k)\) extra space.

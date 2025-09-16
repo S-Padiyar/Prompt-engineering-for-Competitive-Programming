@@ -1,0 +1,113 @@
+**Analysis**
+
+We have an undirected graph on vertices \(1,2,\dots,n\), where two vertices \(u<v\) are adjacent if and only if
+\[
+u\oplus v
+\]
+is prime.  We must color the vertices with as few colors as possible so that adjacent vertices receive different colors.
+
+A key observation (well-known from the Codeforces editorial) is:
+
+1.  **Every graph of this form can be properly colored with at most 4 colors** using the simple rule
+
+       color(i) = (i−1) mod 4 + 1.
+
+    Indeed, if two vertices \(i\) and \(j\) have the same residue modulo 4, then their binary representations agree in the lowest two bits, so
+    \[
+       i\oplus j
+    \]
+    is divisible by 4 and hence cannot be a prime (the only prime divisible by 4 would be 2, but \(i\oplus j\equiv0\pmod4\) forces the result to be at least 4).  Thus no two vertices of the same \(\bmod4\) class are adjacent, so this 4-coloring is always valid.
+
+2.  One checks by hand (or by tiny brute force) that for small \(n\) one can do better than 4 colors:
+
+    •  \(n=1\) requires just 1 color.  
+    •  \(n=2,3\) require 2 colors.  
+    •  \(n=4,5\) require 3 colors.  
+    •  For all \(n\ge6\), the chromatic number “jumps up” to 4, and one cannot do with 3.
+
+Hence the _minimal_ number of colors \(k\) is
+
+- \(k=1\) if \(n=1\),
+- \(k=2\) if \(n=2\) or \(n=3\),
+- \(k=3\) if \(n=4\) or \(n=5\),
+- \(k=4\) for all \(n\ge6\).
+
+We can then output any valid coloring achieving these minima.  For \(n\ge6\) we will simply use
+
+```
+color(i) = ((i−1)%4) + 1.
+```
+
+For the cases \(n\le5\) we hard-code a small optimal solution.
+
+This runs in \(O(n)\) overall (since we only print one integer per vertex), which is more than fast enough for \(n\) up to \(2\cdot10^5\).
+
+---
+
+```java
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+
+public class Main {
+    public static void main(String[] args) throws IOException {
+        BufferedReader br = new BufferedReader(new InputStreamReader(System.in));
+        StringBuilder sb = new StringBuilder();
+        
+        int t = Integer.parseInt(br.readLine().trim());
+        while (t-- > 0) {
+            int n = Integer.parseInt(br.readLine().trim());
+            
+            if (n == 1) {
+                sb.append(1).append('\n');
+                sb.append("1\n");
+            }
+            else if (n == 2) {
+                sb.append(2).append('\n');
+                sb.append("1 2\n");
+            }
+            else if (n == 3) {
+                // Uses 2 colors; one optimal choice is (1,2,2)
+                sb.append(2).append('\n');
+                sb.append("1 2 2\n");
+            }
+            else if (n == 4) {
+                // Uses 3 colors; one known optimal is (1,2,2,3)
+                sb.append(3).append('\n');
+                sb.append("1 2 2 3\n");
+            }
+            else if (n == 5) {
+                // Uses 3 colors; one known optimal is (1,2,2,3,3)
+                sb.append(3).append('\n');
+                sb.append("1 2 2 3 3\n");
+            }
+            else {
+                // n >= 6 => needs 4 colors, and the pattern (i-1)%4+1 is always valid
+                sb.append(4).append('\n');
+                for (int i = 1; i <= n; i++) {
+                    int c = ((i - 1) % 4) + 1;
+                    sb.append(c).append(i == n ? '\n' : ' ');
+                }
+            }
+        }
+        
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of the key coloring idea for \(n\ge6\):**
+
+We assign
+\[
+\text{color}(i) \;=\;\bigl((i-1)\bmod 4\bigr)\;+\;1,
+\]
+so the four colors repeat in order \(\,1,2,3,4,1,2,3,4,\dots\).  Suppose two vertices \(u<v\) ended up with the same color, which means
+\[
+u\equiv v\pmod 4.
+\]
+Then their last two binary bits are the same, so
+\[
+u\oplus v\equiv0\pmod 4
+\]
+and in particular \(u\oplus v\) is a multiple of 4 larger than or equal to 4, hence not prime.  Thus no two same\-colored vertices are adjacent, proving this is a proper 4-coloring.  One checks small cases by hand to reduce the color count below 4 when \(n\le5\).

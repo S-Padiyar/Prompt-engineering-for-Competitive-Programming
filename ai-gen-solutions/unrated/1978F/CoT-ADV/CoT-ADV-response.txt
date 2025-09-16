@@ -1,0 +1,207 @@
+**Problem Restatement**
+
+We have an array \(a\) of length \(n\).  From it we build an \(n\times n\) matrix \(b\) where row \(i\) is simply \(a\) cyclically shifted right by \(i-1\).  We then form a graph on the \(n^2\) matrix‐cells (vertices \((i,j)\)) by joining two cells \((i_1,j_1)\) and \((i_2,j_2)\) with an edge if
+
+1. \(\;|i_1 - i_2| + |j_1 - j_2|\;\le k\), and  
+2. \(\gcd(b_{i_1,j_1},\,b_{i_2,j_2})>1.\)
+
+We must output the **number of connected components** in this graph.
+
+­­­­­­  
+
+**Key Observations**
+
+1.  **Every row is just a cyclic shift of the original** \(a\).  If you look along “south‐east” diagonals (i.e.\ where \((j - i)\bmod n\) is constant), each diagonal has _all entries equal_ to the same \(a\)-value.
+
+2.  It turns out that if \(k\ge2\), _within_ each single diagonal, cells are connected end‐to‐end (adjacent in \(i\) gives a Manhattan distance of \(2\)) so long as you do *not* cross the wrap‐point where column index would overflow.  In most of the published solutions one _collapses_ each whole diagonal to a single “node” in a much smaller graph of size \(n\) (one node per diagonal) and then only worries about edges **between** diagonals, forgetting the tiny internal break at the wrap.  That small detail only affects very small \(k\), but for \(k\ge2\) (the problem’s constraint) every diagonal is internally connected and so safe to treat as a single node.
+
+3.  Two diagonals \(d_1,d_2\in\{0,\dots,n-1\}\) have matrix‐values \(a[d_1]\) and \(a[d_2]\).  We only need to check if there is *some* pair of cells—one on each diagonal—within Manhattan‐distance \(\le k\) and whose values share a factor \(>1\).  One shows that the minimal possible \(\bigl|i_1-i_2\bigr|+|j_1-j_2|\) between two different diagonals is exactly the *circular* difference
+\[
+  \delta = \min\bigl(|d_1-d_2|\,,\,n-|d_1-d_2|\bigr).
+\]
+Hence, **diagonals** \(d_1\) and \(d_2\) are linked by an edge in this “diagonal‐graph” exactly when
+\[
+   \gcd\bigl(a[d_1],a[d_2]\bigr)>1
+   \quad\text{and}\quad
+   \min\bigl(|d_1-d_2|,\,n-|d_1-d_2|\bigr)\;\le k.
+\]
+
+4.  We recover the number of connected components of the original \(n^2\)‐vertex graph simply by
+   1) collapsing each diagonal to one UF‐(union‐find) node,  
+   2) unioning those nodes whenever the two conditions above hold,  
+   3) counting UF‐sets at the end.
+
+Since \(n\le10^6\) over all test cases, this is \(O(n\log n)\) overall.  We preprocess an SPF (smallest‐prime‐factor) sieve up to \(10^6\) so that factoring each \(a[i]\) is \(O(\log a_i)\).  
+
+**Solution Outline**
+
+1.  Precompute an array `spf[]` of size up to \(10^6\) by the usual linear sieve, so that `spf[x]` = smallest prime dividing \(x\).  
+2.  For each test case:
+   - Read \(n,k\) and array `a[0..n-1]`.
+   - Build a union‐find on \(\{0,\dots,n-1\}\) (one node per diagonal).
+   - For each index `i` from 0 to \(n-1\), factor `a[i]` via `spf[]` into its distinct prime factors.  For each prime \(p\mid a[i]\), append `i` to a list `occ[p]`.
+   - For each prime \(p\) whose list `occ[p]` has more than one diagonal‐index, sort that list of indexes.  Then walk it in **circular** order:
+     - For consecutive indexes \(x<y\), compute \(\Delta=y-x\), check `min(Δ, n-Δ) ≤ k`; if so, `uf.union(x,y)`.
+     - Also check the wrap‐around pair `(last, first)` similarly.
+   - Finally count how many distinct union‐find roots remain; that is our answer for this test case.
+3.  Clear the used prime‐lists (`occ[p].clear()`) and proceed to the next case.
+
+This runs in \(O(\sum n\log A+n\log n)\) over all tests, easily within the \(4\) s / \(512\) MB limits in Java.
+
+```java
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static final int MAXA = 1_000_000;
+    static int[] spf = new int[MAXA+1];
+    // occ[p] will hold the list of diagonal‐indices i where a[i] % p == 0
+    static ArrayList<Integer>[] occ = new ArrayList[MAXA+1];
+    static {
+        // Sieve for smallest prime factor
+        for (int i = 2; i <= MAXA; i++) {
+            if (spf[i] == 0) {
+                // i is prime
+                for (long j = i; j <= MAXA; j += i) {
+                    if (spf[(int)j] == 0) {
+                        spf[(int)j] = i;
+                    }
+                }
+            }
+        }
+        // Initialize the lists lazily
+        for (int i = 0; i <= MAXA; i++) {
+            occ[i] = new ArrayList<>();
+        }
+    }
+
+    // Simple union‐find (disjoint‐set) on 0..n-1
+    static class UF {
+        int[] parent, rank;
+        int comps;
+        UF(int n) {
+            parent = new int[n];
+            rank   = new int[n];
+            for (int i = 0; i < n; i++) {
+                parent[i] = i;
+                rank[i]   = 0;
+            }
+            comps = n;
+        }
+        int find(int x) {
+            return parent[x]==x ? x : (parent[x]=find(parent[x]));
+        }
+        void union(int x, int y) {
+            x = find(x);
+            y = find(y);
+            if (x == y) return;
+            // union by rank
+            if (rank[x] < rank[y]) {
+                parent[x] = y;
+            } else if (rank[x] > rank[y]) {
+                parent[y] = x;
+            } else {
+                parent[y] = x;
+                rank[x]++;
+            }
+            comps--;
+        }
+    }
+
+    public static void main(String[] args) throws IOException {
+        BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+        StringTokenizer tok = new StringTokenizer(in.readLine());
+        int t = Integer.parseInt(tok.nextToken());
+
+        StringBuilder sb = new StringBuilder();
+        while (t-- > 0) {
+            tok = new StringTokenizer(in.readLine());
+            int n = Integer.parseInt(tok.nextToken());
+            int k = Integer.parseInt(tok.nextToken());
+
+            tok = new StringTokenizer(in.readLine());
+            int[] a = new int[n];
+            for (int i = 0; i < n; i++) {
+                a[i] = Integer.parseInt(tok.nextToken());
+            }
+
+            UF uf = new UF(n);
+
+            // Keep track of which primes we actually used, so we can clear their lists later
+            ArrayList<Integer> usedPrimes = new ArrayList<>();
+
+            // 1) Factor each a[i], record each prime => append i to occ[p]
+            for (int i = 0; i < n; i++) {
+                int x = a[i];
+                // factor x into distinct primes
+                int lastP = -1;
+                while (x > 1) {
+                    int p = spf[x];
+                    if (p != lastP) {
+                        if (occ[p].isEmpty()) {
+                            usedPrimes.add(p);
+                        }
+                        occ[p].add(i);
+                        lastP = p;
+                    }
+                    x /= p;
+                }
+            }
+
+            // 2) For each used prime p, sort its occ[p]-list and union neighbors on the ring
+            for (int p : usedPrimes) {
+                ArrayList<Integer> lst = occ[p];
+                if (lst.size() > 1) {
+                    Collections.sort(lst);
+                    // union consecutive on the _circular_ ring of size n
+                    for (int i = 0; i + 1 < lst.size(); i++) {
+                        int d1 = lst.get(i), d2 = lst.get(i+1);
+                        int diff = d2 - d1;
+                        int ring = Math.min(diff, n - diff);
+                        if (ring <= k) {
+                            uf.union(d1, d2);
+                        }
+                    }
+                    // also the wrap from last back to first
+                    int d1 = lst.get(lst.size()-1), d2 = lst.get(0);
+                    int diff = (d2 + n) - d1;         // linear
+                    int ring = Math.min(diff, n - diff);
+                    if (ring <= k) {
+                        uf.union(d1, d2);
+                    }
+                }
+                // clear for next test
+                lst.clear();
+            }
+
+            // 3) Number of connected components = uf.comps
+            sb.append(uf.comps).append('\n');
+        }
+
+        // Print all answers
+        System.out.print(sb);
+    }
+}
+```
+
+**Explanation of Key Steps**
+
+- We precompute a classic “smallest‐prime‐factor” sieve (`spf[]`) to allow \(O(\log a_i)\) factorization of each \(a_i\).  
+- **Union‐find on diagonals.**  We treat each diagonal index \(d\in[0..n-1]\) as one node.  (In the matrix \(b\), diagonal \(d\) is “where \((j-i)\bmod n=d\),” and all those cells carry the same value \(a[d]\).)  
+- For any prime \(p\), gather the list of diagonals whose values are divisible by \(p\).  Sort that list.  Two diagonals at indices \(x<y\) are “Manhattan‐reachable within distance \(k\)” if  
+  \[
+     \min\bigl(y-x,\;n-(y-x)\bigr)\;\le k,
+  \]
+  because on the \(n\)-cycle of diagonals the closest distance is the circular difference.  
+- We union every adjacent pair (in the sorted list) that satisfies that circular‐distance bound—and also the wrap pair “last,first.”  
+- At the end, the union‐find’s `comps` counter tells us how many connected components the small \(n\)-node graph has.  By the above diagonal‐collapse argument, that equals the number of components in the full \(n^2\)‐vertex graph.
+
+**Complexity**
+
+- Sieve to build `spf[]`: \(O(\max A)\) once, where \(\max A=10^6\).  
+- Across all test cases, sum of \(n\) is at most \(10^6\).  Each \(a[i]\) factors in \(O(\log a_i)\) via the SPF table, so total \(O(n\log A)\).  
+- Each prime’s occurrence‐list is sorted; the total length of all lists is also \(O(n\log A)\) (each number \(a[i]\) contributes at most \(O(\log A)\) prime‐occurrences).  Sorting all those lists still stays in \(O(n\log n)\) overall.  
+- Union‐find operations are essentially \(O(\alpha(n))\approx O(1)\) each.  
+- Total: roughly \(O(n\log A + n\log n)\), well within limits for \(n\le10^6\).
+
+This completes the solution.

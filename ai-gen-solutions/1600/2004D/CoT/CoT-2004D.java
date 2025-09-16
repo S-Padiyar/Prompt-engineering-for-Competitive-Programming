@@ -1,0 +1,125 @@
+import java.io.*;
+import java.util.*;
+
+public class Main {
+    static class FastReader {
+        BufferedReader br;
+        StringTokenizer st;
+        FastReader(InputStream in) { br = new BufferedReader(new InputStreamReader(in)); }
+        String next() {
+            while (st == null || !st.hasMoreTokens()) {
+                String line = null;
+                try { line = br.readLine(); }
+                catch (IOException e) { }
+                if (line == null) return null;
+                st = new StringTokenizer(line);
+            }
+            return st.nextToken();
+        }
+        int nextInt() { return Integer.parseInt(next()); }
+    }
+
+    // Map a two‐letter portal type (e.g. "BG") to an index 0..5
+    static Map<String, Integer> typeIndex;
+    static {
+        typeIndex = new HashMap<>();
+        typeIndex.put("BG",0);
+        typeIndex.put("BR",1);
+        typeIndex.put("BY",2);
+        typeIndex.put("GR",3);
+        typeIndex.put("GY",4);
+        typeIndex.put("RY",5);
+    }
+
+    public static void main(String[] args) throws IOException {
+        FastReader in = new FastReader(System.in);
+        PrintWriter out = new PrintWriter(System.out);
+
+        int t = in.nextInt();
+        while (t-- > 0) {
+            int n = in.nextInt(), q = in.nextInt();
+            // store for each city its two portal‐colors
+            String[] portals = new String[n+1];
+            for (int i = 1; i <= n; i++) {
+                portals[i] = in.next();
+            }
+            // For each of the 6 types keep a sorted list of city‐indices
+            ArrayList<Integer>[] lists = new ArrayList[6];
+            for (int i = 0; i < 6; i++) {
+                lists[i] = new ArrayList<>();
+            }
+            for (int i = 1; i <= n; i++) {
+                String s = portals[i];
+                // s is already in sorted order by problem statement, but
+                // just in case we normalize it
+                char a = s.charAt(0), b = s.charAt(1);
+                if (a > b) { char c = a; a = b; b = c; }
+                int idx = typeIndex.get("" + a + b);
+                lists[idx].add(i);
+            }
+            // sort each
+            for (int i = 0; i < 6; i++) {
+                Collections.sort(lists[i]);
+            }
+
+            // process queries
+            while (q-- > 0) {
+                int x = in.nextInt();
+                int y = in.nextInt();
+                if (x == y) {
+                    out.println(0);
+                    continue;
+                }
+                // Extract the two colors at x and y
+                char x1 = portals[x].charAt(0), x2 = portals[x].charAt(1);
+                char y1 = portals[y].charAt(0), y2 = portals[y].charAt(1);
+                int ans = Math.abs(x - y);  // a shared‐color path is at most this
+
+                // Check if they share a portal color
+                if (x1 == y1 || x1 == y2 || x2 == y1 || x2 == y2) {
+                    // direct same‐color move
+                    out.println(ans);
+                    continue;
+                }
+
+                // otherwise try all 4 ways to switch once
+                int[][] pairs = {{x1-'A', y1-'A'}, {x1-'A', y2-'A'},
+                                 {x2-'A', y1-'A'}, {x2-'A', y2-'A'}};
+                // portals are B= 'B'‐'A'=1, G= 'G'‐'A'=6, R= 'R'‐'A'=17, Y= 'Y'‐'A'=24
+                // but we only care how to sort them to index 0..5, so we do a small fix:
+                for (int[] pd : pairs) {
+                    char c = (char)(pd[0] + 'A'), d = (char)(pd[1] + 'A');
+                    if (c > d) { char tmp = c; c = d; d = tmp; }
+                    String key = "" + c + d;
+                    Integer typeIdx = typeIndex.get(key);
+                    if (typeIdx == null) continue; 
+                    ArrayList<Integer> L = lists[typeIdx];
+                    if (L.isEmpty()) continue;
+                    // we want min over i in L of |x−i| + |y−i|.
+                    // as i moves outside [min(x,y),max(x,y)] the function grows,
+                    // so it suffices to check the first element >= min(x,y) and
+                    // its predecessor if any.
+                    int lo = Math.min(x,y), hi = Math.max(x,y);
+                    int pos = Collections.binarySearch(L, lo);
+                    if (pos < 0) pos = -pos - 1;
+                    // candidate 1: L[pos], candidate 2: L[pos−1]
+                    if (pos < L.size()) {
+                        int iCity = L.get(pos);
+                        int cst = Math.abs(x - iCity) + Math.abs(y - iCity);
+                        if (cst < ans) ans = cst;
+                    }
+                    if (pos-1 >= 0) {
+                        int iCity = L.get(pos-1);
+                        int cst = Math.abs(x - iCity) + Math.abs(y - iCity);
+                        if (cst < ans) ans = cst;
+                    }
+                }
+
+                if (ans >= Integer.MAX_VALUE/2) ans = -1;
+                out.println(ans);
+            }
+        }
+
+        out.flush();
+    }
+}

@@ -1,0 +1,18 @@
+{
+  "prompts": [
+    "CoT-ADV",
+    "NP",
+    "CoT",
+    "PC"
+  ],
+  "text": [
+    "You are a competitive programming assistant solving Codeforces problems using Java. First, carefully read and restate the problem in your own words to ensure full understanding. Identify the input and output formats, list the constraints, and consider any edge cases that might affect the logic. Next, determine which algorithmic pattern the problem fits best—such as greedy, binary search, two pointers, dynamic programming, or graph traversal—and briefly explain why that pattern applies. Then, plan your solution step by step, describing the key ideas, data structures, or mathematical insights you’ll use. Once your plan is clear, write a clean and fully working Java program. Use import java.util.*; and include a Main class with a main method, using Scanner or BufferedReader for input depending on the constraints. Add comments to explain important logic in the code. After coding, walk through a sample input manually to show how your solution works in practice. Finally, analyze the time and space complexity of your approach using Big-O notation, justifying your answer. Think step by step and only write code once the logic is sound and complete.",
+    "Use Java. The class name should be 'Main'.",
+    "Let's think step-by-step so we don't make mistakes. Use Java. Avoid syntax errors or infinite loops. The class name should be 'Main'.",
+    [
+      "Use Java.",
+      "Identify any errors in this response and output a prompt to help the AI resolve said issues, if the response looks perfect return \"Perfect\", otherwise return \"{prompt}\" where {prompt} is replaced with your prompt. Make sure the quotations are there as they determine what prompt I will give to the AI. Make sure in your prompt that the AI returns one block of code for submission. Look out for compile time errors; they are the most common. The class name should be 'Main'.",
+      5
+    ]
+  ]
+}

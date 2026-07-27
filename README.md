@@ -5,6 +5,8 @@ An experimental pipeline and dataset for comparing four prompting strategies on 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Java output](https://img.shields.io/badge/output-Java-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/)
 [![Dataset](https://img.shields.io/badge/dataset-90_unique_problems-6f42c1)](ai-gen-solutions/README.md)
+[![Code: MIT](https://img.shields.io/badge/code-MIT-yellow.svg)](LICENSE)
+[![Research data: CC BY 4.0](https://img.shields.io/badge/research_data-CC_BY_4.0-lightgrey.svg)](LICENSE-DATA.md)
 
 **90 unique problems | 4 prompting strategies | ratings 1600-2400 | raw responses, interaction logs, Java outputs, and verdict analysis**
 
@@ -171,4 +173,9 @@ The script reads `Data_With_Ratings.txt` and writes `data.xlsx` with raw data, p
 
 ## License
 
-No license file is currently included. Unless the repository owner adds one, the code and dataset remain under default copyright and are not automatically licensed for reuse or redistribution.
+This research project uses two standard licenses:
+
+- **Software:** the original source code is available under the [MIT License](LICENSE).
+- **Research materials:** the repository owner's original data, experimental metadata, analysis outputs, and documentation are available under [Creative Commons Attribution 4.0 International](LICENSE-DATA.md). Reusers must provide attribution, link to the license, and identify changes.
+
+Neither license grants rights to third-party material, including Codeforces problem statements, trademarks, or material owned by others. Generated content is covered only to the extent that the repository owner holds rights in it.

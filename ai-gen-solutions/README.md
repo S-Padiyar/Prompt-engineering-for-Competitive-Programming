@@ -55,3 +55,9 @@ Verdicts and aggregate analysis are stored at the repository root in [`Data_With
 - Interaction JSON may include model-generated reasoning and request metadata. Review it before redistributing or using it as training data.
 - Problem statements originate from Codeforces; their inclusion here does not grant additional rights.
 - Outputs reflect a particular model configuration and run, and should not be treated as deterministic benchmark answers.
+
+## License
+
+The repository owner's original research data, experimental metadata, analysis outputs, and documentation are licensed under [CC BY 4.0](../LICENSE-DATA.md). Source code is separately licensed under the [MIT License](../LICENSE).
+
+These licenses do not relicense Codeforces problem statements, third-party trademarks, or other material the repository owner does not own. Generated content is covered only to the extent that the repository owner holds rights in it.

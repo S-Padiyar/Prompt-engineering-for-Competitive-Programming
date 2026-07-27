@@ -38,6 +38,8 @@ flowchart LR
     Review --> Analysis[Excel summaries and McNemar tests]
 ```
 
+![Prompting process diagram showing initialization, data saving, prompting, and prompt-chaining logic](assets/prompting-process.png)
+
 The repository serves two audiences: researchers can inspect the checked-in experiment artifact immediately, while maintainers with Azure OpenAI access can collect a new sample and repeat the pipeline.
 
 ## Prompting strategies
@@ -153,7 +155,7 @@ Prompt chaining can additionally produce full conversation histories and per-rou
 python CodeForces_Submitter.py
 ```
 
-It writes rows in the form `problem_id,prompt_type,verdict`. This helper does **not** submit through the Codeforces API; submission remains a manual browser action. There is also a known filename mismatch: the helper searches for `<prompt>_<problem>.java`, while `generator.py` and the checked-in artifact use `<prompt>-<problem>.java`. Adjust line 95 before using it with generator output.
+It writes rows in the form `problem_id,prompt_type,verdict`. This helper does **not** submit through the Codeforces API; submission remains a manual browser action. It looks for generated Java files named `<prompt>-<problem>.java`, matching `generator.py` and the checked-in artifact.
 
 `RatingAdder.py` is a one-off migration script with author-specific absolute Windows paths. Edit its four path variables before running it. Once a log contains ratings as a fourth field, generate the workbook with:
 

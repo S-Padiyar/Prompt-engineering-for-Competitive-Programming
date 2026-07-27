@@ -92,7 +92,7 @@ def review_and_log_responses():
                     target_prompt_path = os.path.join(problem_id_path, prompt_type)
                     if os.path.isdir(target_prompt_path):
                         # Construct the path to the Java file
-                        java_file_name = f"{prompt_type}_{problem_id_dir}.java"
+                        java_file_name = f"{prompt_type}-{problem_id_dir}.java"
                         java_file_path = os.path.join(target_prompt_path, java_file_name)
 
                         # --- Check if this problem+prompt combination is already processed ---

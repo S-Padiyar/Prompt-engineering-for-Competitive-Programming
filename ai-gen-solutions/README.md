@@ -4,12 +4,13 @@ This directory contains the saved artifacts from a prompt-engineering experiment
 
 ## Snapshot
 
-- 180 problem directories
+- 90 unique Codeforces problem IDs
+- 180 problem-directory instances because every problem is duplicated between its numeric rating bucket and `unrated`
 - Rated buckets from 1600 through 2400, plus `unrated`
 - Four treatment labels: `NP`, `CoT`, `CoT-ADV`, and `PC`
 - 2,199 experiment files excluding this README at the time of documentation: 905 text files, 844 JSON files, and 450 Java files
 
-Counts describe the repository snapshot and do not imply that every problem has all four treatments or every artifact type.
+Each numeric rating bucket contains 10 unique problems. The `unrated` directory contains copies of all 90 problems, so it should not be added to the rated buckets when calculating the number of unique problems. Counts describe the repository snapshot and do not imply that every problem has all four treatments or every artifact type.
 
 ## Directory structure
 
@@ -40,7 +41,7 @@ ai-gen-solutions/
 | `convo_history/*.json` | Primary and critic exchanges from individual chain iterations |
 | `error.txt` | Error information for an incomplete run, where present |
 
-The `unrated` bucket holds collected runs for which the dataset directory did not assign a numeric rating. The same problem ID can appear in both `unrated` and a numeric bucket.
+The `unrated` bucket duplicates the same 90 problem IDs found across the numeric rating buckets. Treat it as a separate set of experimental runs, not as 90 additional problems.
 
 ## Using the data
 

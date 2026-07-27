@@ -4,9 +4,9 @@ An experimental pipeline and dataset for comparing four prompting strategies on 
 
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![Java output](https://img.shields.io/badge/output-Java-ED8B00?logo=openjdk&logoColor=white)](https://openjdk.org/)
-[![Dataset](https://img.shields.io/badge/dataset-180_problems-6f42c1)](ai-gen-solutions/README.md)
+[![Dataset](https://img.shields.io/badge/dataset-90_unique_problems-6f42c1)](ai-gen-solutions/README.md)
 
-**180 problems | 4 prompting strategies | ratings 1600-2400 | raw responses, interaction logs, Java outputs, and verdict analysis**
+**90 unique problems | 4 prompting strategies | ratings 1600-2400 | raw responses, interaction logs, Java outputs, and verdict analysis**
 
 > [!NOTE]
 > This is research code and a published experiment artifact, not a polished Codeforces submission client. The workflow is interactive, depends on the current Codeforces page layout, and requires some local configuration.
@@ -49,7 +49,7 @@ The experiment configuration in [`prompts.json`](prompts.json) defines:
 | `CoT-ADV` | A longer structured instruction covering interpretation, algorithm selection, implementation, walkthrough, and complexity |
 | `PC` | A prompt-chaining workflow in which a second model critiques the proposed answer and requests revisions, for at most five rounds |
 
-The checked-in results currently contain 180 problem directories across rated buckets 1600-2400 plus an `unrated` bucket. See the [dataset README](ai-gen-solutions/README.md) for the artifact layout.
+The checked-in results contain 90 unique Codeforces problem IDs. Each appears in its numeric rating bucket and is duplicated under `unrated`, producing 180 problem-directory instances in total. See the [dataset README](ai-gen-solutions/README.md) for the artifact layout.
 
 ## Repository contents
 

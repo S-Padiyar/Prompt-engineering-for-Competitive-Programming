@@ -60,6 +60,7 @@ The checked-in results contain 90 unique Codeforces problem IDs. Each appears in
 | Path | Purpose |
 | --- | --- |
 | [`generator.py`](generator.py) | Main interactive pipeline: query Codeforces, sample and scrape problems, run prompts concurrently, and save responses |
+| [`cf_prompting/`](cf_prompting/) | Shared configuration, artifact, Codeforces, review, rating, and analysis helpers |
 | [`prompts.json`](prompts.json) | Names and text of the four prompt treatments |
 | [`ai-gen-solutions/`](ai-gen-solutions/) | Published problem statements, model responses, interaction logs, and extracted Java code |
 | [`CodeForces_Submitter.py`](CodeForces_Submitter.py) | Clipboard-assisted manual review and verdict logger |
@@ -67,6 +68,9 @@ The checked-in results contain 90 unique Codeforces problem IDs. Each appears in
 | [`txt_to_excel.py`](txt_to_excel.py) | Converts verdict logs to an Excel workbook with accuracy summaries and McNemar comparisons |
 | [`Data_With_Ratings.txt`](Data_With_Ratings.txt) | Comma-separated experimental verdict data |
 | [`data.xlsx`](data.xlsx) | Generated analysis workbook |
+| [`tests/`](tests/) | Behavioral regression tests for the pipeline and data tools |
+| [`requirements.txt`](requirements.txt) | Runtime dependency ranges for the complete workflow |
+| [`requirements-dev.txt`](requirements-dev.txt) | Test, lint, and type-check tools |
 
 ## Quick start
 
@@ -81,7 +85,10 @@ Open the same problem under its `NP`, `CoT`, `CoT-ADV`, and `PC` directories to 
 To run the experiment pipeline instead:
 
 ```bash
-python -m pip install openai requests selenium pyperclip pandas statsmodels openpyxl
+python -m venv .venv
+# Windows: .venv\Scripts\activate
+# macOS/Linux: source .venv/bin/activate
+python -m pip install -r requirements.txt
 python generator.py
 ```
 
@@ -91,13 +98,13 @@ The second command opens an interactive questionnaire. Before running it, comple
 
 - Python 3.9 or newer
 - Google Chrome and a compatible ChromeDriver for collecting new problem statements
-- An Azure OpenAI deployment (the code defaults to deployment name `gpt-4o-mini` and API version `2025-01-01-preview`)
+- An Azure OpenAI deployment (the code defaults to deployment name `o4-mini` and API version `2025-01-01-preview`)
 - Java only if you want to compile or test the generated submissions locally
 
 Install the Python packages used by the complete workflow if you have not used the quick-start command:
 
 ```bash
-python -m pip install openai requests selenium pyperclip pandas statsmodels openpyxl
+python -m pip install -r requirements.txt
 ```
 
 The pipeline uses the public Codeforces API for metadata and Selenium plus the system clipboard for statement extraction. Chrome runs with a visible window.
@@ -130,7 +137,7 @@ _ai-gen-solutions/             newly generated experiment outputs
 solution_status.json           resumable processing state
 ```
 
-API calls retry indefinitely with exponential backoff for rate limits and other API errors. Start with a conservative worker count and stop the process manually if a persistent configuration error causes repeated retries.
+Transient API failures use capped exponential backoff and stop after eight attempts. Authentication and non-transient client failures stop the affected prompt immediately with an actionable error instead of hanging indefinitely. Start with a conservative worker count.
 
 ## Output layout
 
@@ -155,15 +162,44 @@ Prompt chaining can additionally produce full conversation histories and per-rou
 python CodeForces_Submitter.py
 ```
 
-It writes rows in the form `problem_id,prompt_type,verdict`. This helper does **not** submit through the Codeforces API; submission remains a manual browser action. It looks for generated Java files named `<prompt>-<problem>.java`, matching `generator.py` and the checked-in artifact.
+It writes CSV rows in the form `problem_id,prompt_type,verdict`. This helper does **not** submit through the Codeforces API; submission remains a manual browser action. It recognizes both the current `<prompt>-<problem>.java` name and historical underscore-named artifacts such as `PC_1978D.java`.
 
-`RatingAdder.py` is a one-off migration script with author-specific absolute Windows paths. Edit its four path variables before running it. Once a log contains ratings as a fourth field, generate the workbook with:
+Add ratings to a three-column verdict log by passing the generated-results directory and input file explicitly:
+
+```bash
+python RatingAdder.py ai-gen-solutions review_results.txt --output Final_IDs.txt --missing-log missing_ids.txt
+```
+
+Once a log contains ratings as a fourth field, generate the workbook with:
 
 ```bash
 python txt_to_excel.py
 ```
 
+You can also pass explicit input and output paths:
+
+```bash
+python txt_to_excel.py Final_IDs.txt analysis.xlsx
+```
+
 The script reads `Data_With_Ratings.txt` and writes `data.xlsx` with raw data, per-prompt accuracy, solved-treatment combinations, and pairwise McNemar tests comparing `NP` with `CoT`, `CoT-ADV`, and `PC`. Treat the statistical output as exploratory: review the data-cleaning rules and test assumptions before drawing research conclusions.
+
+## Development and verification
+
+Install the development tools into the active virtual environment, then run the complete local check set:
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m compileall -q cf_prompting generator.py CodeForces_Submitter.py RatingAdder.py txt_to_excel.py tests
+python -m ruff check .
+python -m ruff format --check .
+python -m mypy cf_prompting generator.py CodeForces_Submitter.py RatingAdder.py txt_to_excel.py
+python -m pytest
+python -m pip check
+python -m pip_audit -r requirements-dev.txt
+```
+
+There is no separate production build step for these Python command-line tools. Successful bytecode compilation, static checks, tests, and an end-to-end workbook-generation smoke test serve as build verification. Local credentials, virtual environments, resume state, and newly generated experiment directories are excluded by `.gitignore`; the published `ai-gen-solutions/` dataset remains tracked.
 
 ## Reproducibility notes
 

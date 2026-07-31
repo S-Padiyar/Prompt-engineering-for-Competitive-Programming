@@ -1,0 +1,32 @@
+# Local credentials and environment overrides
+.env
+.env.*
+!.env.example
+api_config.txt
+keys.txt
+*_credentials.txt
+
+# Python caches, environments, and tool output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Local pipeline output (the published ai-gen-solutions dataset is tracked)
+_ai-gen-solutions/
+_organized_problems_by_rating/
+_scraped_problem_statements/
+solution_status.json
+*.tmp
+
+# Editor and operating-system files
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
